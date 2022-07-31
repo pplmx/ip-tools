@@ -13,6 +13,12 @@
   [this](https://www.rust-lang.org/tools/install) guide.
 * run `cargo install ip-tools`
 
+## Usage
+
+```shell
+ip-tools --help
+```
+
 ## License
 
 Licensed under either of
