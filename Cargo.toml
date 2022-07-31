@@ -10,3 +10,10 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 clap = { version = "3.2.16", features = ["derive"] }
+
+[profile.test]
+opt-level = 1
+
+[profile.bench]
+lto = true
+codegen-units = 1
