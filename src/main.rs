@@ -1,21 +1,23 @@
-use clap::Parser;
+#[macro_use]
+extern crate clap;
 
-#[derive(Parser, Debug)]
-#[clap(author, version, about, long_about = None)]
-struct Args {
-    /// Name of the person to greet
-    #[clap(short, long, value_parser)]
-    name: String,
-
-    /// Number of times to greet
-    #[clap(short, long, value_parser, default_value_t = 1)]
-    count: u8,
-}
+use clap::App;
 
 fn main() {
-    let args = Args::parse();
+    let yaml = load_yaml!("cli.yml");
+    let matches = App::from_yaml(yaml).get_matches();
 
-    for _ in 0..args.count {
-        println!("Hello {}!", args.name)
+    let _ = match matches.occurrences_of("verbose") {
+        0 => println!("zero"),
+        1 => println!("one"),
+        _ => println!("more")
+    };
+
+    if let Some(matches) = matches.subcommand_matches("test") {
+        if matches.is_present("list") {
+            println!("Printing testing lists...");
+        } else {
+            println!("Not printing testing lists...");
+        }
     }
 }
