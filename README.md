@@ -4,6 +4,7 @@
 [![Docs.rs](https://docs.rs/ip-tools/badge.svg)](https://docs.rs/ip-tools)
 [![CI](https://github.com/pplmx/ip-tools/workflows/CI/badge.svg)](https://github.com/pplmx/ip-tools/actions)
 [![Coverage Status](https://coveralls.io/repos/github/pplmx/ip-tools/badge.svg?branch=main)](https://coveralls.io/github/pplmx/ip-tools?branch=main)
+[![Rust GitHub Template](https://img.shields.io/badge/Rust%20GitHub-Template-blue)](https://rust-github.github.io/)
 
 ## Installation
 
