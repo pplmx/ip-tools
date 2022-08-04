@@ -7,12 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Add a new feature
+- Add a badge for [Rust GitHub Template](https://rust-github.github.io/)
+
+### Changed
+- Replace clap_derive with clap_builder
+- Replace CARGO_API_KEY with CARGO_REGISTRY_TOKEN
 
 ### Fixed
 - Fix a bug
 
-## [0.1.0] - 2022-08-02
+## [v0.1.0] - 2022-08-02
 
 ### Added
 - initial release
