@@ -1,7 +1,8 @@
 mod cli;
+mod handler;
 
-use crate::cli::clap_builder_parser;
+use crate::cli::ip_tools_cli;
 
 fn main() {
-    clap_builder_parser();
+    ip_tools_cli();
 }

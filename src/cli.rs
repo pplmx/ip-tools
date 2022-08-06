@@ -1,4 +1,12 @@
-use clap::{arg, App, ArgMatches};
+use crate::handler::{get_local_ip, list_net_ifs};
+use clap::{
+    arg, crate_authors, crate_description, crate_name, crate_version, App, ArgMatches, Command,
+};
+
+pub fn ip_tools_cli() {
+    let matches = parser();
+    handler(matches);
+}
 
 // This function is used to build the CLI parser.
 // pub fn clap_yaml_parser() -> ArgMatches {
@@ -6,14 +14,46 @@ use clap::{arg, App, ArgMatches};
 //     return App::from_yaml(yaml).get_matches();
 // }
 
-pub fn clap_builder_parser() -> ArgMatches {
-    return App::new("ip-tools")
-        .version("0.1.0")
-        .author("Mystic")
-        .about("A command line interface for the Rust language")
-        .arg(arg!(-c --config <CONFIG_FILE> "Sets a custom config file").required(false))
-        .arg(arg!(-i --input <INPUT_FILE> "Sets the input file to use").required(false))
-        .arg(arg!(-o --output <OUTPUT_FILE> "Sets the output file to use").required(false))
-        .arg(arg!(-v --verbose "Prints verbose output").required(false))
+fn parser() -> ArgMatches {
+    return App::new(crate_name!())
+        .arg_required_else_help(true)
+        .version(crate_version!())
+        .author(crate_authors!("\n"))
+        .about(crate_description!())
+        // .args(&[
+        //     arg!(--config <FILE> "a required file for the configuration and no short"),
+        //     arg!(-d --debug ... "turns on debugging information and allows multiples"),
+        //     arg!([input] "an optional input file to use")
+        // ])
+        .subcommands(vec![
+            Command::new("list")
+                .about("list all network interfaces")
+                .arg(arg!(--all "list all network interfaces")),
+            Command::new("get")
+                .about("get the local IP address")
+                .arg(arg!(--ip "get the local IP address")),
+        ])
         .get_matches();
+}
+
+fn handler(app_m: ArgMatches) {
+    match app_m.subcommand() {
+        Some(("list", sub_m)) => {
+            if sub_m.is_present("all") {
+                list_net_ifs();
+            }
+        }
+        Some(("get", sub_m)) => {
+            if sub_m.is_present("ip") {
+                get_local_ip();
+            }
+        }
+        Some(("commit", sub_m)) => {
+            println!("Subcommand: {:?}", sub_m);
+        }
+        _ => {
+            // If no subcommand was used, print an help message
+            println!("No subcommand was used.");
+        }
+    }
 }
