@@ -39,12 +39,12 @@ fn parser() -> ArgMatches {
 fn handler(app_m: ArgMatches) {
     match app_m.subcommand() {
         Some(("list", sub_m)) => {
-            if sub_m.is_present("all") {
+            if sub_m.contains_id("all") {
                 list_net_ifs();
             }
         }
         Some(("get", sub_m)) => {
-            if sub_m.is_present("ip") {
+            if sub_m.contains_id("ip") {
                 get_local_ip();
             }
         }
