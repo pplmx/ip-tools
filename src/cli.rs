@@ -1,4 +1,4 @@
-use crate::handler::{get_local_ip, list_net_ifs};
+use crate::handler::{get_local_ip, list_ifs, list_net_ifs};
 use clap::{
     arg, crate_authors, crate_description, crate_name, crate_version, App, ArgMatches, Command,
 };
@@ -28,7 +28,8 @@ fn parser() -> ArgMatches {
         .subcommands(vec![
             Command::new("list")
                 .about("list all network interfaces")
-                .arg(arg!(--all "list all network interfaces")),
+                .arg(arg!(--all "list all network interfaces"))
+                .arg(arg!(--get_if_addrs "list all network interfaces")),
             Command::new("get")
                 .about("get the local IP address")
                 .arg(arg!(--ip "get the local IP address")),
@@ -41,6 +42,9 @@ fn handler(app_m: ArgMatches) {
         Some(("list", sub_m)) => {
             if sub_m.contains_id("all") {
                 list_net_ifs();
+            }
+            if sub_m.contains_id("get_if_addrs") {
+                list_ifs();
             }
         }
         Some(("get", sub_m)) => {
