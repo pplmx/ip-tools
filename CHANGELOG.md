@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add a badge for [Rust GitHub Template](https://rust-github.github.io/)
 
 ### Changed
+- Remove cli.yml
 - Update clap to v4
 - Replace clap_derive with clap_builder
 - Replace CARGO_API_KEY with CARGO_REGISTRY_TOKEN

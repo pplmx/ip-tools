@@ -7,12 +7,6 @@ pub fn ip_tools_cli() {
     handler(matches);
 }
 
-// This function is used to build the CLI parser.
-// pub fn clap_yaml_parser() -> ArgMatches {
-//     let yaml = load_yaml!("cli.yml");
-//     return App::from_yaml(yaml).get_matches();
-// }
-
 fn parser() -> ArgMatches {
     command!()
         .arg_required_else_help(true)
@@ -47,9 +41,6 @@ fn handler(app_m: ArgMatches) {
             if sub_m.contains_id("ip") {
                 get_local_ip();
             }
-        }
-        Some(("commit", sub_m)) => {
-            println!("Subcommand: {:?}", sub_m);
         }
         _ => {
             // If no subcommand was used, print an help message
