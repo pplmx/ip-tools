@@ -13,16 +13,10 @@ fn parser() -> ArgMatches {
         .version(crate_version!())
         .author(crate_authors!("\n"))
         .about(crate_description!())
-        // .args(&[
-        //     arg!(--config <FILE> "a required file for the configuration and no short"),
-        //     arg!(-d --debug ... "turns on debugging information and allows multiples"),
-        //     arg!([input] "an optional input file to use")
-        // ])
         .subcommands(vec![
             Command::new("list")
                 .about("list all network interfaces")
-                .arg(arg!(--all "list all network interfaces"))
-                .arg(arg!(--get_if_addrs "list all network interfaces")),
+                .arg(arg!(--all "list all network interfaces")),
             Command::new("get")
                 .about("get the local IP address")
                 .arg(arg!(--ip "get the local IP address")),

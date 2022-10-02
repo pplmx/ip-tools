@@ -7,7 +7,7 @@ pub fn get_local_ip() {
 // list all network interfaces
 pub fn list_net_ifs() {
     let net_ifs = list_afinet_netifas().unwrap();
-    for (name, ip) in net_ifs {
+    for (name, ip) in net_ifs.iter() {
         println!("{}:\t{:?}", name, ip);
     }
 }
