@@ -1,7 +1,6 @@
+use clap::{arg, ArgMatches, Command, command, crate_authors, crate_description, crate_version};
+
 use crate::handler::{get_local_ip, list_net_ifs};
-use clap::{
-    arg, crate_authors, crate_description, crate_name, crate_version, App, ArgMatches, Command,
-};
 
 pub fn ip_tools_cli() {
     let matches = parser();
@@ -15,7 +14,7 @@ pub fn ip_tools_cli() {
 // }
 
 fn parser() -> ArgMatches {
-    return App::new(crate_name!())
+    command!()
         .arg_required_else_help(true)
         .version(crate_version!())
         .author(crate_authors!("\n"))
@@ -34,7 +33,7 @@ fn parser() -> ArgMatches {
                 .about("get the local IP address")
                 .arg(arg!(--ip "get the local IP address")),
         ])
-        .get_matches();
+        .get_matches()
 }
 
 fn handler(app_m: ArgMatches) {
