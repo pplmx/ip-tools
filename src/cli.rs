@@ -1,4 +1,4 @@
-use clap::{arg, ArgMatches, Command, command, crate_authors, crate_description, crate_version};
+use clap::{arg, command, crate_authors, crate_description, crate_version, ArgMatches, Command};
 
 use crate::handler::{get_local_ip, list_net_ifs};
 
