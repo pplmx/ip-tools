@@ -8,9 +8,16 @@ repository = "https://github.com/pplmx/ip-tools"
 license = "MIT OR Apache-2.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "ip_tools"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ip-tools"
+path = "src/main.rs"
 
 [dependencies]
-clap = { version = "~4.0.8", features = ["cargo"] }
+clap = { version = "~4.0.9", features = ["cargo"] }
 local-ip-address = "~0.4.8"
 
 [profile.test]

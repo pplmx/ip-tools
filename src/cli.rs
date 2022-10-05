@@ -1,6 +1,6 @@
 use clap::{arg, command, crate_authors, crate_description, crate_version, ArgMatches, Command};
 
-use crate::handler::{get_local_ip, list_net_ifs};
+use ip_tools::{get_local_ip, list_net_ifs};
 
 pub fn ip_tools_cli() {
     let matches = parser();
