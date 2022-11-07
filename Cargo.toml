@@ -17,7 +17,7 @@ name = "ip-tools"
 path = "src/main.rs"
 
 [dependencies]
-clap = { version = "~4.0.18", features = ["cargo"] }
+clap = { version = "~4.0.19", features = ["cargo"] }
 local-ip-address = "~0.4.9"
 
 [profile.test]
