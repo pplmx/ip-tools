@@ -1,7 +1,12 @@
-use crate::cli::ip_tools_cli;
+#[macro_use]
+extern crate rocket;
 
-mod cli;
+#[get("/")]
+fn index() -> &'static str {
+    "Hello, world!"
+}
 
-fn main() {
-    ip_tools_cli();
+#[launch]
+fn rocket() -> _ {
+    rocket::build().mount("/", routes![index])
 }
