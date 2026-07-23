@@ -4,6 +4,23 @@ use local_ip_address::{list_afinet_netifas, local_ip};
 use std::net::IpAddr;
 
 /// Error type for IP tools operations.
+///
+/// # Examples
+///
+/// `IpToolsError` implements [`std::error::Error`], so the underlying cause is
+/// available via `Error::source`:
+///
+/// ```
+/// use ip_tools::get_local_ip;
+/// use std::error::Error;
+///
+/// if let Err(err) = get_local_ip() {
+///     println!("failed: {err}");
+///     if let Some(source) = err.source() {
+///         println!("caused by: {source}");
+///     }
+/// }
+/// ```
 #[derive(Debug, thiserror::Error)]
 pub enum IpToolsError {
     /// Failed to determine the local IP address.
@@ -20,6 +37,17 @@ pub enum IpToolsError {
 ///
 /// Returns [`Err`] containing an [`IpToolsError`] if the local IP cannot
 /// be determined, e.g. when no network interface is configured.
+///
+/// # Examples
+///
+/// ```
+/// use ip_tools::get_local_ip;
+///
+/// match get_local_ip() {
+///     Ok(ip) => println!("local IP: {ip}"),
+///     Err(e) => eprintln!("error: {e}"),
+/// }
+/// ```
 pub fn get_local_ip() -> Result<IpAddr, IpToolsError> {
     Ok(local_ip()?)
 }
@@ -30,6 +58,21 @@ pub fn get_local_ip() -> Result<IpAddr, IpToolsError> {
 ///
 /// Returns [`Err`] containing an [`IpToolsError`] if the interface list
 /// cannot be retrieved.
+///
+/// # Examples
+///
+/// ```
+/// use ip_tools::list_net_ifs;
+///
+/// match list_net_ifs() {
+///     Ok(interfaces) => {
+///         for (name, ip) in &interfaces {
+///             println!("{name}: {ip}");
+///         }
+///     }
+///     Err(e) => eprintln!("error: {e}"),
+/// }
+/// ```
 pub fn list_net_ifs() -> Result<Vec<(String, IpAddr)>, IpToolsError> {
     list_afinet_netifas().map_err(IpToolsError::ListInterfaces)
 }

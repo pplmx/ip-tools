@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 |- Add `#![warn(clippy::pedantic, clippy::nursery)]` to crate roots to enforce code quality standards locally and in CI
 |- Update CI clippy and pre-push hook to explicitly check pedantic and nursery lints
 |- Update CONTRIBUTING.md clippy command to include pedantic and nursery lints
+|- Add runnable doc-tests (`# Examples`) to the public API (`get_local_ip`, `list_net_ifs`, `IpToolsError`) so documented examples are compiled and verified in CI
 
 ### Changed
 |- Adopt `thiserror` for `IpToolsError`, replacing manual `Display`, `Error`, and `From` implementations with derive macros (reduces ~30 lines of boilerplate while maintaining identical public API)
