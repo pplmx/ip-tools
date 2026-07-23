@@ -6,12 +6,17 @@ use std::net::IpAddr;
 pub enum IpToolsError {
     /// Failed to determine the local IP address.
     LocalIp(local_ip_address::Error),
+    /// Failed to list network interfaces.
+    ListInterfaces(local_ip_address::Error),
 }
 
 impl std::fmt::Display for IpToolsError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            IpToolsError::LocalIp(e) => write!(f, "failed to get IP address: {}", e),
+            IpToolsError::LocalIp(e) => write!(f, "failed to get local IP address: {}", e),
+            IpToolsError::ListInterfaces(e) => {
+                write!(f, "failed to list network interfaces: {}", e)
+            }
         }
     }
 }
@@ -19,7 +24,7 @@ impl std::fmt::Display for IpToolsError {
 impl std::error::Error for IpToolsError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            IpToolsError::LocalIp(e) => Some(e),
+            IpToolsError::LocalIp(e) | IpToolsError::ListInterfaces(e) => Some(e),
         }
     }
 }
@@ -46,6 +51,6 @@ pub fn get_local_ip() -> Result<IpAddr, IpToolsError> {
 ///
 /// Returns an [`IpToolsError`] if the interface list cannot be retrieved.
 pub fn list_net_ifs() -> Result<Vec<(String, IpAddr)>, IpToolsError> {
-    let net_ifs = list_afinet_netifas()?;
+    let net_ifs = list_afinet_netifas().map_err(IpToolsError::ListInterfaces)?;
     Ok(net_ifs)
 }
