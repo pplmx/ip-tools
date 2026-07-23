@@ -10,10 +10,7 @@ fn test_get_local_ip() {
     let ip = result.unwrap();
     // A valid local IP should not be an unspecified or loopback address
     // (loopback is possible on some systems, so we only check unspecified).
-    assert!(
-        !ip.is_unspecified(),
-        "local IP should not be unspecified (0.0.0.0)"
-    );
+    assert!(!ip.is_unspecified(), "local IP should not be unspecified (0.0.0.0)");
 }
 
 #[test]
