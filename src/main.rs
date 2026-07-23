@@ -1,3 +1,5 @@
+#![warn(clippy::pedantic, clippy::nursery)]
+
 mod cli;
 
 fn main() -> std::process::ExitCode {

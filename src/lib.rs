@@ -1,3 +1,5 @@
+#![warn(clippy::pedantic, clippy::nursery)]
+
 use local_ip_address::{list_afinet_netifas, local_ip};
 use std::net::IpAddr;
 

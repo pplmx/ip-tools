@@ -63,7 +63,7 @@ To skip hooks for a commit, use `HUSKY=0 git commit`.
 - Run Clippy:
 
   ```shell
-  cargo clippy --all-targets --all-features --workspace -- -D warnings
+  cargo clippy --all-targets --all-features --workspace -- -D warnings -W clippy::pedantic -W clippy::nursery
   ```
 
 - Run all tests:

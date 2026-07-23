@@ -4,7 +4,7 @@
 echo "Running pre-push checks..."
 
 cargo fmt --all --check || { echo "Run: cargo fmt --all"; exit 1; }
-cargo clippy --all-targets --all-features --workspace -- -D warnings || exit 1
+cargo clippy --all-targets --all-features --workspace -- -D warnings -W clippy::pedantic -W clippy::nursery || exit 1
 cargo test --all-features --workspace || exit 1
 
 echo "All checks passed! Pushing..."

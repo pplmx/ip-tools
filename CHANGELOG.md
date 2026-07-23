@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 |- Document coverage testing with cargo-llvm-cov in CONTRIBUTING.md
 |- Add `--json` global flag for machine-readable JSON output of `get` and `list` subcommands
 |- Add CLI integration tests for JSON output structure (get, list, and global flag placement)
+|- Add `#![warn(clippy::pedantic, clippy::nursery)]` to crate roots to enforce code quality standards locally and in CI
+|- Update CI clippy and pre-push hook to explicitly check pedantic and nursery lints
+|- Update CONTRIBUTING.md clippy command to include pedantic and nursery lints
 
 ### Changed
 |- Adopt `thiserror` for `IpToolsError`, replacing manual `Display`, `Error`, and `From` implementations with derive macros (reduces ~30 lines of boilerplate while maintaining identical public API)
