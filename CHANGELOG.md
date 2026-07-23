@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 |- Update CI clippy and pre-push hook to explicitly check pedantic and nursery lints
 |- Update CONTRIBUTING.md clippy command to include pedantic and nursery lints
 |- Add runnable doc-tests (`# Examples`) to the public API (`get_local_ip`, `list_net_ifs`, `IpToolsError`) so documented examples are compiled and verified in CI
+|- Add a runnable library example (`examples/ip_info.rs`) demonstrating `get_local_ip` and `list_net_ifs`; makes the CI docs job `--examples` flag meaningful
 
 ### Changed
 |- Adopt `thiserror` for `IpToolsError`, replacing manual `Display`, `Error`, and `From` implementations with derive macros (reduces ~30 lines of boilerplate while maintaining identical public API)

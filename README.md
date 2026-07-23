@@ -71,6 +71,17 @@ Example output for `list --json`:
 ip-tools --help
 ```
 
+## Library usage
+
+`ip-tools` is also published as a library crate (`ip_tools`). See the
+[API documentation](https://docs.rs/ip-tools) for details.
+
+A runnable example is provided in [`examples/ip_info.rs`](examples/ip_info.rs):
+
+```shell
+cargo run --example ip_info
+```
+
 ## License
 
 Licensed under either of
