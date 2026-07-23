@@ -9,7 +9,7 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-cargo clippy --all-targets --all-features --workspace -- -D warnings
+cargo clippy --all-targets --all-features --workspace -- -D warnings -W clippy::pedantic -W clippy::nursery
 if [ $? -ne 0 ]; then
     echo "Clippy checks failed!"
     exit 1

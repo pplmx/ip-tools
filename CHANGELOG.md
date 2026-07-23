@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 |- Add a runnable library example (`examples/ip_info.rs`) demonstrating `get_local_ip` and `list_net_ifs`; makes the CI docs job `--examples` flag meaningful
 
 ### Changed
+|- Update pre-commit hook to run clippy with `-W clippy::pedantic -W clippy::nursery`, matching pre-push and CI (previously only pre-push and CI enforced these lints, so the local commit gate was weaker than CI for targets without a crate-level `#![warn]` attribute, e.g. examples)
 |- Adopt `thiserror` for `IpToolsError`, replacing manual `Display`, `Error`, and `From` implementations with derive macros (reduces ~30 lines of boilerplate while maintaining identical public API)
 |- Remove cli.yml
 |- Add `serde` and `serde_json` as direct dependencies (already transitive via `clap`)
