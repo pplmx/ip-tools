@@ -28,10 +28,6 @@ fn test_list_net_ifs() {
     // Each entry should have a non-empty name and a valid IP address.
     for (name, ip) in &interfaces {
         assert!(!name.is_empty(), "interface name should not be empty");
-        assert!(
-            !ip.is_unspecified(),
-            "interface {:?} IP should not be unspecified",
-            name
-        );
+        assert!(!ip.is_unspecified(), "interface {name:?} IP should not be unspecified");
     }
 }
