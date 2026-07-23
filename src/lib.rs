@@ -39,8 +39,8 @@ impl From<local_ip_address::Error> for IpToolsError {
 ///
 /// # Errors
 ///
-/// Returns an [`IpToolsError`] if the local IP cannot be determined,
-/// e.g. when no network interface is configured.
+/// Returns [`Err`] containing an [`IpToolsError`] if the local IP cannot
+/// be determined, e.g. when no network interface is configured.
 pub fn get_local_ip() -> Result<IpAddr, IpToolsError> {
     Ok(local_ip()?)
 }
@@ -49,7 +49,8 @@ pub fn get_local_ip() -> Result<IpAddr, IpToolsError> {
 ///
 /// # Errors
 ///
-/// Returns an [`IpToolsError`] if the interface list cannot be retrieved.
+/// Returns [`Err`] containing an [`IpToolsError`] if the interface list
+/// cannot be retrieved.
 pub fn list_net_ifs() -> Result<Vec<(String, IpAddr)>, IpToolsError> {
     let net_ifs = list_afinet_netifas().map_err(IpToolsError::ListInterfaces)?;
     Ok(net_ifs)

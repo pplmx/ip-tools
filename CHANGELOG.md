@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 |- Remove redundant `--ip` flag from `get` subcommand and `--all` flag from `list` subcommand
 |- Use Display format instead of Debug format for IP addresses in CLI output
 |- Fix list output format from tab-separated to `name: ip`
+|- Fix misleading doc comments on `get_local_ip` and `list_net_ifs` to clarify they return `Result`
 
 ### Fixed
 - Fix a bug
