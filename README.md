@@ -6,6 +6,8 @@
 [![Coverage Status](https://coveralls.io/repos/github/pplmx/ip-tools/badge.svg?branch=main)](https://coveralls.io/github/pplmx/ip-tools?branch=main)
 [![Rust GitHub Template](https://img.shields.io/badge/Rust%20GitHub-Template-blue)](https://rust-github.github.io/)
 
+A small CLI tool to list network interfaces and retrieve the local IP address.
+
 ## Installation
 
 ### Cargo
@@ -15,6 +17,34 @@
 * run `cargo install ip-tools`
 
 ## Usage
+
+### Get the local IP address
+
+```shell
+ip-tools get --ip
+```
+
+Example output:
+
+```
+192.168.1.100
+```
+
+### List all network interfaces
+
+```shell
+ip-tools list --all
+```
+
+Example output:
+
+```
+lo:	127.0.0.1
+eth0:	192.168.1.100
+wlan0:	10.0.0.5
+```
+
+### Show help
 
 ```shell
 ip-tools --help
