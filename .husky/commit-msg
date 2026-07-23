@@ -1,0 +1,20 @@
+#!/bin/sh
+[ "$HUSKY" = "0" ] && exit 0
+
+commit_msg_file="$1"
+commit_msg=$(cat "$commit_msg_file")
+
+# Minimum message length
+if [ ${#commit_msg} -lt 10 ]; then
+    echo "Commit message too short (minimum 10 characters)"
+    exit 1
+fi
+
+# Conventional commits format
+! echo "$commit_msg" | grep -qE '^(feat|fix|docs|style|refactor|test|chore|build|ci|perf|revert)(\(.+\))?!?: .+' && {
+    echo "Commit message must follow conventional commits format"
+    echo "Examples: feat: add feature, fix: bug fix, docs: update readme"
+    exit 1
+}
+
+echo "Commit message valid"

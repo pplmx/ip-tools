@@ -39,9 +39,9 @@ ip-tools list
 Example output:
 
 ```
-lo:	127.0.0.1
-eth0:	192.168.1.100
-wlan0:	10.0.0.5
+lo: 127.0.0.1
+eth0: 192.168.1.100
+wlan0: 10.0.0.5
 ```
 
 ### Show help

@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 |- Add CLI integration tests covering get, list, no-subcommand, flag rejection, and help output
 |- Add assert_cmd and predicates as dev dependencies
 |- Add pre-publish test step to cargo publish in CD workflow
+|- Add husky-rs git hooks (pre-commit, commit-msg, pre-push) for local fmt/clippy/test enforcement
 
 ### Changed
 |- Remove cli.yml
@@ -39,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 |- Fix broken checkbox format in bug report and feature request issue templates
 |- Fix clippy command in CONTRIBUTING.md to match CI (`-D warnings`)
+|- Fix README example output to match actual `name: ip` format (was tab-separated)
 |- Run tests before `cargo publish` to prevent untested code from being published to crates.io
 
 ## [v0.1.0] - 2022-08-02
