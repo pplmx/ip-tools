@@ -44,6 +44,27 @@ eth0: 192.168.1.100
 wlan0: 10.0.0.5
 ```
 
+### JSON output
+
+Pass `--json` for machine-readable output (useful for scripting and automation):
+
+```shell
+ip-tools get --json
+ip-tools list --json
+```
+
+Example output for `get --json`:
+
+```json
+{"ip":"192.168.1.100"}
+```
+
+Example output for `list --json`:
+
+```json
+[{"name":"lo","ip":"127.0.0.1"},{"name":"eth0","ip":"192.168.1.100"}]
+```
+
 ### Show help
 
 ```shell

@@ -17,10 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 |- Add unit tests for IpToolsError (Display, source, From, Send+Sync) to improve coverage
 |- Add coverage enforcement step to CI (`cargo llvm-cov --fail-under-lines 80`)
 |- Document coverage testing with cargo-llvm-cov in CONTRIBUTING.md
+|- Add `--json` global flag for machine-readable JSON output of `get` and `list` subcommands
+|- Add CLI integration tests for JSON output structure (get, list, and global flag placement)
 
 ### Changed
 |- Adopt `thiserror` for `IpToolsError`, replacing manual `Display`, `Error`, and `From` implementations with derive macros (reduces ~30 lines of boilerplate while maintaining identical public API)
 |- Remove cli.yml
+|- Add `serde` and `serde_json` as direct dependencies (already transitive via `clap`)
 |- Remove redundant dependabot.yml — Renovate handles all dependency updates
 |- Update clap to v4
 |- Replace clap_derive with clap_builder
