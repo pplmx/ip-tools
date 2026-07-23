@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add `ExitCode` return from CLI entry point
 - Replace placeholder tests with meaningful integration tests
 - Add benchmarks for `get_local_ip` and `list_net_ifs`
+- Modernize CD workflow: replace deprecated `actions-rs/toolchain` and `actions-rs/cargo` with `dtolnay/rust-toolchain` and direct `cargo` commands
 
 ### Fixed
 - Fix a bug

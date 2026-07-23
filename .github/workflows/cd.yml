@@ -19,49 +19,42 @@ jobs:
                         target: x86_64-apple-darwin
                         architecture: x86_64
                         binary-postfix: ""
-                        use-cross: false
+                        cross-compile: false
                     -   os: ubuntu-latest
                         os-name: linux
                         target: x86_64-unknown-linux-gnu
                         architecture: x86_64
                         binary-postfix: ""
-                        use-cross: false
+                        cross-compile: false
                     -   os: windows-latest
                         os-name: windows
                         target: x86_64-pc-windows-msvc
                         architecture: x86_64
                         binary-postfix: ".exe"
-                        use-cross: false
+                        cross-compile: false
                     -   os: ubuntu-latest
                         os-name: linux
                         target: aarch64-unknown-linux-gnu
                         architecture: arm64
                         binary-postfix: ""
-                        use-cross: true
+                        cross-compile: true
                     -   os: ubuntu-latest
                         os-name: linux
                         target: i686-unknown-linux-gnu
                         architecture: i686
                         binary-postfix: ""
-                        use-cross: true
+                        cross-compile: true
 
         steps:
             -   name: Checkout repository
                 uses: actions/checkout@v5
             -   name: Install Rust toolchain
-                uses: actions-rs/toolchain@v1
+                uses: dtolnay/rust-toolchain@stable
                 with:
-                    toolchain: ${{ matrix.rust }}
-                    profile: minimal
-                    override: true
+                    targets: ${{ matrix.job.target }}
             -   uses: Swatinem/rust-cache@v2
             -   name: Cargo build
-                uses: actions-rs/cargo@v1
-                with:
-                    command: build
-                    use-cross: ${{ matrix.job.use-cross }}
-                    toolchain: ${{ matrix.rust }}
-                    args: --release --target ${{ matrix.job.target }}
+                run: cargo build --release --target ${{ matrix.job.target }}
 
             -   name: install strip command
                 shell: bash
