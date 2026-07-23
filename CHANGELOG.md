@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Modernize CD workflow: replace deprecated `actions-rs/toolchain` and `actions-rs/cargo` with `dtolnay/rust-toolchain` and direct `cargo` commands
 - Modernize audit workflow: replace deprecated `actions-rs/audit-check` with `cargo install cargo-audit` and direct `cargo audit`
 - Improve README with actual usage examples for `get` and `list` subcommands
+- Update clap from `~4.5.0` to `~4.6.0` (4.5.61 -> 4.6.4)
+- Update clap_builder to 4.6.2
 
 ### Fixed
 - Fix a bug
