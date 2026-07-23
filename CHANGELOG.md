@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 |- Add assert_cmd and predicates as dev dependencies
 |- Add pre-publish test step to cargo publish in CD workflow
 |- Add husky-rs git hooks (pre-commit, commit-msg, pre-push) for local fmt/clippy/test enforcement
+|- Add unit tests for IpToolsError (Display, source, From, Send+Sync) to improve coverage
 
 ### Changed
 |- Remove cli.yml
