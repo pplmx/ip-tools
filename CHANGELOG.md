@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 |- Add a runnable library example (`examples/ip_info.rs`) demonstrating `get_local_ip` and `list_net_ifs`; makes the CI docs job `--examples` flag meaningful
 
 ### Changed
+|- Document the library example (`cargo run --example ip_info`) and clarify that `cargo test` runs doc-tests in CONTRIBUTING.md
 |- Remove redundant `.version()` and `.about()` calls (and their now-unused `crate_version`/`crate_description` imports) from the CLI parser — `command!()` already sets these from Cargo.toml; behavior unchanged (`.author(crate_authors!("\n"))` kept for its multi-author separator)
 |- Improve crate `description` (was the generic "IP Tools") and add `keywords` and `categories` to Cargo.toml for better crates.io discoverability; the new description also improves the CLI `--help` about text
 |- Update pre-commit hook to run clippy with `-W clippy::pedantic -W clippy::nursery`, matching pre-push and CI (previously only pre-push and CI enforced these lints, so the local commit gate was weaker than CI for targets without a crate-level `#![warn]` attribute, e.g. examples)

@@ -60,13 +60,19 @@ To skip hooks for a commit, use `HUSKY=0 git commit`.
   cargo build --release && cargo run --release
   ```
 
+- Run the library example:
+
+  ```shell
+  cargo run --example ip_info
+  ```
+
 - Run Clippy:
 
   ```shell
   cargo clippy --all-targets --all-features --workspace -- -D warnings -W clippy::pedantic -W clippy::nursery
   ```
 
-- Run all tests:
+- Run all tests (unit, integration, and documentation tests):
 
   ```shell
   cargo test --all-features --workspace
