@@ -24,7 +24,7 @@ file under the **Unreleased** section.
 
 Add the changes of your pull request to one of the following subsections,
 depending on the types of changes defined by
-[Keep a changelog](https://keepachangelog.com/en/1.0.0/):
+[Keep a changelog](https://keepachangelog.com/en/1.1.0/):
 
 - `Added` for new features.
 - `Changed` for changes in existing functionality.
