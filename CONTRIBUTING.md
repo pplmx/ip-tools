@@ -70,7 +70,7 @@ cargo test
 - Check to see if there are code formatting issues
 
   ```shell
-  cargo fmt --all -- --check
+  cargo fmt --all --check
   ```
 
 - Format the code in the project
