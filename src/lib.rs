@@ -1,3 +1,29 @@
+//! A small library for retrieving the local IP address and listing network
+//! interfaces together with their IP addresses.
+//!
+//! The same functionality is also exposed through the `ip-tools` command-line
+//! tool. Both IPv4 and IPv6 addresses are reported where available.
+//!
+//! # Examples
+//!
+//! Print the local IP address and every network interface:
+//!
+//! ```
+//! use ip_tools::{get_local_ip, list_net_ifs};
+//!
+//! if let Ok(ip) = get_local_ip() {
+//!     println!("local IP: {ip}");
+//! }
+//!
+//! if let Ok(interfaces) = list_net_ifs() {
+//!     for (name, ip) in &interfaces {
+//!         println!("{name}: {ip}");
+//!     }
+//! }
+//! ```
+//!
+//! See [`get_local_ip`] and [`list_net_ifs`] for details, and [`IpToolsError`]
+//! for the error type returned on failure.
 #![warn(clippy::pedantic, clippy::nursery)]
 
 use local_ip_address::{list_afinet_netifas, local_ip};
