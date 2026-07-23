@@ -12,9 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 |- Add a badge for [Rust GitHub Template](https://rust-github.github.io/)
 |- Add CLI integration tests covering get, list, no-subcommand, flag rejection, and help output
 |- Add assert_cmd and predicates as dev dependencies
+|- Add pre-publish test step to cargo publish in CD workflow
 
 ### Changed
 |- Remove cli.yml
+|- Remove redundant dependabot.yml — Renovate handles all dependency updates
 |- Update clap to v4
 |- Replace clap_derive with clap_builder
 |- Replace CARGO_API_KEY with CARGO_REGISTRY_TOKEN
@@ -34,7 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 |- Fix misleading doc comments on `get_local_ip` and `list_net_ifs` to clarify they return `Result`
 
 ### Fixed
-- Fix a bug
+|- Run tests before `cargo publish` to prevent untested code from being published to crates.io
 
 ## [v0.1.0] - 2022-08-02
 
