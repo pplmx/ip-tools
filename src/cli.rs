@@ -1,4 +1,4 @@
-use clap::{command, crate_authors, crate_description, crate_version, Arg, ArgAction, ArgMatches, Command};
+use clap::{command, crate_authors, Arg, ArgAction, ArgMatches, Command};
 use ip_tools::{get_local_ip, list_net_ifs};
 use serde::Serialize;
 use std::net::IpAddr;
@@ -25,9 +25,7 @@ pub fn ip_tools_cli() -> ExitCode {
 fn parser() -> ArgMatches {
     command!()
         .arg_required_else_help(true)
-        .version(crate_version!())
         .author(crate_authors!("\n"))
-        .about(crate_description!())
         .arg(
             Arg::new("json")
                 .long("json")
