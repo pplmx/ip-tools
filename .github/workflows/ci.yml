@@ -48,6 +48,22 @@ jobs:
             -   name: Clippy check
                 run: cargo clippy --all-targets --all-features --workspace -- -D warnings
 
+    coverage:
+        name: Coverage
+        runs-on: ubuntu-latest
+        steps:
+            -   name: Checkout repository
+                uses: actions/checkout@v5
+            -   name: Install Rust toolchain
+                uses: dtolnay/rust-toolchain@stable
+                with:
+                    components: llvm-tools
+            -   uses: Swatinem/rust-cache@v2
+            -   name: Install cargo-llvm-cov
+                run: cargo install cargo-llvm-cov
+            -   name: Run coverage check
+                run: cargo llvm-cov --all-features --workspace --fail-under-lines 80
+
     docs:
         name: Docs
         runs-on: ubuntu-latest

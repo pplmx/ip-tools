@@ -83,3 +83,13 @@ To skip hooks for a commit, use `HUSKY=0 git commit`.
   ```shell
   cargo fmt --all
   ```
+
+- Check code coverage (requires [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov)):
+
+  ```shell
+  cargo llvm-cov --all-features --workspace
+  ```
+
+  CI enforces a minimum of 80% line coverage via `--fail-under-lines 80`.
+  Generate an HTML report for detailed inspection with
+  `cargo llvm-cov --all-features --workspace --html`.
