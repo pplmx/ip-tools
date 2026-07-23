@@ -25,22 +25,22 @@ fn handler(app_m: ArgMatches) -> ExitCode {
         Some(("list", _)) => match list_net_ifs() {
             Ok(net_ifs) => {
                 for (name, ip) in net_ifs.iter() {
-                    println!("{}: {}", name, ip);
+                    println!("{name}: {ip}");
                 }
                 ExitCode::SUCCESS
             }
             Err(e) => {
-                eprintln!("Error: {}", e);
+                eprintln!("Error: {e}");
                 ExitCode::FAILURE
             }
         },
         Some(("get", _)) => match get_local_ip() {
             Ok(ip) => {
-                println!("{}", ip);
+                println!("{ip}");
                 ExitCode::SUCCESS
             }
             Err(e) => {
-                eprintln!("Error: {}", e);
+                eprintln!("Error: {e}");
                 ExitCode::FAILURE
             }
         },

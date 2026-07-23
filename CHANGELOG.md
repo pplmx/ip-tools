@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 |- Use Display format instead of Debug format for IP addresses in CLI output
 |- Fix list output format from tab-separated to `name: ip`
 |- Fix misleading doc comments on `get_local_ip` and `list_net_ifs` to clarify they return `Result`
+|- Inline format arguments (e.g., `{e}` instead of `{}`, `e`) in string formatting
 
 ### Fixed
 |- Fix broken checkbox format in bug report and feature request issue templates

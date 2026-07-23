@@ -13,9 +13,9 @@ pub enum IpToolsError {
 impl std::fmt::Display for IpToolsError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            IpToolsError::LocalIp(e) => write!(f, "failed to get local IP address: {}", e),
+            IpToolsError::LocalIp(e) => write!(f, "failed to get local IP address: {e}"),
             IpToolsError::ListInterfaces(e) => {
-                write!(f, "failed to list network interfaces: {}", e)
+                write!(f, "failed to list network interfaces: {e}")
             }
         }
     }
