@@ -76,6 +76,22 @@ ip-tools --help
 `ip-tools` is also published as a library crate (`ip_tools`). See the
 [API documentation](https://docs.rs/ip-tools) for details.
 
+```rust
+use ip_tools::{get_local_ip, list_net_ifs};
+
+// Retrieve the local IP address
+if let Ok(ip) = get_local_ip() {
+    println!("local IP: {ip}");
+}
+
+// List all network interfaces
+if let Ok(interfaces) = list_net_ifs() {
+    for (name, ip) in &interfaces {
+        println!("{name}: {ip}");
+    }
+}
+```
+
 A runnable example is provided in [`examples/ip_info.rs`](examples/ip_info.rs):
 
 ```shell
