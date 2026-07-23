@@ -25,7 +25,7 @@ fn handler(app_m: ArgMatches) -> ExitCode {
         Some(("list", _)) => match list_net_ifs() {
             Ok(net_ifs) => {
                 for (name, ip) in net_ifs.iter() {
-                    println!("{}:\t{:?}", name, ip);
+                    println!("{}: {}", name, ip);
                 }
                 ExitCode::SUCCESS
             }
@@ -36,7 +36,7 @@ fn handler(app_m: ArgMatches) -> ExitCode {
         },
         Some(("get", _)) => match get_local_ip() {
             Ok(ip) => {
-                println!("{:?}", ip);
+                println!("{}", ip);
                 ExitCode::SUCCESS
             }
             Err(e) => {
@@ -45,9 +45,10 @@ fn handler(app_m: ArgMatches) -> ExitCode {
             }
         },
         _ => {
-            // If no subcommand was used, print a help message
-            println!("No subcommand was used.");
-            ExitCode::SUCCESS
+            // Unreachable: arg_required_else_help(true) makes clap print help
+            // and exit before handler is called when no subcommand is given.
+            eprintln!("Error: no subcommand provided");
+            ExitCode::FAILURE
         }
     }
 }

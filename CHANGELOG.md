@@ -7,25 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Add editorconfig
-- Add renovate.json
-- Add a badge for [Rust GitHub Template](https://rust-github.github.io/)
+|- Add editorconfig
+|- Add renovate.json
+|- Add a badge for [Rust GitHub Template](https://rust-github.github.io/)
+|- Add CLI integration tests covering get, list, no-subcommand, flag rejection, and help output
+|- Add assert_cmd and predicates as dev dependencies
 
 ### Changed
-- Remove cli.yml
-- Update clap to v4
-- Replace clap_derive with clap_builder
-- Replace CARGO_API_KEY with CARGO_REGISTRY_TOKEN
-- Refactor `get_local_ip` and `list_net_ifs` to return `Result` instead of panicking
-- Print errors to stderr and exit with non-zero status on failure
-- Add `ExitCode` return from CLI entry point
-- Replace placeholder tests with meaningful integration tests
-- Add benchmarks for `get_local_ip` and `list_net_ifs`
-- Modernize CD workflow: replace deprecated `actions-rs/toolchain` and `actions-rs/cargo` with `dtolnay/rust-toolchain` and direct `cargo` commands
-- Modernize audit workflow: replace deprecated `actions-rs/audit-check` with `cargo install cargo-audit` and direct `cargo audit`
-- Improve README with actual usage examples for `get` and `list` subcommands
-- Update clap from `~4.5.0` to `~4.6.0` (4.5.61 -> 4.6.4)
-- Update clap_builder to 4.6.2
+|- Remove cli.yml
+|- Update clap to v4
+|- Replace clap_derive with clap_builder
+|- Replace CARGO_API_KEY with CARGO_REGISTRY_TOKEN
+|- Refactor `get_local_ip` and `list_net_ifs` to return `Result` instead of panicking
+|- Print errors to stderr and exit with non-zero status on failure
+|- Add `ExitCode` return from CLI entry point
+|- Replace placeholder tests with meaningful integration tests
+|- Add benchmarks for `get_local_ip` and `list_net_ifs`
+|- Modernize CD workflow: replace deprecated `actions-rs/toolchain` and `actions-rs/cargo` with `dtolnay/rust-toolchain` and direct `cargo` commands
+|- Modernize audit workflow: replace deprecated `actions-rs/audit-check` with `cargo install cargo-audit` and direct `cargo audit`
+|- Improve README with actual usage examples for `get` and `list` subcommands
+|- Update clap from `~4.5.0` to `~4.6.0` (4.5.61 -> 4.6.4)
+|- Update clap_builder to 4.6.2
+|- Remove redundant `--ip` flag from `get` subcommand and `--all` flag from `list` subcommand
+|- Use Display format instead of Debug format for IP addresses in CLI output
+|- Fix list output format from tab-separated to `name: ip`
 
 ### Fixed
 - Fix a bug

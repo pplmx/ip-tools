@@ -17,7 +17,7 @@ fn test_list_subcommand_outputs_interfaces() {
     cmd.arg("list")
         .assert()
         .success()
-        .stdout(contains(":").and(contains("\t")));
+        .stdout(contains(":").and(contains(" ")));
 }
 
 #[test]
