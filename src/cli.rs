@@ -19,7 +19,7 @@ struct InterfaceOutput {
 
 pub fn ip_tools_cli() -> ExitCode {
     let matches = parser();
-    handler(matches)
+    handler(&matches)
 }
 
 fn parser() -> ArgMatches {
@@ -42,7 +42,7 @@ fn parser() -> ArgMatches {
         .get_matches()
 }
 
-fn handler(app_m: ArgMatches) -> ExitCode {
+fn handler(app_m: &ArgMatches) -> ExitCode {
     match app_m.subcommand() {
         Some(("list", sub_m)) => {
             let json = sub_m.get_flag("json");
@@ -58,7 +58,7 @@ fn handler(app_m: ArgMatches) -> ExitCode {
                             .collect();
                         println!("{}", serde_json::to_string(&interfaces).unwrap());
                     } else {
-                        for (name, ip) in net_ifs.iter() {
+                        for (name, ip) in &net_ifs {
                             println!("{name}: {ip}");
                         }
                     }

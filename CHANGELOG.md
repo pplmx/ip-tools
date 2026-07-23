@@ -39,6 +39,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 |- Update clap from `~4.5.0` to `~4.6.0` (4.5.61 -> 4.6.4)
 |- Update clap_builder to 4.6.2
 |- Remove redundant `--ip` flag from `get` subcommand and `--all` flag from `list` subcommand
+|- Fix pedantic clippy warnings: `handler` takes `&ArgMatches` instead of by value, use `&net_ifs` in for loops
+|- Simplify `list_net_ifs` by removing unnecessary `let` binding and `Ok()` wrapper
 |- Use Display format instead of Debug format for IP addresses in CLI output
 |- Fix list output format from tab-separated to `name: ip`
 |- Fix misleading doc comments on `get_local_ip` and `list_net_ifs` to clarify they return `Result`
