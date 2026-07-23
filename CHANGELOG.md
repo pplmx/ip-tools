@@ -36,10 +36,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 |- Fix misleading doc comments on `get_local_ip` and `list_net_ifs` to clarify they return `Result`
 
 ### Fixed
+|- Fix broken checkbox format in bug report and feature request issue templates
+|- Fix clippy command in CONTRIBUTING.md to match CI (`-D warnings`)
 |- Run tests before `cargo publish` to prevent untested code from being published to crates.io
 
 ## [v0.1.0] - 2022-08-02
 
 ### Added
-- initial release
-- add clap for command line arguments
+|- initial release
+|- add clap for command line arguments

@@ -11,7 +11,7 @@ assignees: ''
 
 <!-- A clear and concise description of what the bug is. -->
 
-- Would you like to work on a fix? [y/n]
+- [ ] Would you like to work on a fix?
 
 ## To Reproduce
 

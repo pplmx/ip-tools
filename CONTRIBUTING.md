@@ -58,7 +58,7 @@ cargo test
 - Run Clippy:
 
   ```shell
-  cargo clippy --all-targets --all-features --workspace
+  cargo clippy --all-targets --all-features --workspace -- -D warnings
   ```
 
 - Run all tests:
