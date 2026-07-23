@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 |- Document coverage testing with cargo-llvm-cov in CONTRIBUTING.md
 
 ### Changed
+|- Adopt `thiserror` for `IpToolsError`, replacing manual `Display`, `Error`, and `From` implementations with derive macros (reduces ~30 lines of boilerplate while maintaining identical public API)
 |- Remove cli.yml
 |- Remove redundant dependabot.yml — Renovate handles all dependency updates
 |- Update clap to v4

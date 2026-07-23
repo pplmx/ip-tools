@@ -2,37 +2,14 @@ use local_ip_address::{list_afinet_netifas, local_ip};
 use std::net::IpAddr;
 
 /// Error type for IP tools operations.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum IpToolsError {
     /// Failed to determine the local IP address.
-    LocalIp(local_ip_address::Error),
+    #[error("failed to get local IP address: {0}")]
+    LocalIp(#[from] local_ip_address::Error),
     /// Failed to list network interfaces.
-    ListInterfaces(local_ip_address::Error),
-}
-
-impl std::fmt::Display for IpToolsError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            IpToolsError::LocalIp(e) => write!(f, "failed to get local IP address: {e}"),
-            IpToolsError::ListInterfaces(e) => {
-                write!(f, "failed to list network interfaces: {e}")
-            }
-        }
-    }
-}
-
-impl std::error::Error for IpToolsError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            IpToolsError::LocalIp(e) | IpToolsError::ListInterfaces(e) => Some(e),
-        }
-    }
-}
-
-impl From<local_ip_address::Error> for IpToolsError {
-    fn from(e: local_ip_address::Error) -> Self {
-        IpToolsError::LocalIp(e)
-    }
+    #[error("failed to list network interfaces: {0}")]
+    ListInterfaces(#[source] local_ip_address::Error),
 }
 
 /// Retrieves the local IP address.
