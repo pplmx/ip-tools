@@ -1,10 +1,10 @@
 use clap::{arg, command, crate_authors, crate_description, crate_version, ArgMatches, Command};
-
 use ip_tools::{get_local_ip, list_net_ifs};
+use std::process::ExitCode;
 
-pub fn ip_tools_cli() {
+pub fn ip_tools_cli() -> ExitCode {
     let matches = parser();
-    handler(matches);
+    handler(matches)
 }
 
 fn parser() -> ArgMatches {
@@ -24,21 +24,34 @@ fn parser() -> ArgMatches {
         .get_matches()
 }
 
-fn handler(app_m: ArgMatches) {
+fn handler(app_m: ArgMatches) -> ExitCode {
     match app_m.subcommand() {
-        Some(("list", sub_m)) => {
-            if sub_m.contains_id("all") {
-                list_net_ifs();
+        Some(("list", _sub_m)) => match list_net_ifs() {
+            Ok(net_ifs) => {
+                for (name, ip) in net_ifs.iter() {
+                    println!("{}:\t{:?}", name, ip);
+                }
+                ExitCode::SUCCESS
             }
-        }
-        Some(("get", sub_m)) => {
-            if sub_m.contains_id("ip") {
-                get_local_ip();
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                ExitCode::FAILURE
             }
-        }
+        },
+        Some(("get", _sub_m)) => match get_local_ip() {
+            Ok(ip) => {
+                println!("{:?}", ip);
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                ExitCode::FAILURE
+            }
+        },
         _ => {
-            // If no subcommand was used, print an help message
+            // If no subcommand was used, print a help message
             println!("No subcommand was used.");
+            ExitCode::SUCCESS
         }
     }
 }

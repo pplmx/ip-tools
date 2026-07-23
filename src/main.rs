@@ -1,7 +1,5 @@
-use crate::cli::ip_tools_cli;
-
 mod cli;
 
-fn main() {
-    ip_tools_cli();
+fn main() -> std::process::ExitCode {
+    cli::ip_tools_cli()
 }

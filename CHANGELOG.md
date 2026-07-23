@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Update clap to v4
 - Replace clap_derive with clap_builder
 - Replace CARGO_API_KEY with CARGO_REGISTRY_TOKEN
+- Refactor `get_local_ip` and `list_net_ifs` to return `Result` instead of panicking
+- Print errors to stderr and exit with non-zero status on failure
+- Add `ExitCode` return from CLI entry point
+- Replace placeholder tests with meaningful integration tests
+- Add benchmarks for `get_local_ip` and `list_net_ifs`
 
 ### Fixed
 - Fix a bug
