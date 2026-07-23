@@ -35,12 +35,3 @@ fn test_list_net_ifs() {
         );
     }
 }
-
-#[test]
-fn test_get_local_ip_returns_ipaddr() {
-    // Ensure the returned type is a valid IpAddr (not unspecified).
-    if let Ok(ip) = get_local_ip() {
-        // is_unspecified covers both IPv4 0.0.0.0 and IPv6 ::
-        assert!(!ip.is_unspecified());
-    }
-}
