@@ -28,4 +28,6 @@ lto = true
 codegen-units = 1
 
 [dev-dependencies]
+assert_cmd = "2.0"
 criterion = "0.8"
+predicates = "3.1"

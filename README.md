@@ -21,7 +21,7 @@ A small CLI tool to list network interfaces and retrieve the local IP address.
 ### Get the local IP address
 
 ```shell
-ip-tools get --ip
+ip-tools get
 ```
 
 Example output:
@@ -33,7 +33,7 @@ Example output:
 ### List all network interfaces
 
 ```shell
-ip-tools list --all
+ip-tools list
 ```
 
 Example output:

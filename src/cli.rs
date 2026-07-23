@@ -1,4 +1,4 @@
-use clap::{arg, command, crate_authors, crate_description, crate_version, ArgMatches, Command};
+use clap::{command, crate_authors, crate_description, crate_version, ArgMatches, Command};
 use ip_tools::{get_local_ip, list_net_ifs};
 use std::process::ExitCode;
 
@@ -14,19 +14,15 @@ fn parser() -> ArgMatches {
         .author(crate_authors!("\n"))
         .about(crate_description!())
         .subcommands(vec![
-            Command::new("list")
-                .about("list all network interfaces")
-                .arg(arg!(--all "list all network interfaces")),
-            Command::new("get")
-                .about("get the local IP address")
-                .arg(arg!(--ip "get the local IP address")),
+            Command::new("list").about("list all network interfaces"),
+            Command::new("get").about("get the local IP address"),
         ])
         .get_matches()
 }
 
 fn handler(app_m: ArgMatches) -> ExitCode {
     match app_m.subcommand() {
-        Some(("list", _sub_m)) => match list_net_ifs() {
+        Some(("list", _)) => match list_net_ifs() {
             Ok(net_ifs) => {
                 for (name, ip) in net_ifs.iter() {
                     println!("{}:\t{:?}", name, ip);
@@ -38,7 +34,7 @@ fn handler(app_m: ArgMatches) -> ExitCode {
                 ExitCode::FAILURE
             }
         },
-        Some(("get", _sub_m)) => match get_local_ip() {
+        Some(("get", _)) => match get_local_ip() {
             Ok(ip) => {
                 println!("{:?}", ip);
                 ExitCode::SUCCESS
