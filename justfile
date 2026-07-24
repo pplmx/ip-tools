@@ -38,7 +38,11 @@ bench:
 quick: fmt-check clippy doc-check doctest test
 
 # Full CI gate
-ci: quick coverage
+ci: quick coverage msrv audit deny
+
+# MSRV check
+msrv:
+    cargo +1.78 check --all-targets --all-features --workspace
 
 # Auto-fix clippy + format
 fix:
@@ -48,6 +52,10 @@ fix:
 # Security audit
 audit:
     cargo audit
+
+# Dependency policy check
+deny:
+    cargo deny check
 
 # Clean build artifacts
 clean:

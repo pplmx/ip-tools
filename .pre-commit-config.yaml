@@ -1,0 +1,50 @@
+fail_fast: true
+repos:
+    - repo: builtin
+      hooks:
+          - id: end-of-file-fixer
+          - id: trailing-whitespace
+            exclude: \.md$
+          - id: check-toml
+          - id: check-yaml
+          - id: check-merge-conflict
+          - id: mixed-line-ending
+            args: ["--fix=lf"]
+
+    - repo: https://github.com/commitizen-tools/commitizen
+      rev: v4.16.4
+      hooks:
+          - id: commitizen
+          - id: commitizen-branch
+            stages: [pre-push]
+
+    - repo: https://github.com/rvben/rumdl-pre-commit
+      rev: v0.2.24
+      hooks:
+          - id: rumdl
+          - id: rumdl-fmt
+
+    - repo: local
+      hooks:
+          - id: cargo-fmt-check
+            name: cargo fmt --check
+            entry: cargo fmt --all -- --check
+            language: system
+            types: [rust]
+            stages: [pre-commit]
+
+          - id: cargo-clippy-check
+            name: cargo clippy
+            entry: cargo clippy --all-targets --all-features --workspace -- -D warnings -W clippy::pedantic -W clippy::nursery
+            language: system
+            types: [rust]
+            stages: [pre-push]
+            pass_filenames: false
+
+          - id: cargo-audit
+            name: cargo audit
+            entry: cargo audit
+            language: system
+            types: [rust]
+            stages: [pre-push]
+            pass_filenames: false

@@ -2,15 +2,17 @@
 name = "ip-tools"
 version = "0.2.0"
 edition = "2021"
+rust-version = "1.78"
 description = "A CLI tool and library to retrieve the local IP address and list network interfaces"
 authors = ["Mystic"]
 repository = "https://github.com/pplmx/ip-tools"
+homepage = "https://github.com/pplmx/ip-tools"
+readme = "README.md"
 license = "MIT OR Apache-2.0"
 keywords = ["ip", "network", "interface", "ip-address", "cli"]
 categories = ["command-line-utilities", "network-programming"]
 build = "build.rs"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [lib]
 name = "ip_tools"
 path = "src/lib.rs"
@@ -29,6 +31,11 @@ thiserror = "2"
 [build-dependencies]
 husky-rs = "0.3"
 
+[dev-dependencies]
+assert_cmd = "2"
+criterion = "0.8"
+predicates = "3.1"
+
 [profile.test]
 opt-level = 1
 
@@ -36,7 +43,8 @@ opt-level = 1
 lto = true
 codegen-units = 1
 
-[dev-dependencies]
-assert_cmd = "2"
-criterion = "0.8"
-predicates = "3.1"
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
