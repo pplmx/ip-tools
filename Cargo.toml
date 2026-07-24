@@ -11,7 +11,6 @@ readme = "README.md"
 license = "MIT OR Apache-2.0"
 keywords = ["ip", "network", "interface", "ip-address", "cli"]
 categories = ["command-line-utilities", "network-programming"]
-build = "build.rs"
 
 [lib]
 name = "ip_tools"
@@ -28,12 +27,10 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 
-[build-dependencies]
-husky-rs = "0.3"
-
 [dev-dependencies]
 assert_cmd = "2"
 criterion = "0.8"
+husky-rs = "0.3"
 predicates = "3.1"
 
 [profile.test]
