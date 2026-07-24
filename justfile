@@ -2,6 +2,14 @@
 default:
     @just --list
 
+# Install dev tools and set up git hooks
+init:
+    uv tool install prek
+    uv tool install rumdl
+    uv tool install ruff
+    git config core.hooksPath .husky
+    @echo "Hooks installed. prek available: run 'prek run --all-files' to test."
+
 # Build release binary
 build:
     cargo build --release

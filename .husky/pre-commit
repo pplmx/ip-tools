@@ -1,18 +1,10 @@
 #!/bin/sh
 [ "$HUSKY" = "0" ] && exit 0
 
-echo "Running pre-commit checks..."
-
-cargo fmt --all --check
-if [ $? -ne 0 ]; then
-    echo "Code is not formatted. Run: cargo fmt --all"
-    exit 1
+if command -v prek >/dev/null 2>&1; then
+    prek run pre-commit --config .pre-commit-config.yaml
+else
+    echo "prek not found, running fallback checks..."
+    cargo fmt --all --check || { echo "Code is not formatted. Run: cargo fmt --all"; exit 1; }
+    echo "Pre-commit checks passed (fallback mode)"
 fi
-
-cargo clippy --all-targets --all-features --workspace -- -D warnings -W clippy::pedantic -W clippy::nursery
-if [ $? -ne 0 ]; then
-    echo "Clippy checks failed!"
-    exit 1
-fi
-
-echo "Pre-commit checks passed"
