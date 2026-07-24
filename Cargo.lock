@@ -422,8 +422,7 @@ dependencies = [
 [[package]]
 name = "husky-rs"
 version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7efd8aa8491dc34722e4038a2fff2ce6cf1343976c81aa94bc1da5eeb6b7d2b2"
+source = "git+https://github.com/pplmx/husky-rs?branch=prek#619d64a51c74bdfe0ff2f7eb563e06eed705a1ad"
 
 [[package]]
 name = "ident_case"

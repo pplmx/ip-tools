@@ -1,10 +1,5 @@
 #!/bin/sh
+# husky-rs standalone hook — pre-push
 [ "$HUSKY" = "0" ] && exit 0
 
-if command -v prek >/dev/null 2>&1; then
-    prek run --stage pre-push --config .pre-commit-config.yaml
-else
-    echo "prek not found, running fallback checks..."
-    just quick || { echo "Pre-push checks failed"; exit 1; }
-    echo "All checks passed! Pushing... (fallback mode)"
-fi
+just quick || { echo "Pre-push checks failed"; exit 1; }
