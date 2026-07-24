@@ -2,7 +2,7 @@
 name = "ip-tools"
 version = "0.2.0"
 edition = "2021"
-rust-version = "1.78"
+rust-version = "1.83"
 description = "A CLI tool and library to retrieve the local IP address and list network interfaces"
 authors = ["Mystic"]
 repository = "https://github.com/pplmx/ip-tools"
