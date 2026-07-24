@@ -1,6 +1,6 @@
 [package]
 name = "ip-tools"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "A CLI tool and library to retrieve the local IP address and list network interfaces"
 authors = ["Mystic"]
