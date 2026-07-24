@@ -4,7 +4,7 @@
 commit_msg_file="$1"
 
 if command -v prek >/dev/null 2>&1; then
-    exec prek run --stage commit-msg --config .pre-commit-config.yaml --files "$commit_msg_file"
+    exec prek run --stage commit-msg --config .pre-commit-config.yaml --commit-msg-filename "$commit_msg_file"
 fi
 
 # Fallback: conventional commits check
