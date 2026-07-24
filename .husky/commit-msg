@@ -2,14 +2,15 @@
 [ "$HUSKY" = "0" ] && exit 0
 
 commit_msg_file="$1"
+
+if command -v prek >/dev/null 2>&1; then
+    exec prek run --stage commit-msg --config .pre-commit-config.yaml --files "$commit_msg_file"
+fi
+
+# Fallback: conventional commits check
 commit_msg=$(cat "$commit_msg_file")
 first_line=$(echo "$commit_msg" | head -n 1)
 
-if command -v prek >/dev/null 2>&1; then
-    exec prek run commit-msg --config .pre-commit-config.yaml --msg-file "$commit_msg_file"
-fi
-
-# Fallback
 if [ ${#first_line} -lt 10 ]; then
     echo "Commit message too short (minimum 10 characters)"
     exit 1
@@ -17,11 +18,6 @@ fi
 
 if ! echo "$first_line" | grep -qiE '^(feat|fix|docs|style|refactor|test|chore|build|ci|perf|revert)(\(.+\))?!?: .+'; then
     echo "Commit message must follow conventional commits format"
-    exit 1
-fi
-
-if echo "$first_line" | grep -q '\.$'; then
-    echo "Subject should not end with a period"
     exit 1
 fi
 

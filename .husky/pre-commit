@@ -2,7 +2,7 @@
 [ "$HUSKY" = "0" ] && exit 0
 
 if command -v prek >/dev/null 2>&1; then
-    prek run pre-commit --config .pre-commit-config.yaml
+    prek run --stage pre-commit --config .pre-commit-config.yaml
 else
     echo "prek not found, running fallback checks..."
     cargo fmt --all --check || { echo "Code is not formatted. Run: cargo fmt --all"; exit 1; }
