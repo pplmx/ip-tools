@@ -1,0 +1,39 @@
+pub mod ip_tools
+pub enum ip_tools::IpToolsError
+pub ip_tools::IpToolsError::ListInterfaces(local_ip_address::error::Error)
+pub ip_tools::IpToolsError::LocalIp(local_ip_address::error::Error)
+impl core::convert::From<local_ip_address::error::Error> for ip_tools::IpToolsError
+pub fn ip_tools::IpToolsError::from(local_ip_address::error::Error) -> Self
+impl core::error::Error for ip_tools::IpToolsError
+pub fn ip_tools::IpToolsError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for ip_tools::IpToolsError
+pub fn ip_tools::IpToolsError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for ip_tools::IpToolsError
+pub fn ip_tools::IpToolsError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for ip_tools::IpToolsError
+impl core::marker::Send for ip_tools::IpToolsError
+impl core::marker::Sync for ip_tools::IpToolsError
+impl core::marker::Unpin for ip_tools::IpToolsError
+impl core::marker::UnsafeUnpin for ip_tools::IpToolsError
+impl core::panic::unwind_safe::RefUnwindSafe for ip_tools::IpToolsError
+impl core::panic::unwind_safe::UnwindSafe for ip_tools::IpToolsError
+impl<T, U> core::convert::Into<U> for ip_tools::IpToolsError where U: core::convert::From<T>
+pub fn ip_tools::IpToolsError::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for ip_tools::IpToolsError where U: core::convert::Into<T>
+pub type ip_tools::IpToolsError::Error = core::convert::Infallible
+pub fn ip_tools::IpToolsError::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for ip_tools::IpToolsError where U: core::convert::TryFrom<T>
+pub type ip_tools::IpToolsError::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn ip_tools::IpToolsError::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::string::ToString for ip_tools::IpToolsError where T: core::fmt::Display + ?core::marker::Sized
+pub fn ip_tools::IpToolsError::to_string(&self) -> alloc::string::String
+impl<T> core::any::Any for ip_tools::IpToolsError where T: 'static + ?core::marker::Sized
+pub fn ip_tools::IpToolsError::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for ip_tools::IpToolsError where T: ?core::marker::Sized
+pub fn ip_tools::IpToolsError::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for ip_tools::IpToolsError where T: ?core::marker::Sized
+pub fn ip_tools::IpToolsError::borrow_mut(&mut self) -> &mut T
+impl<T> core::convert::From<T> for ip_tools::IpToolsError
+pub fn ip_tools::IpToolsError::from(T) -> T
+pub fn ip_tools::get_local_ip() -> core::result::Result<core::net::ip_addr::IpAddr, ip_tools::IpToolsError>
+pub fn ip_tools::list_net_ifs() -> core::result::Result<alloc::vec::Vec<(alloc::string::String, core::net::ip_addr::IpAddr)>, ip_tools::IpToolsError>

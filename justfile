@@ -46,11 +46,19 @@ bench:
 quick: fmt-check clippy doc-check doctest test
 
 # Full CI gate
-ci: quick coverage msrv audit deny
+ci: quick coverage msrv audit deny public-api-check
 
 # MSRV check
 msrv:
     cargo +1.78 check --all-targets --all-features --workspace
+
+# Check public API hasn't changed (fails if baseline differs)
+public-api-check:
+    cargo public-api diff --manifest-path Cargo.toml || (echo "Public API changed. Run 'just public-api-baseline' to update." && false)
+
+# Regenerate public API baseline (run after intentional API changes)
+public-api-baseline:
+    cargo public-api --manifest-path Cargo.toml > api-baseline.txt
 
 # Auto-fix clippy + format
 fix:
