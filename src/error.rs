@@ -21,7 +21,7 @@ pub enum DiagError {
         /// Human-readable record type description, e.g. `A` or `AAAA`.
         kind: &'static str,
         /// Underlying resolver error.
-        source: hickory_resolver::ResolveError,
+        source: hickory_resolver::net::NetError,
     },
 
     /// DNS client construction failed (e.g. the system resolver config could

@@ -50,15 +50,18 @@ ci: quick coverage msrv audit deny public-api-check
 
 # MSRV check
 msrv:
-    cargo +1.85 check --all-targets --all-features --workspace
+    cargo +1.88 check --all-targets --all-features --workspace
 
 # Check public API hasn't changed (fails if baseline differs)
+# Compared as text against `api-baseline.txt` (-sss = simplified, low-noise
+# output). `cargo public-api diff` with no args compares against the last
+# *published* version instead, which is wrong before a release.
 public-api-check:
-    cargo public-api diff --manifest-path Cargo.toml || (echo "Public API changed. Run 'just public-api-baseline' to update." && false)
+    cargo public-api --manifest-path Cargo.toml -sss | diff -u - api-baseline.txt || (echo "Public API changed. Run 'just public-api-baseline' to update." && false)
 
 # Regenerate public API baseline (run after intentional API changes)
 public-api-baseline:
-    cargo public-api --manifest-path Cargo.toml > api-baseline.txt
+    cargo public-api --manifest-path Cargo.toml -sss > api-baseline.txt
 
 # Auto-fix clippy + format
 fix:

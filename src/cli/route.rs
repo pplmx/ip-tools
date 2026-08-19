@@ -61,12 +61,15 @@ pub(super) async fn run_route(sub_m: &ArgMatches) -> ExitCode {
     // Reverse-resolve router addresses (best effort).
     let mut hops = hops;
     if let Ok(builder) = hickory_resolver::TokioResolver::builder_tokio() {
-        let resolver = builder.build();
-        for hop in &mut hops {
-            if let Some(addr) = hop.addr {
-                if let Ok(lookup) = resolver.reverse_lookup(addr).await {
-                    if let Some(name) = lookup.iter().map(ToString::to_string).next() {
-                        hop.hostname = Some(name);
+        if let Ok(resolver) = builder.build() {
+            for hop in &mut hops {
+                if let Some(addr) = hop.addr {
+                    if let Ok(lookup) = resolver.reverse_lookup(addr).await {
+                        if let Some(rec) = lookup.answers().first() {
+                            if let hickory_resolver::proto::rr::RData::PTR(name) = &rec.data {
+                                hop.hostname = Some(name.to_string());
+                            }
+                        }
                     }
                 }
             }

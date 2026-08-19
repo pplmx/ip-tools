@@ -53,7 +53,7 @@ jobs:
                 run: cargo clippy --all-targets --all-features --workspace -- -D warnings -W clippy::pedantic -W clippy::nursery
 
     msrv:
-        name: MSRV (1.85)
+        name: MSRV (1.88)
         runs-on: ubuntu-latest
         steps:
             -   name: Checkout repository
@@ -61,7 +61,7 @@ jobs:
             -   name: Install Rust toolchain
                 uses: dtolnay/rust-toolchain@stable
                 with:
-                    toolchain: "1.85"
+                    toolchain: "1.88"
             -   uses: Swatinem/rust-cache@v2
             -   name: Check MSRV
                 run: cargo check --all-targets --all-features --workspace
@@ -118,9 +118,12 @@ jobs:
                 uses: dtolnay/rust-toolchain@stable
             -   uses: Swatinem/rust-cache@v2
             -   name: Install cargo-public-api
-                run: cargo install cargo-public-api --locked
+                # Pinned to the version the committed api-baseline.txt was
+                # generated with (text comparison below), so the gate is
+                # reproducible across environments.
+                run: cargo install cargo-public-api --version 0.52.0 --locked
             -   name: Check public API diff
-                run: cargo public-api diff
+                run: cargo public-api --manifest-path Cargo.toml -sss | diff - api-baseline.txt
 
     deny:
         name: cargo-deny

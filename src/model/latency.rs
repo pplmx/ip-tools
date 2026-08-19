@@ -20,7 +20,7 @@ impl LatencyStats {
 
     /// Number of successful samples recorded.
     #[must_use]
-    pub fn count(&self) -> usize {
+    pub const fn count(&self) -> usize {
         self.samples.len()
     }
 

@@ -30,14 +30,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 |- Add `tokio`, `hickory-resolver`, `rustls`, `tokio-rustls`, `rustls-native-certs`, `hyper`, `hyper-util`, `h2`, `quinn`, `h3`, `h3-quinn`, `http-body-util`, `x509-parser` and `libc` dependencies
-|- Raise MSRV to 1.85 (required by quinn-proto)
+|- Raise MSRV to 1.88 (required by hickory-resolver 0.26.1, which also ships the DNS security fixes below)
+|- Upgrade `hickory-resolver` to 0.26.1 and move the DNS layer onto its new API (resolver construction and lookups return `Result`; lookups are read via the `answers` record set); drop the unused direct `hickory-proto` dependency; enable hickory-resolver's `serde` feature so `--server IP:PORT` custom DNS ports (non-53) keep working via the crate's own config schema
+|- Add `.cargo/config.toml` with `resolver.incompatible-rust-versions = "fallback"` so `cargo update` selects dependency versions within the declared MSRV instead of silently pulling newer incompatible ones
+|- Fix the public-API baseline gate: it previously used `cargo public-api diff` (no args), which under current tooling compares against the last *published* version and can therefore never pass between releases; it now diffs the tree's public API (simplified `-sss` output) directly against the committed `api-baseline.txt`, and CI pins `cargo-public-api` 0.52.0 (the version the baseline was regenerated with) for reproducibility
 |- Reorganize the library into `dns`, `tcp`, `tls`, `http`, `probe`, `model`, `report`, `target`, `error` modules (breaking but intentional)
 |- Internal module splits (no API or behavior change): CLI dispatch split from the single `cli.rs` into `cli/` per-subcommand handlers sharing a thin `mod.rs` router; the diagnostic engine split from `diagnostics.rs` into `diagnostics/` (`dns`, `connectivity`, `layer`, `filtering`); TLS-observation and HTTP-error builders moved into a shared `http_common.rs`**
 |- Deduplicate the per-address probe CLI handlers (`tcp`, `tls`, `http`, `http2`, `http3`, `probe`) behind a shared `run_probe_flow` pipeline in `cli/mod.rs`, and build their clap subcommands with a shared `probe_command` argument helper (no behavior or help-text change)
 |- Run DNS resolution once in the `diagnose` pipeline: probe addresses are now derived from the same DNS observations (previously the hostname was resolved a second time); IP-literal targets no longer produce a spurious DNS observation
 |- Move the shared HTTP-probe pieces into `http_common.rs` and the model: the `MAX_BODY_BYTES` cap, a generic `http_error`, and a reusable `HttpObservation::base` / `with_failure` on the model, so HTTP/1.1, HTTP/2 and HTTP/3 no longer duplicate the base-observation literal
 
+### Security
+|- Fix two DNS parsing advisories in `hickory-proto` 0.25.2 by upgrading to 0.26.1: RUSTSEC-2026-0118 (NSEC3 closest-encloser proof validation can loop on cross-zone responses) and RUSTSEC-2026-0119 (CPU exhaustion from O(n²) name compression during message encoding)
+
 ### Fixed
+|- Allow the `BSD-3-Clause` (neli, neli-proc-macros, subtle) and `CDLA-Permissive-2.0` (webpki-root-certs) licenses in `deny.toml` so the cargo-deny gate reflects the actual permissive licenses used by the dependency graph
 |- Fix `cargo doc` breaking under the `-D warnings` gate: `diagnostics` module docs linked private submodules, and the traceroute docs contained a stray `[UDP]` intra-doc link (both broke CI's docs job)
 |- Close the raw ICMP socket on error paths in the Linux traceroute (it was leaked when UDP-probe binding or TTL setting failed mid-run)
 |- Remove an always-false dead branch in the partial-connectivity confidence logic (failing and passing address sets are disjoint, so the comparison could never match; effective behavior is unchanged)

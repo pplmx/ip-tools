@@ -6,8 +6,9 @@
 //! engine decides and considers GeoDNS/CDN/ECS/etc. as alternatives.
 
 use crate::model::{DnsObservation, DnsRecordType, FailureKind, ProbeError, ResolverKind};
-use hickory_resolver::config::{NameServerConfigGroup, ResolverConfig, ResolverOpts};
-use hickory_resolver::name_server::TokioConnectionProvider;
+use hickory_resolver::config::{ConnectionConfig, NameServerConfig, ProtocolConfig, ResolverConfig, ResolverOpts};
+use hickory_resolver::net::runtime::TokioRuntimeProvider;
+use hickory_resolver::proto::rr::RData;
 use hickory_resolver::TokioResolver;
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
@@ -40,20 +41,22 @@ impl DnsClient {
             out.attempts = attempts.max(1);
         };
 
-        let system = TokioResolver::builder_tokio()
-            .map(|mut b| {
-                apply_options(b.options_mut());
-                b.build()
-            })
-            .ok();
+        // hickory 0.26 surfaces failures while building resolvers (e.g. the
+        // system config is unreadable) as `Result`s; a resolver that cannot be
+        // built is skipped rather than turning every query into an error.
+        let system = TokioResolver::builder_tokio().ok().and_then(|mut b| {
+            apply_options(b.options_mut());
+            b.build().ok()
+        });
 
         let mut custom = HashMap::with_capacity(custom_servers.len());
         for &server in custom_servers {
-            let group = NameServerConfigGroup::from_ips_clear(std::slice::from_ref(&server.ip()), server.port(), true);
-            let config = ResolverConfig::from_parts(None, Vec::new(), group);
-            let mut resolver = TokioResolver::builder_with_config(config, TokioConnectionProvider::default());
+            let config = ResolverConfig::from_parts(None, Vec::new(), vec![name_server_config(server)]);
+            let mut resolver = TokioResolver::builder_with_config(config, TokioRuntimeProvider::default());
             apply_options(resolver.options_mut());
-            custom.insert(server, resolver.build());
+            if let Ok(resolver) = resolver.build() {
+                custom.insert(server, resolver);
+            }
         }
 
         Self {
@@ -96,6 +99,33 @@ impl DnsClient {
         }
         results
     }
+}
+
+/// Build a [`NameServerConfig`] for `server` speaking UDP and TCP.
+///
+/// hickory 0.26 keeps `ConnectionConfig::port` public but declares the struct
+/// `#[non_exhaustive]`, so a non-default port cannot be expressed with a struct
+/// literal: the provided constructors all fix the protocol's default port (53).
+/// For other ports the config is therefore round-tripped through the crate's
+/// own serde schema (the port field is patchable there).
+fn name_server_config(server: SocketAddr) -> NameServerConfig {
+    let ip = server.ip();
+    let port = server.port();
+    let connection = |protocol: ProtocolConfig| -> ConnectionConfig {
+        if port == 53 {
+            ConnectionConfig::new(protocol)
+        } else {
+            let mut cfg =
+                serde_json::to_value(ConnectionConfig::new(protocol)).expect("predefined DNS config serializes");
+            cfg["port"] = serde_json::json!(port);
+            serde_json::from_value(cfg).expect("predefined DNS config deserializes")
+        }
+    };
+    NameServerConfig::new(
+        ip,
+        true,
+        vec![connection(ProtocolConfig::Udp), connection(ProtocolConfig::Tcp)],
+    )
 }
 
 /// Perform a single bounded DNS query and build its observation.
@@ -145,15 +175,18 @@ async fn resolver_ip_lookup(
     resolver: &TokioResolver,
     host: &str,
     record_type: DnsRecordType,
-) -> Result<Vec<IpAddr>, hickory_resolver::ResolveError> {
-    match record_type {
-        DnsRecordType::A => resolver
-            .ipv4_lookup(host)
-            .await
-            .map(|l| l.into_iter().map(|a| IpAddr::from(a.0)).collect()),
-        DnsRecordType::Aaaa => resolver
-            .ipv6_lookup(host)
-            .await
-            .map(|l| l.into_iter().map(|a| IpAddr::from(a.0)).collect()),
-    }
+) -> Result<Vec<IpAddr>, hickory_resolver::net::NetError> {
+    let lookup = match record_type {
+        DnsRecordType::A => resolver.ipv4_lookup(host).await?,
+        DnsRecordType::Aaaa => resolver.ipv6_lookup(host).await?,
+    };
+    Ok(lookup
+        .answers()
+        .iter()
+        .filter_map(|rec| match rec.data {
+            RData::A(ip) => Some(IpAddr::from(*ip)),
+            RData::AAAA(ip) => Some(IpAddr::from(*ip)),
+            _ => None,
+        })
+        .collect())
 }
