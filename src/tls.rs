@@ -31,7 +31,7 @@ pub const ALPN_H2: &[&[u8]] = &[b"h2"];
 static ROOTS: std::sync::OnceLock<rustls::RootCertStore> = std::sync::OnceLock::new();
 
 /// Load (once) the system trust store.
-fn roots() -> rustls::RootCertStore {
+pub(crate) fn roots() -> rustls::RootCertStore {
     ROOTS
         .get_or_init(|| {
             // rustls 0.23 requires an explicit provider when multiple provider

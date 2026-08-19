@@ -20,8 +20,8 @@ evidence.
 ## Status
 
 Currently implements: **DNS**, **TCP**, **TLS**, **HTTPS/HTTP1.1**, **HTTP/2**,
-and **repeated probing with latency statistics** (Phases 1–3). HTTP/3/QUIC,
-route diagnostics, and the diagnostic engine are planned.
+**HTTP/3/QUIC**, and **repeated probing with latency statistics** (Phases 1–4).
+Route diagnostics and the diagnostic engine are planned.
 
 - DNS: A + AAAA via the system resolver and/or explicit DNS servers, with
   latency.
@@ -152,6 +152,33 @@ HTTPS
 Compare `http` (HTTP/1.1) and `http2` to reveal protocol-selective behavior:
 `HTTP/1.1 PASS / HTTP/2 FAIL` is an observable, useful signal — not an
 automatic censorship verdict.
+
+### HTTP/3 (QUIC)
+
+Probe the UDP/QUIC path with a single HTTP/3 request to each address:
+
+```shell
+ip-tools http3 example.com
+ip-tools http3 cloudflare.com --method GET
+```
+
+Example output:
+
+```
+HTTPS
+  104.16.132.229:443
+    HTTP/3 301
+    redirect: https://www.cloudflare.com/
+    TLS: TLSv1.3
+    ALPN: h3
+    body: 167 bytes
+    latency: 251 ms
+```
+
+Comparing the TCP path (`http`/`http2`) with the QUIC path (`http3`) reveals
+protocol/transport-selective behavior. A QUIC-only failure is reported as a
+QUIC failure, never conflated with a TCP failure or an automatic censorship
+verdict.
 
 ### Repeated probes
 

@@ -50,7 +50,7 @@ ci: quick coverage msrv audit deny public-api-check
 
 # MSRV check
 msrv:
-    cargo +1.78 check --all-targets --all-features --workspace
+    cargo +1.85 check --all-targets --all-features --workspace
 
 # Check public API hasn't changed (fails if baseline differs)
 public-api-check:

@@ -17,6 +17,8 @@
 //! * [`tcp`] — TCP connect probes with failure-mode classification.
 //! * [`tls`] — TLS handshake probes (SNI, ALPN, certificate).
 //! * [`http`] — HTTPS / HTTP1.1 request probes.
+//! * [`http2`] — HTTP/2 request probes.
+//! * [`http3`] — HTTP/3 / QUIC (UDP path) request probes.
 //! * [`probe`] — repeated probing and latency statistics.
 //! * [`target`] — target (host/port) parsing.
 //! * [`report`] — human and JSON rendering.
@@ -31,6 +33,7 @@ pub mod dns;
 pub mod error;
 pub mod http;
 pub mod http2;
+pub mod http3;
 pub mod model;
 pub mod probe;
 pub mod report;

@@ -58,6 +58,8 @@ pub enum FailureKind {
     Protocol,
     /// An HTTP-level error.
     Http,
+    /// A QUIC/HTTP3 transport error.
+    Quic,
     /// A failure that does not fit a more specific category.
     Other,
     /// The failure could not be characterised.
@@ -78,6 +80,7 @@ impl std::fmt::Display for FailureKind {
             Certificate => "certificate",
             Protocol => "protocol",
             Http => "http",
+            Quic => "quic",
             Other => "other",
             Unknown => "unknown",
         };
