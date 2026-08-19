@@ -272,3 +272,357 @@ pub fn render_diagnoses(diagnoses: &[Diagnosis]) -> String {
     }
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{
+        Confidence, DiagnosticCategory, Evidence, FailureCount, FailureKind, LatencyStats, ProbeError, ResolverKind,
+        Severity,
+    };
+
+    fn dns_obs(
+        resolver: ResolverKind,
+        rt: DnsRecordType,
+        addrs: &[&str],
+        ms: Option<u64>,
+        error: Option<&str>,
+    ) -> DnsObservation {
+        DnsObservation {
+            hostname: "example.com".into(),
+            resolver,
+            record_type: rt,
+            records: addrs.iter().map(|a| a.parse().unwrap()).collect(),
+            latency_ms: ms,
+            error: error.map(|m| ProbeError {
+                kind: FailureKind::Dns,
+                message: m.into(),
+            }),
+        }
+    }
+
+    fn tls(cert: bool) -> TlsObservation {
+        TlsObservation {
+            destination: "1.1.1.1:443".parse().unwrap(),
+            sni: "example.com".into(),
+            success: cert,
+            version: cert.then(|| "TLSv1.3".into()),
+            cipher: cert.then(|| "TLS_AES_128_GCM_SHA256".into()),
+            alpn: cert.then(|| "h2".into()),
+            certificate: cert.then(|| CertificateSummary {
+                subject: "CN=example.com".into(),
+                issuer: "CN=issuer".into(),
+                not_before_utc: Some("2026-01-01T00:00:00Z".into()),
+                not_after_utc: Some("2027-01-01T00:00:00Z".into()),
+            }),
+            latency_ms: cert.then_some(42),
+            failure: (!cert).then(|| ProbeError {
+                kind: FailureKind::TlsHandshake,
+                message: "handshake failed".into(),
+            }),
+        }
+    }
+
+    /// Contract-style checks: every public renderer emits expected content and
+    /// `to_json` yields parseable JSON. Exact column alignment is not asserted.
+    #[test]
+    fn render_dns_covers_success_and_failure() {
+        let obs = [
+            dns_obs(
+                ResolverKind::System,
+                DnsRecordType::A,
+                &["1.1.1.1", "8.8.8.8"],
+                Some(5),
+                None,
+            ),
+            dns_obs(
+                ResolverKind::Custom("9.9.9.9:53".parse().unwrap()),
+                DnsRecordType::Aaaa,
+                &[],
+                Some(7),
+                None,
+            ),
+            dns_obs(ResolverKind::System, DnsRecordType::Aaaa, &[], None, Some("no answer")),
+        ];
+        let out = render_dns("example.com", &obs);
+        assert!(out.contains("DNS example.com"));
+        assert!(out.contains("system"));
+        assert!(out.contains("1.1.1.1"));
+        assert!(out.contains("8.8.8.8"));
+        assert!(out.contains("9.9.9.9:53"));
+        assert!(out.contains('A'));
+        assert!(out.contains("AAAA"));
+        assert!(out.contains("no answer"));
+    }
+
+    #[test]
+    fn render_dns_handles_empty_and_no_records() {
+        // A success with no records and no latency -> "no records".
+        let obs = [dns_obs(ResolverKind::System, DnsRecordType::A, &[], None, None)];
+        assert!(render_dns("example.com", &obs).contains("no records"));
+        assert!(render_dns("example.com", &[]).contains("DNS example.com"));
+    }
+
+    #[test]
+    fn render_tcp_covers_pass_fail_and_kinds() {
+        let obs = [
+            TcpObservation {
+                destination: "1.1.1.1:443".parse().unwrap(),
+                success: true,
+                latency_ms: Some(12),
+                failure: None,
+            },
+            TcpObservation {
+                destination: "2.2.2.2:443".parse().unwrap(),
+                success: false,
+                latency_ms: None,
+                failure: Some(ProbeError {
+                    kind: FailureKind::ConnectionRefused,
+                    message: "refused".into(),
+                }),
+            },
+            TcpObservation {
+                destination: "3.3.3.3:443".parse().unwrap(),
+                success: false,
+                latency_ms: None,
+                failure: Some(ProbeError {
+                    kind: FailureKind::Timeout,
+                    message: "timed out".into(),
+                }),
+            },
+        ];
+        let out = render_tcp(&obs);
+        assert!(out.contains("TCP connect"));
+        assert!(out.contains("PASS"));
+        assert!(out.contains("12 ms"));
+        assert!(out.contains("connection refused"));
+        assert!(out.contains("timeout"));
+        // Failure without a ProbeError object falls back to the string "failed".
+        let bare = [TcpObservation {
+            destination: "4.4.4.4:443".parse().unwrap(),
+            success: false,
+            latency_ms: None,
+            failure: None,
+        }];
+        assert!(render_tcp(&bare).contains("failed"));
+    }
+
+    #[test]
+    fn render_tls_covers_success_and_failure() {
+        let out = render_tls(&[tls(true), tls(false)]);
+        assert!(out.contains("TLS handshake"));
+        assert!(out.contains("TLSv1.3"));
+        assert!(out.contains("cipher: TLS_AES_128_GCM_SHA256"));
+        assert!(out.contains("ALPN: h2"));
+        assert!(out.contains("cert :"));
+        assert!(out.contains("CN=example.com"));
+        assert!(out.contains("issued by"));
+        assert!(out.contains("handshake failed"));
+        // Certificate without validity range degrades to no parenthetical.
+        let no_validity = render_cert(&CertificateSummary {
+            subject: "CN=x".into(),
+            issuer: "CN=y".into(),
+            not_before_utc: None,
+            not_after_utc: None,
+        });
+        assert_eq!(no_validity, "CN=x issued by CN=y");
+        // Success without latency reports 0 ms but does not panic.
+        assert!(out.contains("latency: 42 ms"));
+    }
+
+    #[test]
+    fn render_http_covers_success_redirect_and_failure() {
+        let ok = HttpObservation {
+            destination: "1.1.1.1:443".parse().unwrap(),
+            host: "example.com".into(),
+            method: "GET".into(),
+            tls: Some(tls(true)),
+            protocol: Some("HTTP/2".into()),
+            status: Some(200),
+            location: Some("https://example.com/login".into()),
+            body_bytes: Some(1234),
+            latency_ms: Some(30),
+            failure: None,
+        };
+        let err = HttpObservation {
+            destination: "2.2.2.2:443".parse().unwrap(),
+            host: "example.com".into(),
+            method: "GET".into(),
+            tls: None,
+            protocol: None,
+            status: None,
+            location: None,
+            body_bytes: None,
+            latency_ms: None,
+            failure: Some(ProbeError {
+                kind: FailureKind::Http,
+                message: "request failed".into(),
+            }),
+        };
+        let no_status = HttpObservation {
+            destination: "3.3.3.3:443".parse().unwrap(),
+            host: "example.com".into(),
+            method: "HEAD".into(),
+            tls: None,
+            protocol: None,
+            status: None,
+            location: None,
+            body_bytes: None,
+            latency_ms: Some(1),
+            failure: None,
+        };
+        let default_protocol = HttpObservation {
+            destination: "4.4.4.4:443".parse().unwrap(),
+            host: "example.com".into(),
+            method: "GET".into(),
+            tls: None,
+            protocol: None,
+            status: Some(301),
+            location: None,
+            body_bytes: None,
+            latency_ms: None,
+            failure: None,
+        };
+        let out = render_http(&[ok, err, no_status, default_protocol]);
+        assert!(out.contains("example.com"));
+        assert!(out.contains("HTTP/2"));
+        assert!(out.contains("200"));
+        assert!(out.contains("redirect: https://example.com/login"));
+        assert!(out.contains("body: 1234 bytes"));
+        assert!(out.contains("request failed"));
+        assert!(out.contains("no status"));
+        // Without an explicit protocol, HTTP/1.1 is assumed.
+        assert!(out.contains("HTTP/1.1"));
+        assert!(out.contains("301"));
+    }
+
+    #[test]
+    fn render_probe_covers_full_stats_and_distribution() {
+        let mut stats = LatencyStats::default();
+        for v in [100u64, 200, 300, 400] {
+            stats.push(v);
+        }
+        let result = ProbeResult {
+            destination: "1.1.1.1:443".parse().unwrap(),
+            attempts: 6,
+            successes: 4,
+            failures: 2,
+            success_rate: 4.0 / 6.0,
+            latency: stats.summarize(),
+            failure_counts: vec![FailureCount {
+                kind: FailureKind::Timeout,
+                count: 2,
+            }],
+        };
+        let no_latency = ProbeResult {
+            destination: "2.2.2.2:443".parse().unwrap(),
+            attempts: 2,
+            successes: 0,
+            failures: 2,
+            success_rate: 0.0,
+            latency: LatencyStats::default().summarize(),
+            failure_counts: vec![],
+        };
+        let out = render_probe(&[result, no_latency]);
+        assert!(out.contains("Repeated probes"));
+        assert!(out.contains("attempts: 6"));
+        assert!(out.contains("66.7%"));
+        assert!(out.contains("p50:"));
+        assert!(out.contains("p99:"));
+        assert!(out.contains("jitter:"));
+        assert!(out.contains("timeout: 2"));
+        // No samples -> latency block omitted; no failures -> defaults.
+        assert!(out.contains("0.0%"));
+    }
+
+    #[test]
+    fn render_route_covers_hops_lost_and_empty() {
+        let hops = [
+            RouteHop {
+                ttl: 1,
+                addr: Some("192.0.2.1".parse().unwrap()),
+                hostname: Some("r1.example.com".into()),
+                rtt_ms: Some(3),
+                lost: false,
+            },
+            RouteHop {
+                ttl: 2,
+                addr: Some("192.0.2.2".parse().unwrap()),
+                hostname: None,
+                rtt_ms: None,
+                lost: true,
+            },
+            RouteHop {
+                ttl: 3,
+                addr: None,
+                hostname: None,
+                rtt_ms: None,
+                lost: true,
+            },
+            RouteHop {
+                ttl: 4,
+                addr: Some("192.0.2.4".parse().unwrap()),
+                hostname: None,
+                rtt_ms: None,
+                lost: false,
+            },
+        ];
+        let out = render_route(&hops);
+        assert!(out.contains("Traceroute"));
+        assert!(out.contains("r1.example.com (192.0.2.1)"));
+        assert!(out.contains("3 ms"));
+        // Lost hop prints `*`; a reachable hop with no RTT prints `-`.
+        assert!(out.contains('*'));
+        assert!(out.contains("192.0.2.4"));
+    }
+
+    #[test]
+    fn render_diagnoses_covers_healthy_and_anomalous() {
+        let healthy = Diagnosis {
+            severity: Severity::Info,
+            category: DiagnosticCategory::Healthy,
+            confidence: Confidence::High,
+            summary: "everything fine".into(),
+            evidence: vec![Evidence {
+                detail: "dns ok".into(),
+            }],
+            possible_causes: vec![],
+        };
+        let anomaly = Diagnosis {
+            severity: Severity::High,
+            category: DiagnosticCategory::TotalConnectivityLoss,
+            confidence: Confidence::Medium,
+            summary: "no tcp".into(),
+            evidence: vec![Evidence {
+                detail: "0/3 reachable".into(),
+            }],
+            possible_causes: vec!["server down".into(), "firewall".into()],
+        };
+        let out = render_diagnoses(&[healthy, anomaly]);
+        assert!(out.contains("Diagnosis"));
+        assert!(out.contains("[INFO] Healthy (High confidence)"));
+        assert!(out.contains("[HIGH] TotalConnectivityLoss (Medium confidence)"));
+        assert!(out.contains("Evidence:"));
+        assert!(out.contains("Possible causes:"));
+        assert!(out.contains("firewall"));
+    }
+
+    #[test]
+    fn to_json_emits_valid_serializable_json() {
+        #[derive(serde::Serialize)]
+        struct Probe {
+            dest: String,
+            ok: bool,
+        }
+        let json = to_json(&Probe {
+            dest: "1.1.1.1:443".into(),
+            ok: true,
+        });
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
+        assert_eq!(parsed["dest"], "1.1.1.1:443");
+        assert_eq!(parsed["ok"], true);
+        // An empty collection still serializes as `[]` (not null or absent).
+        let empty: Vec<u64> = Vec::new();
+        assert_eq!(to_json(&empty), "[]");
+    }
+}
