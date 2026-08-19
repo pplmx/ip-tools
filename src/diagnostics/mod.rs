@@ -1,0 +1,253 @@
+//! Deterministic diagnostic engine.
+//!
+//! This module performs **no network I/O**. It takes normalized observations
+//! and produces a set of evidence-based [`Diagnosis`]. It never claims
+//! censorship from a single failure mode; it only raises
+//! [`DiagnosticCategory::PossibleNetworkFiltering`] with low/medium confidence
+//! when several independent signals align, and always lists the mundane
+//! alternatives that also fit the evidence.
+//!
+//! The rule families live in submodules: [`dns`] (resolution), [`connectivity`]
+//! (TCP reachability), [`layer`] (TLS/HTTP/QUIC/intermittent) and [`filtering`]
+//! (conservative multi-signal analysis).
+
+mod connectivity;
+mod dns;
+mod filtering;
+mod layer;
+
+use crate::model::{
+    Confidence, Diagnosis, DiagnosticCategory, DnsObservation, Evidence, HttpObservation, ProbeResult, Severity,
+    TcpObservation, TlsObservation,
+};
+
+/// Inputs to the diagnostic engine: the observations collected by the probe
+/// layer.
+pub struct DiagnosticInput<'a> {
+    /// Hostname the user targeted.
+    pub hostname: &'a str,
+    /// DNS observations (per resolver / record type).
+    pub dns: &'a [DnsObservation],
+    /// TCP connection observations (per destination address).
+    pub tcp: &'a [TcpObservation],
+    /// TLS handshake observations (per destination address).
+    pub tls: &'a [TlsObservation],
+    /// HTTPS / HTTP observations (per destination address).
+    pub http: &'a [HttpObservation],
+    /// Repeated probe results (per destination address).
+    pub probes: &'a [ProbeResult],
+}
+
+/// Evaluate all rules against the observations and return the resulting
+/// diagnoses, ordered deterministically. Returns a single healthy diagnosis
+/// when nothing anomalous is found.
+#[must_use]
+pub fn diagnose(input: &DiagnosticInput) -> Vec<Diagnosis> {
+    let mut out = Vec::new();
+    let dns_signal = dns::dns_rules(input, &mut out);
+    connectivity::connectivity_rules(input, &mut out);
+    connectivity::family_rules(input, &mut out);
+    layer::tls_layer_rules(input, &mut out);
+    layer::http_layer_rules(input, &mut out);
+    layer::quic_rules(input, &mut out);
+    layer::intermittent_rules(input, &mut out);
+    filtering::filtering_rules(input, dns_signal, &mut out);
+
+    if out.is_empty() {
+        out.push(Diagnosis {
+            severity: Severity::Info,
+            category: DiagnosticCategory::Healthy,
+            confidence: Confidence::High,
+            summary: format!("No significant connectivity anomaly observed for {}", input.hostname),
+            evidence: vec![Evidence {
+                detail: "Every observed protocol layer succeeded or showed only expected behavior.".to_string(),
+            }],
+            possible_causes: Vec::new(),
+        });
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{DnsRecordType, FailureKind, LatencyStats, ProbeError, ResolverKind};
+
+    fn tp(addr: &str, ok: bool) -> TcpObservation {
+        TcpObservation {
+            destination: addr.parse().unwrap(),
+            success: ok,
+            latency_ms: ok.then_some(10),
+            failure: (!ok).then(|| ProbeError {
+                kind: FailureKind::Timeout,
+                message: "timeout".into(),
+            }),
+        }
+    }
+
+    fn dns_ok(host: &str, kind: DnsRecordType, ip: &str) -> DnsObservation {
+        DnsObservation {
+            hostname: host.into(),
+            resolver: ResolverKind::System,
+            record_type: kind,
+            records: vec![ip.parse().unwrap()],
+            latency_ms: Some(5),
+            error: None,
+        }
+    }
+
+    fn dns_fail(host: &str) -> DnsObservation {
+        DnsObservation {
+            hostname: host.into(),
+            resolver: ResolverKind::System,
+            record_type: DnsRecordType::A,
+            records: vec![],
+            latency_ms: None,
+            error: Some(ProbeError {
+                kind: FailureKind::Dns,
+                message: "no answer".into(),
+            }),
+        }
+    }
+
+    fn input<'a>(
+        dns: &'a [DnsObservation],
+        tcp: &'a [TcpObservation],
+        tls: &'a [TlsObservation],
+        http: &'a [HttpObservation],
+        probes: &'a [ProbeResult],
+    ) -> DiagnosticInput<'a> {
+        DiagnosticInput {
+            hostname: "example.com",
+            dns,
+            tcp,
+            tls,
+            http,
+            probes,
+        }
+    }
+
+    fn categories(di: &[Diagnosis]) -> Vec<DiagnosticCategory> {
+        di.iter().map(|d| d.category).collect()
+    }
+
+    #[test]
+    fn healthy_when_nothing_anomalous() {
+        let dns = [dns_ok("example.com", DnsRecordType::A, "1.1.1.1")];
+        let tcp = [tp("1.1.1.1:443", true)];
+        let out = diagnose(&input(&dns, &tcp, &[], &[], &[]));
+        assert_eq!(categories(&out), vec![DiagnosticCategory::Healthy]);
+    }
+
+    #[test]
+    fn total_loss_when_all_tcp_fail() {
+        let dns = [dns_ok("example.com", DnsRecordType::A, "1.1.1.1")];
+        let tcp = [tp("1.1.1.1:443", false)];
+        let out = diagnose(&input(&dns, &tcp, &[], &[], &[]));
+        assert!(categories(&out).contains(&DiagnosticCategory::TotalConnectivityLoss));
+    }
+
+    #[test]
+    fn partial_connectivity_when_some_fail() {
+        let dns = [dns_ok("example.com", DnsRecordType::A, "1.1.1.1")];
+        let tcp = [tp("1.1.1.1:443", true), tp("2.2.2.2:443", false)];
+        let out = diagnose(&input(&dns, &tcp, &[], &[], &[]));
+        assert!(categories(&out).contains(&DiagnosticCategory::PartialConnectivity));
+    }
+
+    #[test]
+    fn address_family_split() {
+        let tcp = [tp("1.1.1.1:443", true), tp("[2001:db8::1]:443", false)];
+        let out = diagnose(&input(&[], &tcp, &[], &[], &[]));
+        assert!(categories(&out).contains(&DiagnosticCategory::AddressFamily));
+    }
+
+    #[test]
+    fn tls_layer_failure_where_tcp_ok() {
+        let tcp = [tp("1.1.1.1:443", true)];
+        let tls = [TlsObservation {
+            destination: "1.1.1.1:443".parse().unwrap(),
+            sni: "example.com".into(),
+            success: false,
+            version: None,
+            cipher: None,
+            alpn: None,
+            certificate: None,
+            latency_ms: None,
+            failure: Some(ProbeError {
+                kind: FailureKind::TlsHandshake,
+                message: "hs".into(),
+            }),
+        }];
+        let out = diagnose(&input(&[], &tcp, &tls, &[], &[]));
+        assert!(categories(&out).contains(&DiagnosticCategory::Tls));
+    }
+
+    #[test]
+    fn intermittent_from_probe_result() {
+        let mut stats = LatencyStats::default();
+        stats.push(100);
+        stats.push(200);
+        let probe = ProbeResult {
+            destination: "1.1.1.1:443".parse().unwrap(),
+            attempts: 2,
+            successes: 1,
+            failures: 1,
+            success_rate: 0.5,
+            latency: stats.summarize(),
+            failure_counts: vec![],
+        };
+        let out = diagnose(&input(&[], &[], &[], &[], &[probe]));
+        assert!(categories(&out).contains(&DiagnosticCategory::Intermittent));
+    }
+
+    #[test]
+    fn filtering_requires_multiple_signals() {
+        // A single reset must NOT trigger a filtering conclusion.
+        let tcp = [TcpObservation {
+            destination: "1.1.1.1:443".parse().unwrap(),
+            success: false,
+            latency_ms: None,
+            failure: Some(ProbeError {
+                kind: FailureKind::ConnectionReset,
+                message: "r".into(),
+            }),
+        }];
+        let out = diagnose(&input(&[], &tcp, &[], &[], &[]));
+        assert!(!categories(&out).contains(&DiagnosticCategory::PossibleNetworkFiltering));
+    }
+
+    #[test]
+    fn dns_failure_all_resolvers() {
+        let dns = [dns_fail("example.com")];
+        let out = diagnose(&input(&dns, &[], &[], &[], &[]));
+        assert!(categories(&out).contains(&DiagnosticCategory::Dns));
+        let d = out.iter().find(|d| d.category == DiagnosticCategory::Dns).unwrap();
+        assert_eq!(d.confidence, Confidence::High);
+    }
+    #[test]
+    fn filtering_fires_with_multiple_signals_but_low_confidence() {
+        // Resolver disagreement + address-specific reachability together are
+        // consistent with possible filtering, but confidence must stay Low
+        // (never High) and mundane causes must be listed.
+        let dns = [
+            dns_ok("example.com", DnsRecordType::A, "1.1.1.1"),
+            DnsObservation {
+                hostname: "example.com".into(),
+                resolver: ResolverKind::Custom("9.9.9.9:53".parse().unwrap()),
+                record_type: DnsRecordType::A,
+                records: vec!["12.12.12.12".parse().unwrap()],
+                latency_ms: Some(5),
+                error: None,
+            },
+        ];
+        let tcp = [tp("1.1.1.1:443", true), tp("2.2.2.2:443", false)];
+        let out = diagnose(&input(&dns, &tcp, &[], &[], &[]));
+        let f = out
+            .iter()
+            .find(|d| d.category == DiagnosticCategory::PossibleNetworkFiltering);
+        assert!(f.is_some(), "filtering diagnosis should fire with multiple signals");
+        assert_eq!(f.unwrap().confidence, Confidence::Low);
+        assert!(!f.unwrap().possible_causes.is_empty());
+    }
+}

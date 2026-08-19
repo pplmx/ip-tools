@@ -5,7 +5,7 @@
 //! the HTTP/1.1 probe makes `HTTP/1.1 PASS / HTTP/2 FAIL` (and the reverse) a
 //! first-class, observable distinction.
 
-use crate::http::build_tls_observation;
+use crate::http_common::build_tls_observation;
 use crate::model::http::HttpObservation;
 use crate::model::{FailureKind, ProbeError};
 use std::net::SocketAddr;

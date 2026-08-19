@@ -5,9 +5,9 @@
 //! connection. Redirection is *not* followed by default: a redirect is
 //! recorded, not chased, so the raw server behaviour is visible.
 
+use crate::http_common::{build_tls_observation, http_error};
 use crate::model::http::HttpObservation;
-use crate::model::{FailureKind, ProbeError, TlsObservation};
-use crate::tls;
+use crate::model::{FailureKind, ProbeError};
 use http_body_util::{BodyExt, Empty, Limited};
 use hyper_util::rt::TokioIo;
 use std::net::SocketAddr;
@@ -125,29 +125,6 @@ pub async fn probe_with_roots(
         body_bytes,
         latency_ms: Some(start.elapsed().as_millis() as u64),
         ..base
-    }
-}
-
-/// Reconstruct a [`TlsObservation`] from an established connection helper so
-/// the HTTP observation carries TLS details.
-pub(crate) fn build_tls_observation(conn: &tls::TlsConnection, destination: SocketAddr, host: &str) -> TlsObservation {
-    TlsObservation {
-        destination,
-        sni: host.to_string(),
-        success: true,
-        version: conn.version.clone(),
-        cipher: conn.cipher.clone(),
-        alpn: conn.alpn.clone(),
-        certificate: conn.certificate.clone(),
-        latency_ms: Some(conn.latency_ms),
-        failure: None,
-    }
-}
-
-pub(crate) fn http_error(step: &str, e: &hyper::Error) -> ProbeError {
-    ProbeError {
-        kind: FailureKind::Http,
-        message: format!("{step} failed: {e}"),
     }
 }
 
