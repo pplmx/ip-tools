@@ -5,7 +5,7 @@
 //! while presenting the hostname as SNI is the recommended pattern, because
 //! many servers are virtual-hosted and answer differently per SNI.
 //!
-//! The module exposes a lower-level [`connect`] helper (used by the HTTP
+//! The module exposes a lower-level `connect` helper (used by the HTTP
 //! probes) and a higher-level [`probe`] that records a complete
 //! [`TlsObservation`].
 
