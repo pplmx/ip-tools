@@ -190,3 +190,148 @@ async fn resolver_ip_lookup(
         })
         .collect())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::UdpSocket;
+    use std::sync::Arc;
+
+    /// A minimal in-process DNS server that answers A / AAAA queries from the
+    /// given address sets. Deterministic: no external network involved.
+    struct FakeDns {
+        addr: SocketAddr,
+    }
+
+    impl FakeDns {
+        fn start(ipv4: &[&str], ipv6: &[&str]) -> Self {
+            let sock = Arc::new(UdpSocket::bind("127.0.0.1:0").expect("bind fake dns server"));
+            let addr = sock.local_addr().expect("fake dns local addr");
+            let ipv4: Vec<IpAddr> = ipv4.iter().map(|a| a.parse().unwrap()).collect();
+            let ipv6: Vec<IpAddr> = ipv6.iter().map(|a| a.parse().unwrap()).collect();
+            std::thread::spawn(move || {
+                let mut buf = [0u8; 512];
+                while let Ok((n, peer)) = sock.recv_from(&mut buf) {
+                    if let Some(resp) = fake_dns_response(&buf[..n], &ipv4, &ipv6) {
+                        let _ = sock.send_to(&resp, peer);
+                    }
+                }
+            });
+            Self { addr }
+        }
+
+        fn addr(&self) -> SocketAddr {
+            self.addr
+        }
+    }
+
+    /// Build a standard DNS response for one query, returning addresses of the
+    /// query's own record type (A or AAAA); anything else gets no answers.
+    fn fake_dns_response(query: &[u8], ipv4: &[IpAddr], ipv6: &[IpAddr]) -> Option<Vec<u8>> {
+        if query.len() < 12 {
+            return None;
+        }
+        let id = [query[0], query[1]];
+        let qdcount = u16::from_be_bytes([query[4], query[5]]);
+        if qdcount == 0 {
+            return None;
+        }
+        // Parse the question: variable-length name, then fixed 4 bytes
+        // (qtype + qclass). The whole question is echoed verbatim.
+        let mut pos = 12;
+        loop {
+            let len = *query.get(pos)? as usize;
+            pos += 1;
+            if len == 0 {
+                break;
+            }
+            if len > 63 {
+                return None; // no compression in the query
+            }
+            pos += len;
+        }
+        let question = &query[12..pos + 4];
+        let qtype = u16::from_be_bytes([query[pos], query[pos + 1]]);
+
+        let answers: Vec<IpAddr> = match qtype {
+            1 => ipv4.to_vec(),  // A
+            28 => ipv6.to_vec(), // AAAA
+            _ => Vec::new(),
+        };
+
+        let mut out = Vec::with_capacity(512);
+        out.extend_from_slice(&id);
+        out.extend_from_slice(&0x8180u16.to_be_bytes()); // QR|RD|RA, NOERROR
+        out.extend_from_slice(&qdcount.to_be_bytes());
+        out.extend_from_slice(&(answers.len() as u16).to_be_bytes()); // ANCOUNT
+        out.extend_from_slice(&[0, 0, 0, 0]); // NSCOUNT, ARCOUNT
+        out.extend_from_slice(question);
+        for ip in &answers {
+            out.extend_from_slice(&[0xC0, 0x0C]); // name pointer -> question name
+            let type_code: u16 = if ip.is_ipv4() { 1 } else { 28 };
+            let rdlen: u16 = if ip.is_ipv4() { 4 } else { 16 };
+            out.extend_from_slice(&type_code.to_be_bytes());
+            out.extend_from_slice(&[0, 1]); // class IN
+            out.extend_from_slice(&60u32.to_be_bytes()); // TTL
+            out.extend_from_slice(&rdlen.to_be_bytes());
+            match ip {
+                IpAddr::V4(v4) => out.extend_from_slice(&v4.octets()),
+                IpAddr::V6(v6) => out.extend_from_slice(&v6.octets()),
+            }
+        }
+        Some(out)
+    }
+
+    fn custom(servers: &[SocketAddr], timeout: Duration) -> DnsClient {
+        DnsClient::new(servers, timeout, 1)
+    }
+
+    #[tokio::test]
+    async fn resolves_a_records_from_custom_server() {
+        let fake = FakeDns::start(&["192.0.2.1", "192.0.2.2"], &[]);
+        let client = custom(&[fake.addr()], Duration::from_secs(2));
+        let obs = client.resolve("host.example", DnsRecordType::A).await;
+        let o = obs
+            .iter()
+            .find(|o| o.resolver == ResolverKind::Custom(fake.addr()))
+            .expect("custom resolver observation");
+        assert!(o.error.is_none(), "unexpected error: {:?}", o.error);
+        let expected: Vec<IpAddr> = vec!["192.0.2.1".parse().unwrap(), "192.0.2.2".parse().unwrap()];
+        assert_eq!(o.records, expected);
+        assert!(o.latency_ms.is_some());
+        assert_eq!(o.record_type, DnsRecordType::A);
+    }
+
+    #[tokio::test]
+    async fn resolves_aaaa_records_from_custom_server() {
+        let fake = FakeDns::start(&[], &["2001:db8::1"]);
+        let client = custom(&[fake.addr()], Duration::from_secs(2));
+        let obs = client.resolve("host.example", DnsRecordType::Aaaa).await;
+        let o = obs
+            .iter()
+            .find(|o| o.resolver == ResolverKind::Custom(fake.addr()))
+            .expect("custom resolver observation");
+        assert!(o.error.is_none(), "unexpected error: {:?}", o.error);
+        assert_eq!(o.records, vec!["2001:db8::1".parse::<IpAddr>().unwrap()]);
+        assert_eq!(o.record_type, DnsRecordType::Aaaa);
+    }
+
+    #[tokio::test]
+    async fn unreachable_custom_server_yields_timeout_observation() {
+        // Reserve an ephemeral port, then drop the socket so nothing listens.
+        let port = {
+            let s = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind probe port");
+            s.local_addr().expect("probe local addr").port()
+        };
+        let addr = SocketAddr::from(([127, 0, 0, 1], port));
+        let client = custom(&[addr], Duration::from_millis(300));
+        let obs = client.resolve("host.example", DnsRecordType::A).await;
+        let o = obs
+            .iter()
+            .find(|o| o.resolver == ResolverKind::Custom(addr))
+            .expect("custom resolver observation");
+        assert!(o.records.is_empty());
+        let err = o.error.as_ref().expect("expected a failure observation");
+        assert_eq!(err.kind, FailureKind::Timeout, "got: {err:?}");
+    }
+}
