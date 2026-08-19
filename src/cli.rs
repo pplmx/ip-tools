@@ -1,9 +1,10 @@
 use clap::{command, crate_authors, Arg, ArgAction, ArgMatches, Command};
 use ip_tools::dns::DnsClient;
 use ip_tools::model::{DnsRecordType, HttpObservation, ProbeResult, TcpObservation, TlsObservation};
-use ip_tools::report::{render_dns, render_http, render_probe, render_tcp, render_tls, to_json};
+use ip_tools::report::{render_dns, render_http, render_probe, render_route, render_tcp, render_tls, to_json};
 use ip_tools::target::Target;
-use ip_tools::{get_local_ip, http, http2, http3, list_net_ifs, probe, tcp, tls};
+use ip_tools::TracerouteConfig;
+use ip_tools::{get_local_ip, http, http2, http3, list_net_ifs, probe, route, tcp, tls};
 use serde::Serialize;
 use std::future::Future;
 use std::net::{IpAddr, SocketAddr};
@@ -95,6 +96,28 @@ fn parser() -> ArgMatches {
                 .arg(timeout_arg())
                 .arg(concurrency_arg()),
         )
+        .subcommand(
+            Command::new("route")
+                .about("trace the network path (hops) to a host (Linux, requires root)")
+                .arg(positional_target("host to trace"))
+                .arg(
+                    Arg::new("max-hops")
+                        .long("max-hops")
+                        .value_name("N")
+                        .value_parser(clap::value_parser!(u8))
+                        .default_value("30")
+                        .help("maximum number of hops"),
+                )
+                .arg(
+                    Arg::new("probes-per-hop")
+                        .long("probes-per-hop")
+                        .value_name("N")
+                        .value_parser(clap::value_parser!(u8))
+                        .default_value("3")
+                        .help("probes per hop"),
+                )
+                .arg(timeout_arg()),
+        )
         .get_matches()
 }
 
@@ -153,7 +176,9 @@ fn handler(app_m: &ArgMatches) -> ExitCode {
     match app_m.subcommand() {
         Some(("get", sub_m)) => handle_get(sub_m),
         Some(("list", sub_m)) => handle_list(sub_m),
-        Some((name @ ("dns" | "tcp" | "tls" | "http" | "http2" | "http3" | "probe"), sub_m)) => run_tokio(name, sub_m),
+        Some((name @ ("dns" | "tcp" | "tls" | "http" | "http2" | "http3" | "probe" | "route"), sub_m)) => {
+            run_tokio(name, sub_m)
+        }
         _ => {
             eprintln!("Error: unknown subcommand");
             ExitCode::FAILURE
@@ -178,6 +203,7 @@ fn run_tokio(name: &str, sub_m: &ArgMatches) -> ExitCode {
         "http2" => rt.block_on(run_http2(sub_m)),
         "http3" => rt.block_on(run_http3(sub_m)),
         "probe" => rt.block_on(run_probe(sub_m)),
+        "route" => rt.block_on(run_route(sub_m)),
         _ => unreachable!(),
     }
 }
@@ -543,6 +569,78 @@ async fn run_http3(sub_m: &ArgMatches) -> ExitCode {
         println!("{}", to_json(&results));
     } else {
         print!("{}", render_http(&results));
+    }
+    ExitCode::SUCCESS
+}
+
+/// Trace the network path to a host (Linux, needs root). Runs the blocking
+/// traceroute off the async runtime, then reverse-resolves router names.
+async fn run_route(sub_m: &ArgMatches) -> ExitCode {
+    let json = sub_m.get_flag("json");
+    let target_str = sub_m.get_one::<String>("target").expect("required target");
+    let max_hops = *sub_m.get_one::<u8>("max-hops").expect("max-hops has default");
+    let probes_per_hop = *sub_m
+        .get_one::<u8>("probes-per-hop")
+        .expect("probes-per-hop has default");
+    let timeout_ms = *sub_m.get_one::<u64>("timeout").expect("timeout has default");
+
+    let target = match Target::parse(target_str, DEFAULT_PORT) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("Error: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    let addresses = match resolve_for_tcp(&target.host).await {
+        Ok(addrs) => addrs,
+        Err(err) => {
+            eprintln!("Error: {err}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let Some(&dest_ip) = addresses.iter().find(|a| a.is_ipv4()) else {
+        eprintln!("Error: route diagnostics need an IPv4 address for {}", target.host);
+        return ExitCode::FAILURE;
+    };
+
+    let cfg = TracerouteConfig {
+        max_hops: max_hops.max(1),
+        timeout: Duration::from_millis(timeout_ms),
+        probes_per_hop: probes_per_hop.max(1),
+    };
+
+    let hops = match tokio::task::spawn_blocking(move || route::traceroute(dest_ip, &cfg)).await {
+        Ok(Ok(h)) => h,
+        Ok(Err(e)) => {
+            eprintln!("Error: {e}");
+            return ExitCode::FAILURE;
+        }
+        Err(e) => {
+            eprintln!("Error: traceroute task failed: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    // Reverse-resolve router addresses (best effort).
+    let mut hops = hops;
+    if let Ok(builder) = hickory_resolver::TokioResolver::builder_tokio() {
+        let resolver = builder.build();
+        for hop in &mut hops {
+            if let Some(addr) = hop.addr {
+                if let Ok(lookup) = resolver.reverse_lookup(addr).await {
+                    if let Some(name) = lookup.iter().map(ToString::to_string).next() {
+                        hop.hostname = Some(name);
+                    }
+                }
+            }
+        }
+    }
+
+    if json {
+        println!("{}", to_json(&hops));
+    } else {
+        print!("{}", render_route(&hops));
     }
     ExitCode::SUCCESS
 }

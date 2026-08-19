@@ -37,6 +37,7 @@ pub mod http3;
 pub mod model;
 pub mod probe;
 pub mod report;
+pub mod route;
 pub mod target;
 pub mod tcp;
 pub mod tls;
@@ -46,6 +47,7 @@ pub use model::{
     FailureKind, HttpObservation, IpVersion, LatencyStats, ProbeError, ProbeResult, ResolverKind, Severity,
     TcpObservation, TlsObservation,
 };
+pub use route::{RouteHop, TracerouteConfig};
 
 // ---------------------------------------------------------------------------
 // Local IP convenience helpers (legacy surface)

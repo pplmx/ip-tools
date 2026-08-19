@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 |- HTTPS / HTTP1.1 probing over per-address TLS connections, with status, redirect, protocol and body size (`ip-tools http`)
 |- HTTP/2 probing over a dedicated ALPN `h2` connection (`ip-tools http2`), keeping HTTP/1.1 and HTTP/2 as first-class distinctions
 |- HTTP/3 / QUIC probing over the UDP path (`ip-tools http3`), with negotiated ALPN/TLS version captured, distinct from the TCP path
+|- Route diagnostics (`ip-tools route`): Linux UDP/ICMP traceroute with per-hop TTL/address/RTT and loss, reverse-resolved router names, platform-gated and privilege-aware
 |- Repeated probing with per-address latency statistics — success rate, min/p50/p90/p95/p99/max, jitter, failure distribution (`ip-tools probe --count N`)
 |- IPv4/IPv6 kept as separate first-class dimensions per address
 |- Human and `--json` output for all new subcommands
@@ -23,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 |- Documentation: core principle that a failed connection is an observation, not a verdict
 
 ### Changed
-|- Add `tokio`, `hickory-resolver`, `rustls`, `tokio-rustls`, `rustls-native-certs`, `hyper`, `hyper-util`, `h2`, `quinn`, `h3`, `h3-quinn`, `http-body-util` and `x509-parser` dependencies
+|- Add `tokio`, `hickory-resolver`, `rustls`, `tokio-rustls`, `rustls-native-certs`, `hyper`, `hyper-util`, `h2`, `quinn`, `h3`, `h3-quinn`, `http-body-util`, `x509-parser` and `libc` dependencies
 |- Raise MSRV to 1.85 (required by quinn-proto)
 |- Reorganize the library into `dns`, `tcp`, `tls`, `http`, `probe`, `model`, `report`, `target`, `error` modules (breaking but intentional)**
 

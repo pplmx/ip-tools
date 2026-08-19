@@ -8,6 +8,7 @@ use crate::model::{
     CertificateSummary, DnsObservation, DnsRecordType, HttpObservation, ProbeResult, ResolverKind, TcpObservation,
     TlsObservation,
 };
+use crate::RouteHop;
 
 /// Render DNS observations for `host` as human text.
 pub fn render_dns(host: &str, observations: &[DnsObservation]) -> String {
@@ -210,4 +211,24 @@ fn format_rate(rate: f64) -> String {
 
 fn fmt(v: Option<u64>) -> String {
     v.map_or_else(|| "-".to_string(), |n| n.to_string())
+}
+
+/// Render traceroute hops as human text.
+pub fn render_route(hops: &[RouteHop]) -> String {
+    let mut out = String::from("Traceroute\n");
+    for hop in hops {
+        if hop.lost || hop.addr.is_none() {
+            out.push_str(&format!("  {:>2}  *\n", hop.ttl));
+            continue;
+        }
+        let addr = hop.addr.map_or_else(String::new, |a| a.to_string());
+        let name = hop.hostname.as_deref().filter(|n| !n.is_empty());
+        let host = match name {
+            Some(n) => format!("{n} ({addr})"),
+            None => addr,
+        };
+        let rtt = hop.rtt_ms.map_or_else(|| "-".to_string(), |ms| format!("{ms} ms"));
+        out.push_str(&format!("  {:>2}  {host:40} {rtt}\n", hop.ttl));
+    }
+    out
 }

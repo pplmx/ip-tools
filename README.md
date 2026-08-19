@@ -20,8 +20,9 @@ evidence.
 ## Status
 
 Currently implements: **DNS**, **TCP**, **TLS**, **HTTPS/HTTP1.1**, **HTTP/2**,
-**HTTP/3/QUIC**, and **repeated probing with latency statistics** (Phases 1–4).
-Route diagnostics and the diagnostic engine are planned.
+**HTTP/3/QUIC**, **route diagnostics (Linux, traceroute)**, and **repeated
+probing with latency statistics** (Phases 1–5). The diagnostic engine is
+planned.
 
 - DNS: A + AAAA via the system resolver and/or explicit DNS servers, with
   latency.
@@ -179,6 +180,28 @@ Comparing the TCP path (`http`/`http2`) with the QUIC path (`http3`) reveals
 protocol/transport-selective behavior. A QUIC-only failure is reported as a
 QUIC failure, never conflated with a TCP failure or an automatic censorship
 verdict.
+
+### Route diagnostics
+
+Trace the network path (Linux, requires root/`CAP_NET_RAW`):
+
+```shell
+ip-tools route example.com
+ip-tools route 8.8.8.8 --max-hops 20 --probes-per-hop 3 --timeout 700
+```
+
+Example output:
+
+```
+Traceroute
+   1  *
+   2  10.135.5.254                             0 ms
+   3  10.135.1.1                               1 ms
+   4  100.244.0.50                             46 ms
+```
+
+A missing hop (`*`) is recorded as lost but not over-interpreted: routers
+frequently deprioritize or filter TTL-expired responses.
 
 ### Repeated probes
 
