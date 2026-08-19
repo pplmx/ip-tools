@@ -3,13 +3,13 @@ name = "ip-tools"
 version = "0.2.0"
 edition = "2021"
 rust-version = "1.85"
-description = "A CLI tool and library to retrieve the local IP address and list network interfaces"
+description = "Network observability and diagnostics: DNS, TCP, TLS, HTTP/1.1, HTTP/2, HTTP/3/QUIC, route and repeated-probe probes with evidence-based diagnosis"
 authors = ["Mystic"]
 repository = "https://github.com/pplmx/ip-tools"
 homepage = "https://github.com/pplmx/ip-tools"
 readme = "README.md"
 license = "MIT OR Apache-2.0"
-keywords = ["ip", "network", "interface", "ip-address", "cli"]
+keywords = ["network", "diagnostics", "dns", "tcp", "tls", "http", "quic", "cli"]
 categories = ["command-line-utilities", "network-programming"]
 
 [lib]
