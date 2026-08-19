@@ -166,10 +166,13 @@ impl<V, T> ppv_lite86::types::VZip<V> for ip_tools::error::DiagError where V: pp
 pub fn ip_tools::error::DiagError::vzip(self) -> V
 pub mod ip_tools::http
 pub async fn ip_tools::http::probe(core::net::socket_addr::SocketAddr, &str, &str, core::time::Duration) -> ip_tools::model::http::HttpObservation
+pub async fn ip_tools::http::probe_with_roots(core::net::socket_addr::SocketAddr, &str, &str, core::time::Duration, &rustls::webpki::anchors::RootCertStore) -> ip_tools::model::http::HttpObservation
 pub mod ip_tools::http2
 pub async fn ip_tools::http2::probe(core::net::socket_addr::SocketAddr, &str, &str, core::time::Duration) -> ip_tools::model::http::HttpObservation
+pub async fn ip_tools::http2::probe_with_roots(core::net::socket_addr::SocketAddr, &str, &str, core::time::Duration, &rustls::webpki::anchors::RootCertStore) -> ip_tools::model::http::HttpObservation
 pub mod ip_tools::http3
 pub async fn ip_tools::http3::probe(core::net::socket_addr::SocketAddr, &str, &str, core::time::Duration) -> ip_tools::model::http::HttpObservation
+pub async fn ip_tools::http3::probe_with_roots(core::net::socket_addr::SocketAddr, &str, &str, core::time::Duration, &rustls::webpki::anchors::RootCertStore) -> ip_tools::model::http::HttpObservation
 pub mod ip_tools::model
 pub mod ip_tools::model::diagnosis
 pub enum ip_tools::model::diagnosis::Confidence
@@ -2681,6 +2684,7 @@ pub const ip_tools::tls::ALPN_GENERAL: &[&[u8]]
 pub const ip_tools::tls::ALPN_H2: &[&[u8]]
 pub const ip_tools::tls::ALPN_HTTP1: &[&[u8]]
 pub async fn ip_tools::tls::probe(core::net::socket_addr::SocketAddr, &str, core::time::Duration) -> ip_tools::model::tls::TlsObservation
+pub async fn ip_tools::tls::probe_with_roots(core::net::socket_addr::SocketAddr, &str, core::time::Duration, &rustls::webpki::anchors::RootCertStore) -> ip_tools::model::tls::TlsObservation
 pub enum ip_tools::Confidence
 pub ip_tools::Confidence::High
 pub ip_tools::Confidence::Low

@@ -7,7 +7,6 @@
 use crate::model::http::HttpObservation;
 use crate::model::tls::TlsObservation;
 use crate::model::{FailureKind, ProbeError};
-use crate::tls;
 use bytes::Buf;
 use quinn::crypto::rustls::QuicClientConfig;
 use quinn::{ClientConfig as QuinnClientConfig, Endpoint};
@@ -18,11 +17,11 @@ use std::time::{Duration, Instant};
 /// Cap on the response body read, to bound resource use.
 const MAX_BODY_BYTES: u64 = 1024 * 1024;
 
-/// Build a QUIC client configuration verifying against the system trust store
-/// and advertising ALPN `h3`.
-fn quic_client_config() -> Result<QuinnClientConfig, String> {
+/// Build a QUIC client configuration verifying against `roots` and
+/// advertising ALPN `h3`.
+fn quic_client_config(roots: &rustls::RootCertStore) -> Result<QuinnClientConfig, String> {
     let mut rustls_cfg = rustls::ClientConfig::builder()
-        .with_root_certificates(tls::roots())
+        .with_root_certificates(roots.clone())
         .with_no_client_auth();
     rustls_cfg.alpn_protocols = vec![b"h3".to_vec()];
     let quic_cfg = QuicClientConfig::try_from(rustls_cfg).map_err(|e| format!("invalid QUIC config: {e}"))?;
@@ -41,6 +40,17 @@ fn client_endpoint(destination: SocketAddr) -> Result<Endpoint, String> {
 /// Perform a single HTTP/3 request over QUIC to `destination` (its IP)
 /// presenting `host` as the server name, bounded by `timeout`.
 pub async fn probe(destination: SocketAddr, host: &str, method: &str, timeout: Duration) -> HttpObservation {
+    probe_with_roots(destination, host, method, timeout, &crate::tls::roots()).await
+}
+
+/// [`probe`] trusting an explicit root store, for verifying QUIC fixtures.
+pub async fn probe_with_roots(
+    destination: SocketAddr,
+    host: &str,
+    method: &str,
+    timeout: Duration,
+    roots: &rustls::RootCertStore,
+) -> HttpObservation {
     let start = Instant::now();
     let base = HttpObservation {
         destination,
@@ -59,7 +69,7 @@ pub async fn probe(destination: SocketAddr, host: &str, method: &str, timeout: D
         Ok(e) => e,
         Err(msg) => return base.with_failure(failure(FailureKind::Other, msg)),
     };
-    let config = match quic_client_config() {
+    let config = match quic_client_config(roots) {
         Ok(c) => c,
         Err(msg) => return base.with_failure(failure(FailureKind::Other, msg)),
     };

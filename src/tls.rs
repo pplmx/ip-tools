@@ -47,10 +47,11 @@ pub(crate) fn roots() -> rustls::RootCertStore {
         .clone()
 }
 
-/// Build a TLS client configuration offering the given ALPN protocols.
-fn client_config(alpn: &[&[u8]]) -> Arc<rustls::ClientConfig> {
+/// Build a TLS client configuration offering the given ALPN protocols and
+/// trusting `roots`.
+fn client_config(alpn: &[&[u8]], roots: &rustls::RootCertStore) -> Arc<rustls::ClientConfig> {
     let mut config = rustls::ClientConfig::builder()
-        .with_root_certificates(roots())
+        .with_root_certificates(roots.clone())
         .with_no_client_auth();
     config.alpn_protocols = alpn.iter().map(|p| p.to_vec()).collect();
     Arc::new(config)
@@ -73,13 +74,15 @@ pub(crate) struct TlsConnection {
 }
 
 /// Perform TCP connect + TLS handshake to `destination` presenting `sni`,
-/// bounded by `timeout`. Returns the established connection or a classified
-/// [`ProbeError`].
-pub(crate) async fn connect(
+/// bounded by `timeout`, trusting an explicit root store (used to verify
+/// in-process test fixtures with self-signed certificates; the CLI and system
+/// probes pass `[roots()]`).
+pub(crate) async fn connect_with_roots(
     destination: SocketAddr,
     sni: &str,
     alpn: &[&[u8]],
     timeout: Duration,
+    roots: &rustls::RootCertStore,
 ) -> Result<TlsConnection, ProbeError> {
     let start = Instant::now();
 
@@ -105,7 +108,7 @@ pub(crate) async fn connect(
             message: format!("cannot use {sni:?} as a server name"),
         });
     };
-    let connector = TlsConnector::from(client_config(alpn));
+    let connector = TlsConnector::from(client_config(alpn, roots));
     let handshake = connector.connect(name, stream);
     let tls_stream = match tokio::time::timeout(timeout, handshake).await {
         Ok(Ok(s)) => s,
@@ -146,8 +149,18 @@ pub(crate) async fn connect(
 /// Perform a single TLS handshake to `destination` presenting `sni`, bounded
 /// by `timeout`, and record a complete observation.
 pub async fn probe(destination: SocketAddr, sni: &str, timeout: Duration) -> TlsObservation {
+    probe_with_roots(destination, sni, timeout, &roots()).await
+}
+
+/// [`probe`] trusting an explicit root store, for verifying TLS fixtures.
+pub async fn probe_with_roots(
+    destination: SocketAddr,
+    sni: &str,
+    timeout: Duration,
+    roots: &rustls::RootCertStore,
+) -> TlsObservation {
     let start = Instant::now();
-    match connect(destination, sni, ALPN_GENERAL, timeout).await {
+    match connect_with_roots(destination, sni, ALPN_GENERAL, timeout, roots).await {
         Ok(conn) => TlsObservation {
             destination,
             sni: sni.to_string(),

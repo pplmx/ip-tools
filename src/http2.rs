@@ -8,7 +8,6 @@
 use crate::http::build_tls_observation;
 use crate::model::http::HttpObservation;
 use crate::model::{FailureKind, ProbeError};
-use crate::tls;
 use std::net::SocketAddr;
 use std::time::{Duration, Instant};
 
@@ -18,6 +17,17 @@ const MAX_BODY_BYTES: u64 = 1024 * 1024;
 /// Perform a single HTTPS/HTTP/2 request to `destination` (connecting to its
 /// IP) presenting `host` as SNI, bounded by `timeout`.
 pub async fn probe(destination: SocketAddr, host: &str, method: &str, timeout: Duration) -> HttpObservation {
+    probe_with_roots(destination, host, method, timeout, &crate::tls::roots()).await
+}
+
+/// [`probe`] trusting an explicit root store, for verifying TLS fixtures.
+pub async fn probe_with_roots(
+    destination: SocketAddr,
+    host: &str,
+    method: &str,
+    timeout: Duration,
+    roots: &rustls::RootCertStore,
+) -> HttpObservation {
     let start = Instant::now();
     let base = HttpObservation {
         destination,
@@ -32,7 +42,7 @@ pub async fn probe(destination: SocketAddr, host: &str, method: &str, timeout: D
         failure: None,
     };
 
-    let conn = match tls::connect(destination, host, tls::ALPN_H2, timeout).await {
+    let conn = match crate::tls::connect_with_roots(destination, host, crate::tls::ALPN_H2, timeout, roots).await {
         Ok(c) => c,
         Err(failure) => return base.with_failure(failure),
     };

@@ -53,6 +53,8 @@ pub mod report;
 pub mod route;
 pub mod target;
 pub mod tcp;
+#[cfg(feature = "test-server")]
+pub mod test_support;
 pub mod tls;
 
 pub use diagnostics::{diagnose, DiagnosticInput};

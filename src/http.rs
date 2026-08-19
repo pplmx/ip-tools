@@ -21,6 +21,17 @@ const MAX_BODY_BYTES: u64 = 1024 * 1024;
 ///
 /// `method` is `GET`, `HEAD`, etc. Failures are captured in the observation.
 pub async fn probe(destination: SocketAddr, host: &str, method: &str, timeout: Duration) -> HttpObservation {
+    probe_with_roots(destination, host, method, timeout, &crate::tls::roots()).await
+}
+
+/// [`probe`] trusting an explicit root store, for verifying TLS fixtures.
+pub async fn probe_with_roots(
+    destination: SocketAddr,
+    host: &str,
+    method: &str,
+    timeout: Duration,
+    roots: &rustls::RootCertStore,
+) -> HttpObservation {
     let start = Instant::now();
     let base = HttpObservation {
         destination,
@@ -37,7 +48,7 @@ pub async fn probe(destination: SocketAddr, host: &str, method: &str, timeout: D
 
     // 1. TLS handshake (HTTP/1.1 ALPN).
     let tls_obs;
-    let conn = match tls::connect(destination, host, tls::ALPN_HTTP1, timeout).await {
+    let conn = match crate::tls::connect_with_roots(destination, host, crate::tls::ALPN_HTTP1, timeout, roots).await {
         Ok(c) => {
             tls_obs = build_tls_observation(&c, destination, host);
             c

@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+|- In-process TLS/HTTP fixture server (`test-server` feature): self-signed certificate plus local HTTP/1.1, HTTP/2 (hyper) and HTTP/3/QUIC (quinn + h3) servers
+|- Deterministic integration tests (`test_local_http.rs`) exercising the full probe pipeline against the local fixture — TCP, TLS (TLSv1.3), HTTP/1.1 200, HTTP/2 200 (ALPN h2) and HTTP/3 200 (QUIC) — with no external network
+|- `*_with_roots` probe variants on `tls`, `http`, `http2` and `http3` to verify in-process fixtures with self-signed certificates
 |- Evolve ip-tools into a network observability and diagnostics toolkit (measurement separated from deterministic diagnosis)
 |- Async Tokio runtime foundation with explicit per-operation timeouts and bounded concurrency
 |- Strongly typed observation model (`src/model/`): DNS, TCP, latency statistics, diagnosis types, failure-kind classification

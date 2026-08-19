@@ -45,6 +45,20 @@ cargo install ip-tools
 
 MSRV: see `rust-version` in `Cargo.toml`.
 
+## Testing
+
+The default test suite is fully deterministic (no external network): TCP,
+TLS, HTTP/1.1, HTTP/2 and HTTP/3 probes are exercised against an **in-process
+fixture** — a self-signed certificate with local hyper (HTTP/1.1 + HTTP/2)
+and quinn/h3 (HTTP/3) servers, enabled by the `test-server` feature:
+
+```shell
+cargo test                        # unit + CLI + localhost TCP/probe tests
+cargo test --all-features         # adds the local HTTP/2 + HTTP/3 fixture tests
+```
+
+Running the whole suite is what CI does (`cargo test --all-features`).
+
 ## Usage
 
 ### DNS diagnostics
