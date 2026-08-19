@@ -284,9 +284,9 @@ measurement layer  →  normalized observations  →  diagnostic engine  →  re
 ```
 
 The model (`src/model/`) is typed: every probe produces an observation with
-classified failure kinds, latencies, and (for later phases) the data needed to
-reason about *why* a connection behaves as it does. The diagnostic engine is
-deterministic and performs no network I/O.
+classified failure kinds, latencies, and the data needed to reason about *why*
+a connection behaves as it does. The diagnostic engine is deterministic and
+performs no network I/O.
 
 ## Interpreting results
 
