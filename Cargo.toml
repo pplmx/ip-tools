@@ -26,7 +26,7 @@ clap = { version = "~4.6.0", features = ["cargo"] }
 h2 = "0.4.16"
 h3 = "0.0.8"
 h3-quinn = "0.0.10"
-hickory-proto = "0.25.2"
+hickory-proto = "0.26.1"
 hickory-resolver = "0.25.2"
 http-body-util = "0.1.5"
 hyper = { version = "1.11.0", features = ["client", "http1", "http2"] }
