@@ -1,6 +1,6 @@
 //! `diagnose` subcommand handler.
 
-use super::{parallel_map, resolve_for_tcp, DEFAULT_PORT};
+use super::{parallel_map, DEFAULT_PORT};
 use clap::ArgMatches;
 use ip_tools::diagnostics::{diagnose, DiagnosticInput};
 use ip_tools::dns::DnsClient;
@@ -16,7 +16,7 @@ use ip_tools::target::Target;
 use ip_tools::tcp as ip_tcp;
 use ip_tools::tls as ip_tls;
 use serde::Serialize;
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::process::ExitCode;
 use std::time::Duration;
 
@@ -39,22 +39,38 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
     };
 
     // --- Measure (probe layer) ---
-    // DNS
+    // Resolve once: the DNS observations and the probed addresses come from
+    // the same lookups (previously the hostname was resolved twice).
     let dns_client = DnsClient::new(&[], timeout, 1);
     let mut dns_obs = Vec::new();
-    for rt in [DnsRecordType::A, DnsRecordType::Aaaa] {
-        dns_obs.extend(dns_client.resolve(&target.host, rt).await);
-    }
-
-    // Addresses and per-address probes across layers.
-    let addresses = match resolve_for_tcp(&target.host).await {
-        Ok(addrs) => addrs,
-        Err(err) => {
-            eprintln!("Error: {err}");
-            return ExitCode::FAILURE;
+    let mut addresses: Vec<IpAddr> = Vec::new();
+    if let Ok(ip) = target.host.parse::<IpAddr>() {
+        addresses.push(ip);
+    } else {
+        for rt in [DnsRecordType::A, DnsRecordType::Aaaa] {
+            let obs = dns_client.resolve(&target.host, rt).await;
+            for o in &obs {
+                if o.error.is_none() {
+                    addresses.extend(o.records.iter().copied());
+                }
+            }
+            dns_obs.extend(obs);
         }
-    };
-    let destinations: Vec<SocketAddr> = addresses.iter().map(|ip| SocketAddr::new(*ip, target.port)).collect();
+        // De-duplicate while preserving resolution order (as `resolve_for_tcp`).
+        let mut seen = std::collections::HashSet::new();
+        addresses.retain(|a| seen.insert(*a));
+    }
+    if addresses.is_empty() {
+        eprintln!(
+            "Error: hostname {} did not resolve to any address via the system resolver",
+            target.host
+        );
+        return ExitCode::FAILURE;
+    }
+    let destinations: Vec<SocketAddr> = addresses
+        .into_iter()
+        .map(|ip| SocketAddr::new(ip, target.port))
+        .collect();
 
     let tcp_obs: Vec<TcpObservation> = parallel_map(destinations.clone(), concurrency, move |d| async move {
         ip_tcp::probe(d, timeout).await

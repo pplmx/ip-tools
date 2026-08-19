@@ -18,6 +18,7 @@ use clap::{command, crate_authors, Arg, ArgAction, ArgMatches, Command};
 use ip_tools::dns::DnsClient;
 use ip_tools::model::DnsRecordType;
 use ip_tools::report::to_json;
+use ip_tools::target::Target;
 use ip_tools::{get_local_ip, list_net_ifs};
 use serde::Serialize;
 use std::future::Future;
@@ -65,52 +66,36 @@ fn parser() -> ArgMatches {
                 .arg(record_type_arg())
                 .arg(timeout_arg()),
         )
-        .subcommand(
-            Command::new("tcp")
-                .about("test TCP connectivity to a host:port across its addresses")
-                .arg(positional_target("host[:port] to probe (default port 443)"))
-                .arg(timeout_arg())
-                .arg(concurrency_arg()),
-        )
-        .subcommand(
-            Command::new("tls")
-                .about("perform TLS handshake to a host:port across its addresses")
-                .arg(positional_target("host[:port] to probe (default port 443)"))
-                .arg(timeout_arg())
-                .arg(concurrency_arg()),
-        )
-        .subcommand(
-            Command::new("http")
-                .about("perform an HTTPS/HTTP1.1 request to a host:port across its addresses")
-                .arg(positional_target("host[:port] to probe (default port 443)"))
-                .arg(method_arg())
-                .arg(timeout_arg())
-                .arg(concurrency_arg()),
-        )
-        .subcommand(
-            Command::new("probe")
-                .about("repeatedly probe TCP connectivity and report latency statistics")
-                .arg(positional_target("host[:port] to probe (default port 443)"))
-                .arg(count_arg())
-                .arg(timeout_arg())
-                .arg(concurrency_arg()),
-        )
-        .subcommand(
-            Command::new("http2")
-                .about("perform an HTTPS/HTTP2 request to a host:port across its addresses")
-                .arg(positional_target("host[:port] to probe (default port 443)"))
-                .arg(method_arg())
-                .arg(timeout_arg())
-                .arg(concurrency_arg()),
-        )
-        .subcommand(
-            Command::new("http3")
-                .about("perform an HTTPS/HTTP3 (QUIC) request to a host:port across its addresses")
-                .arg(positional_target("host[:port] to probe (default port 443)"))
-                .arg(method_arg())
-                .arg(timeout_arg())
-                .arg(concurrency_arg()),
-        )
+        .subcommand(probe_command(
+            "tcp",
+            "test TCP connectivity to a host:port across its addresses",
+            None,
+        ))
+        .subcommand(probe_command(
+            "tls",
+            "perform TLS handshake to a host:port across its addresses",
+            None,
+        ))
+        .subcommand(probe_command(
+            "http",
+            "perform an HTTPS/HTTP1.1 request to a host:port across its addresses",
+            Some(method_arg()),
+        ))
+        .subcommand(probe_command(
+            "probe",
+            "repeatedly probe TCP connectivity and report latency statistics",
+            Some(count_arg()),
+        ))
+        .subcommand(probe_command(
+            "http2",
+            "perform an HTTPS/HTTP2 request to a host:port across its addresses",
+            Some(method_arg()),
+        ))
+        .subcommand(probe_command(
+            "http3",
+            "perform an HTTPS/HTTP3 (QUIC) request to a host:port across its addresses",
+            Some(method_arg()),
+        ))
         .subcommand(
             Command::new("route")
                 .about("trace the network path (hops) to a host (Linux, requires root)")
@@ -133,14 +118,25 @@ fn parser() -> ArgMatches {
                 )
                 .arg(timeout_arg()),
         )
-        .subcommand(
-            Command::new("diagnose")
-                .about("run the full probe pipeline and produce evidence-based diagnoses")
-                .arg(positional_target("host[:port] to diagnose (default port 443)"))
-                .arg(timeout_arg())
-                .arg(concurrency_arg()),
-        )
+        .subcommand(probe_command(
+            "diagnose",
+            "run the full probe pipeline and produce evidence-based diagnoses",
+            None,
+        ))
         .get_matches()
+}
+
+/// Build a per-address probe subcommand: positional target plus the shared
+/// `--timeout`/`--concurrency` flags, and an optional subcommand-specific flag
+/// (e.g. `--method`) inserted after the target.
+fn probe_command(name: &'static str, about: &'static str, extra: Option<Arg>) -> Command {
+    let mut cmd = Command::new(name)
+        .about(about)
+        .arg(positional_target("host[:port] to probe (default port 443)"));
+    if let Some(extra) = extra {
+        cmd = cmd.arg(extra);
+    }
+    cmd.arg(timeout_arg()).arg(concurrency_arg())
 }
 
 /// Common `--timeout` argument (milliseconds).
@@ -229,6 +225,66 @@ fn run_tokio(name: &str, sub_m: &ArgMatches) -> ExitCode {
         "diagnose" => rt.block_on(diagnose::run_diagnose(sub_m)),
         _ => unreachable!(),
     }
+}
+
+/// Shared pipeline for the per-address probe subcommands (`tcp`, `tls`,
+/// `http`, `http2`, `http3`, `probe`): parse the target, resolve its
+/// addresses, probe each in parallel (bounded by `--concurrency`), then emit
+/// sorted human or JSON output.
+///
+/// `probe` is invoked once per destination with `(host, destination,
+/// timeout)`; subcommand-specific state (e.g. `--method`, `--count`) is
+/// captured by the caller's closure.
+pub async fn run_probe_flow<O, Fut>(
+    sub_m: &ArgMatches,
+    render: fn(&[O]) -> String,
+    sort_key: fn(&O) -> SocketAddr,
+    probe: impl Fn(String, SocketAddr, Duration) -> Fut + Send + Sync + 'static,
+) -> ExitCode
+where
+    O: Sized + serde::Serialize + Send + 'static,
+    Fut: Future<Output = O> + Send + 'static,
+{
+    let json = sub_m.get_flag("json");
+    let target_str = sub_m.get_one::<String>("target").expect("required target");
+    let timeout_ms = *sub_m.get_one::<u64>("timeout").expect("timeout has default");
+    let concurrency = *sub_m.get_one::<usize>("concurrency").expect("concurrency has default");
+    let timeout = Duration::from_millis(timeout_ms);
+
+    let target = match Target::parse(target_str, DEFAULT_PORT) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("Error: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    let addresses = match resolve_for_tcp(&target.host).await {
+        Ok(addrs) => addrs,
+        Err(err) => {
+            eprintln!("Error: {err}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    let destinations: Vec<SocketAddr> = addresses
+        .into_iter()
+        .map(|ip| SocketAddr::new(ip, target.port))
+        .collect();
+    let host = target.host.clone();
+    let mut results: Vec<O> = parallel_map(destinations, concurrency, move |dest| {
+        let host = host.clone();
+        probe(host, dest, timeout)
+    })
+    .await;
+    results.sort_by_key(sort_key);
+
+    if json {
+        println!("{}", to_json(&results));
+    } else {
+        print!("{}", render(&results));
+    }
+    ExitCode::SUCCESS
 }
 
 fn handle_get(sub_m: &ArgMatches) -> ExitCode {

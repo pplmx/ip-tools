@@ -4,6 +4,7 @@
 //! HTTP/3, via `quinn` and `h3`. Keeping this distinct from the TCP path makes
 //! `TCP/HTTPS PASS / QUIC/HTTP3 FAIL` (and the reverse) observable.
 
+use crate::http_common::MAX_BODY_BYTES;
 use crate::model::http::HttpObservation;
 use crate::model::tls::TlsObservation;
 use crate::model::{FailureKind, ProbeError};
@@ -13,9 +14,6 @@ use quinn::{ClientConfig as QuinnClientConfig, Endpoint};
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-
-/// Cap on the response body read, to bound resource use.
-const MAX_BODY_BYTES: u64 = 1024 * 1024;
 
 /// Build a QUIC client configuration verifying against `roots` and
 /// advertising ALPN `h3`.
@@ -52,18 +50,7 @@ pub async fn probe_with_roots(
     roots: &rustls::RootCertStore,
 ) -> HttpObservation {
     let start = Instant::now();
-    let base = HttpObservation {
-        destination,
-        host: host.to_string(),
-        method: method.to_string(),
-        tls: None,
-        protocol: None,
-        status: None,
-        location: None,
-        body_bytes: None,
-        latency_ms: None,
-        failure: None,
-    };
+    let base = HttpObservation::base(destination, host, method);
 
     let mut endpoint = match client_endpoint(destination) {
         Ok(e) => e,

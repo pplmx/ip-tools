@@ -34,3 +34,28 @@ pub struct HttpObservation {
     /// Classified failure mode and context, when not successful.
     pub failure: Option<ProbeError>,
 }
+
+impl HttpObservation {
+    /// Construct the blank start of an observation before any probe step runs.
+    /// Failures are attached via [`Self::with_failure`].
+    pub(crate) fn base(destination: SocketAddr, host: &str, method: &str) -> Self {
+        Self {
+            destination,
+            host: host.to_string(),
+            method: method.to_string(),
+            tls: None,
+            protocol: None,
+            status: None,
+            location: None,
+            body_bytes: None,
+            latency_ms: None,
+            failure: None,
+        }
+    }
+
+    /// Attach a classified failure mode and context to this observation.
+    pub(crate) fn with_failure(mut self, failure: ProbeError) -> Self {
+        self.failure = Some(failure);
+        self
+    }
+}

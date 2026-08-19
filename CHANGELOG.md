@@ -33,6 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 |- Raise MSRV to 1.85 (required by quinn-proto)
 |- Reorganize the library into `dns`, `tcp`, `tls`, `http`, `probe`, `model`, `report`, `target`, `error` modules (breaking but intentional)
 |- Internal module splits (no API or behavior change): CLI dispatch split from the single `cli.rs` into `cli/` per-subcommand handlers sharing a thin `mod.rs` router; the diagnostic engine split from `diagnostics.rs` into `diagnostics/` (`dns`, `connectivity`, `layer`, `filtering`); TLS-observation and HTTP-error builders moved into a shared `http_common.rs`**
+|- Deduplicate the per-address probe CLI handlers (`tcp`, `tls`, `http`, `http2`, `http3`, `probe`) behind a shared `run_probe_flow` pipeline in `cli/mod.rs`, and build their clap subcommands with a shared `probe_command` argument helper (no behavior or help-text change)
+|- Run DNS resolution once in the `diagnose` pipeline: probe addresses are now derived from the same DNS observations (previously the hostname was resolved a second time); IP-literal targets no longer produce a spurious DNS observation
+|- Move the shared HTTP-probe pieces into `http_common.rs` and the model: the `MAX_BODY_BYTES` cap, a generic `http_error`, and a reusable `HttpObservation::base` / `with_failure` on the model, so HTTP/1.1, HTTP/2 and HTTP/3 no longer duplicate the base-observation literal
 
 ### Fixed
 |- Fix `cargo doc` breaking under the `-D warnings` gate: `diagnostics` module docs linked private submodules, and the traceroute docs contained a stray `[UDP]` intra-doc link (both broke CI's docs job)

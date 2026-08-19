@@ -5,16 +5,13 @@
 //! connection. Redirection is *not* followed by default: a redirect is
 //! recorded, not chased, so the raw server behaviour is visible.
 
-use crate::http_common::{build_tls_observation, http_error};
+use crate::http_common::{build_tls_observation, http_error, MAX_BODY_BYTES};
 use crate::model::http::HttpObservation;
 use crate::model::{FailureKind, ProbeError};
 use http_body_util::{BodyExt, Empty, Limited};
 use hyper_util::rt::TokioIo;
 use std::net::SocketAddr;
 use std::time::{Duration, Instant};
-
-/// Cap on the response body read from the server, to bound resource use.
-const MAX_BODY_BYTES: u64 = 1024 * 1024;
 
 /// Perform a single HTTPS/HTTP/1.1 request to `destination` (connecting to
 /// its IP) presenting `host` as SNI and `Host` header, bounded by `timeout`.
@@ -33,18 +30,7 @@ pub async fn probe_with_roots(
     roots: &rustls::RootCertStore,
 ) -> HttpObservation {
     let start = Instant::now();
-    let base = HttpObservation {
-        destination,
-        host: host.to_string(),
-        method: method.to_string(),
-        tls: None,
-        protocol: None,
-        status: None,
-        location: None,
-        body_bytes: None,
-        latency_ms: None,
-        failure: None,
-    };
+    let base = HttpObservation::base(destination, host, method);
 
     // 1. TLS handshake (HTTP/1.1 ALPN).
     let tls_obs;
@@ -125,12 +111,5 @@ pub async fn probe_with_roots(
         body_bytes,
         latency_ms: Some(start.elapsed().as_millis() as u64),
         ..base
-    }
-}
-
-impl HttpObservation {
-    pub(crate) fn with_failure(mut self, failure: ProbeError) -> Self {
-        self.failure = Some(failure);
-        self
     }
 }

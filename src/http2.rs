@@ -5,14 +5,11 @@
 //! the HTTP/1.1 probe makes `HTTP/1.1 PASS / HTTP/2 FAIL` (and the reverse) a
 //! first-class, observable distinction.
 
-use crate::http_common::build_tls_observation;
+use crate::http_common::{build_tls_observation, http_error, MAX_BODY_BYTES};
 use crate::model::http::HttpObservation;
 use crate::model::{FailureKind, ProbeError};
 use std::net::SocketAddr;
 use std::time::{Duration, Instant};
-
-/// Cap on the response body read, to bound resource use.
-const MAX_BODY_BYTES: u64 = 1024 * 1024;
 
 /// Perform a single HTTPS/HTTP/2 request to `destination` (connecting to its
 /// IP) presenting `host` as SNI, bounded by `timeout`.
@@ -29,18 +26,7 @@ pub async fn probe_with_roots(
     roots: &rustls::RootCertStore,
 ) -> HttpObservation {
     let start = Instant::now();
-    let base = HttpObservation {
-        destination,
-        host: host.to_string(),
-        method: method.to_string(),
-        tls: None,
-        protocol: None,
-        status: None,
-        location: None,
-        body_bytes: None,
-        latency_ms: None,
-        failure: None,
-    };
+    let base = HttpObservation::base(destination, host, method);
 
     let conn = match crate::tls::connect_with_roots(destination, host, crate::tls::ALPN_H2, timeout, roots).await {
         Ok(c) => c,
@@ -50,7 +36,7 @@ pub async fn probe_with_roots(
 
     let (mut send_request, connection) = match tokio::time::timeout(timeout, h2::client::handshake(conn.stream)).await {
         Ok(Ok(pair)) => pair,
-        Ok(Err(e)) => return base.with_failure(h2_error("HTTP/2 handshake", &e)),
+        Ok(Err(e)) => return base.with_failure(http_error("HTTP/2 handshake", &e)),
         Err(_) => {
             return base.with_failure(ProbeError {
                 kind: FailureKind::Timeout,
@@ -87,11 +73,11 @@ pub async fn probe_with_roots(
     // stream would make it wait for request data).
     let (response_future, _send_stream) = match send_request.send_request(request, true) {
         Ok(pair) => pair,
-        Err(e) => return base.with_failure(h2_error("http/2 request", &e)),
+        Err(e) => return base.with_failure(http_error("http/2 request", &e)),
     };
     let response = match tokio::time::timeout(timeout, response_future).await {
         Ok(Ok(resp)) => resp,
-        Ok(Err(e)) => return base.with_failure(h2_error("http/2 response", &e)),
+        Ok(Err(e)) => return base.with_failure(http_error("http/2 response", &e)),
         Err(_) => {
             return base.with_failure(ProbeError {
                 kind: FailureKind::Timeout,
@@ -113,7 +99,7 @@ pub async fn probe_with_roots(
     loop {
         let chunk = match tokio::time::timeout(timeout, body.data()).await {
             Ok(Some(Ok(chunk))) => chunk,
-            Ok(Some(Err(e))) => return base.with_failure(h2_error("http/2 body", &e)),
+            Ok(Some(Err(e))) => return base.with_failure(http_error("http/2 body", &e)),
             Ok(None) | Err(_) => break,
         };
         bytes_read = bytes_read.saturating_add(chunk.len() as u64);
@@ -131,12 +117,5 @@ pub async fn probe_with_roots(
         body_bytes: Some(bytes_read),
         latency_ms: Some(start.elapsed().as_millis() as u64),
         ..base
-    }
-}
-
-fn h2_error(step: &str, e: &h2::Error) -> ProbeError {
-    ProbeError {
-        kind: FailureKind::Http,
-        message: format!("{step} failed: {e}"),
     }
 }
