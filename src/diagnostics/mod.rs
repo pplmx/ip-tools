@@ -7,8 +7,8 @@
 //! when several independent signals align, and always lists the mundane
 //! alternatives that also fit the evidence.
 //!
-//! The rule families live in submodules: [`dns`] (resolution), [`connectivity`]
-//! (TCP reachability), [`layer`] (TLS/HTTP/QUIC/intermittent) and [`filtering`]
+//! The rule families live in submodules: `dns` (resolution), `connectivity`
+//! (TCP reachability), `layer` (TLS/HTTP/QUIC/intermittent) and `filtering`
 //! (conservative multi-signal analysis).
 
 mod connectivity;

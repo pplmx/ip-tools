@@ -90,6 +90,14 @@ pub enum IpToolsError {
 ///
 /// Returns [`Err`] containing an [`IpToolsError`] if the local IP cannot be
 /// determined, e.g. when no network interface is configured.
+///
+/// # Examples
+///
+/// ```
+/// # use ip_tools::get_local_ip;
+/// let ip = get_local_ip().expect("a network interface should exist");
+/// println!("local IP: {ip}");
+/// ```
 pub fn get_local_ip() -> Result<IpAddr, IpToolsError> {
     Ok(local_ip()?)
 }
@@ -100,6 +108,15 @@ pub fn get_local_ip() -> Result<IpAddr, IpToolsError> {
 ///
 /// Returns [`Err`] containing an [`IpToolsError`] if the interface list
 /// cannot be retrieved.
+///
+/// # Examples
+///
+/// ```
+/// # use ip_tools::list_net_ifs;
+/// for (name, ip) in list_net_ifs().expect("interfaces should be listable") {
+///     println!("{name}: {ip}");
+/// }
+/// ```
 pub fn list_net_ifs() -> Result<Vec<(String, IpAddr)>, IpToolsError> {
     list_afinet_netifas().map_err(IpToolsError::ListInterfaces)
 }

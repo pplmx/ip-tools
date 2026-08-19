@@ -47,9 +47,10 @@ cd ip-tools
 cargo test
 ```
 
-Git hooks (via husky-rs) are automatically installed on `cargo build`.
+Git hooks (standalone husky-rs scripts in `.husky/`) are activated by
+pointing `core.hooksPath` at them — run `just init` once after cloning.
 They enforce the same checks as CI: `cargo fmt --check` and `cargo clippy` on
-commit, conventional commit messages, and full tests on push.
+commit, conventional commit messages, and full tests on push (`just quick`).
 To skip hooks for a commit, use `HUSKY=0 git commit`.
 
 ### Useful Commands

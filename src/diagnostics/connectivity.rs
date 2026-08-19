@@ -41,9 +41,10 @@ pub(super) fn connectivity_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosi
         // Partial reachability.
         let failing: Vec<String> = bad.iter().map(|o| o.destination.to_string()).collect();
         let passing: Vec<String> = ok.iter().map(|o| o.destination.to_string()).collect();
-        let confidence = if failing.iter().any(|f| f == passing.first().map_or("", String::as_str)) {
-            Confidence::Medium
-        } else if bad.iter().filter(|o| !o.success).count() > 1 {
+        // A single failing address on an otherwise reachable host might just
+        // be one bad node, so withhold High confidence until several
+        // destinations fail. (`bad` is already the failing subset.)
+        let confidence = if bad.len() > 1 {
             Confidence::High
         } else {
             Confidence::Medium

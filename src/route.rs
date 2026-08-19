@@ -72,7 +72,9 @@ fn traceroute_linux(target: IpAddr, cfg: &TracerouteConfig) -> Result<Vec<RouteH
         return Err("route diagnostics are currently IPv4-only on Linux".to_string());
     };
 
-    let icmp_fd = open_icmp_socket()?;
+    // RAII guard so the raw ICMP socket is closed even on early-return error
+    // paths (bind/set_ttl failures), not just on the happy path.
+    let icmp_fd = RawSocket(open_icmp_socket()?);
     let mut hops = Vec::new();
 
     for ttl in 1..=cfg.max_hops {
@@ -103,7 +105,7 @@ fn traceroute_linux(target: IpAddr, cfg: &TracerouteConfig) -> Result<Vec<RouteH
             let deadline = start + cfg.timeout;
             let mut buf = [0u8; 512];
             while std::time::Instant::now() < deadline {
-                match recv_icmp(icmp_fd, &mut buf, deadline) {
+                match recv_icmp(icmp_fd.0, &mut buf, deadline) {
                     Ok(None) => break, // timeout
                     Ok(Some((src, inner_udp_src))) => {
                         if inner_udp_src == local_port {
@@ -126,8 +128,20 @@ fn traceroute_linux(target: IpAddr, cfg: &TracerouteConfig) -> Result<Vec<RouteH
         }
     }
 
-    unsafe { libc::close(icmp_fd) };
     Ok(hops)
+}
+
+/// Owns a raw socket fd and closes it on drop (RAII).
+#[cfg(target_os = "linux")]
+struct RawSocket(i32);
+
+#[cfg(target_os = "linux")]
+impl Drop for RawSocket {
+    fn drop(&mut self) {
+        unsafe {
+            libc::close(self.0);
+        }
+    }
 }
 
 /// Open a raw ICMP socket with a receive timeout for non-blocking reads.
@@ -202,7 +216,7 @@ fn recv_icmp(fd: i32, buf: &mut [u8], deadline: std::time::Instant) -> std::io::
 
 /// Parse an ICMP reply and return the offending datagram's UDP source port.
 ///
-/// Layout: [outer IP header][ICMP header (8)][offending IP header][UDP].
+/// Layout: `outer IP header` + `ICMP header (8)` + `offending IP header` + `UDP`.
 #[cfg(target_os = "linux")]
 fn parse_icmp_udp_src(buf: &[u8], len: usize) -> Option<(u8, u16)> {
     if len < 28 {

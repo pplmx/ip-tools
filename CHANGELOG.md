@@ -26,12 +26,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 |- Human and `--json` output for all new subcommands
 |- Target parsing supporting host, host:port, IP literals and bracketed IPv6
 |- Documentation: core principle that a failed connection is an observation, not a verdict
+|- Restore runnable doc-tests (`# Examples`) for the legacy local-IP helpers (`get_local_ip`, `list_net_ifs`) so the CI `doctest` job verifies real, compiled examples again
 
 ### Changed
 |- Add `tokio`, `hickory-resolver`, `rustls`, `tokio-rustls`, `rustls-native-certs`, `hyper`, `hyper-util`, `h2`, `quinn`, `h3`, `h3-quinn`, `http-body-util`, `x509-parser` and `libc` dependencies
 |- Raise MSRV to 1.85 (required by quinn-proto)
 |- Reorganize the library into `dns`, `tcp`, `tls`, `http`, `probe`, `model`, `report`, `target`, `error` modules (breaking but intentional)
 |- Internal module splits (no API or behavior change): CLI dispatch split from the single `cli.rs` into `cli/` per-subcommand handlers sharing a thin `mod.rs` router; the diagnostic engine split from `diagnostics.rs` into `diagnostics/` (`dns`, `connectivity`, `layer`, `filtering`); TLS-observation and HTTP-error builders moved into a shared `http_common.rs`**
+
+### Fixed
+|- Fix `cargo doc` breaking under the `-D warnings` gate: `diagnostics` module docs linked private submodules, and the traceroute docs contained a stray `[UDP]` intra-doc link (both broke CI's docs job)
+|- Close the raw ICMP socket on error paths in the Linux traceroute (it was leaked when UDP-probe binding or TTL setting failed mid-run)
+|- Remove an always-false dead branch in the partial-connectivity confidence logic (failing and passing address sets are disjoint, so the comparison could never match; effective behavior is unchanged)
 
 ## [0.2.0] - 2026-07-24
 
