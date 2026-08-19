@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 |- HTTP/2 probing over a dedicated ALPN `h2` connection (`ip-tools http2`), keeping HTTP/1.1 and HTTP/2 as first-class distinctions
 |- HTTP/3 / QUIC probing over the UDP path (`ip-tools http3`), with negotiated ALPN/TLS version captured, distinct from the TCP path
 |- Route diagnostics (`ip-tools route`): Linux UDP/ICMP traceroute with per-hop TTL/address/RTT and loss, reverse-resolved router names, platform-gated and privilege-aware
+|- Evidence-based diagnostic engine (`ip-tools diagnose`): deterministic, pure (no I/O) rules over the observations, producing severity / category / confidence / evidence / alternatives for DNS, connectivity, address-family, TLS, HTTP, QUIC and intermittent failures, plus a conservative multi-signal possible-filtering check (never high confidence)
 |- Repeated probing with per-address latency statistics — success rate, min/p50/p90/p95/p99/max, jitter, failure distribution (`ip-tools probe --count N`)
 |- IPv4/IPv6 kept as separate first-class dimensions per address
 |- Human and `--json` output for all new subcommands

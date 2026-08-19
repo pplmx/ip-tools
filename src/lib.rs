@@ -20,6 +20,7 @@
 //! * [`http2`] — HTTP/2 request probes.
 //! * [`http3`] — HTTP/3 / QUIC (UDP path) request probes.
 //! * [`probe`] — repeated probing and latency statistics.
+//! * [`diagnostics`] — the deterministic, evidence-based diagnostic engine.
 //! * [`target`] — target (host/port) parsing.
 //! * [`report`] — human and JSON rendering.
 //! * [`error`] — context-preserving error types.
@@ -29,6 +30,7 @@
 //! The historical local-IP surface is preserved: [`get_local_ip`] and
 //! [`list_net_ifs`] with [`IpToolsError`].
 
+pub mod diagnostics;
 pub mod dns;
 pub mod error;
 pub mod http;
@@ -42,6 +44,7 @@ pub mod target;
 pub mod tcp;
 pub mod tls;
 
+pub use diagnostics::{diagnose, DiagnosticInput};
 pub use model::{
     CertificateSummary, Confidence, Diagnosis, DiagnosticCategory, DnsObservation, DnsRecordType, Evidence,
     FailureKind, HttpObservation, IpVersion, LatencyStats, ProbeError, ProbeResult, ResolverKind, Severity,

@@ -5,8 +5,8 @@
 //! so external systems can build their own analysis.
 
 use crate::model::{
-    CertificateSummary, DnsObservation, DnsRecordType, HttpObservation, ProbeResult, ResolverKind, TcpObservation,
-    TlsObservation,
+    CertificateSummary, Diagnosis, DnsObservation, DnsRecordType, HttpObservation, ProbeResult, ResolverKind,
+    TcpObservation, TlsObservation,
 };
 use crate::RouteHop;
 
@@ -229,6 +229,33 @@ pub fn render_route(hops: &[RouteHop]) -> String {
         };
         let rtt = hop.rtt_ms.map_or_else(|| "-".to_string(), |ms| format!("{ms} ms"));
         out.push_str(&format!("  {:>2}  {host:40} {rtt}\n", hop.ttl));
+    }
+    out
+}
+
+/// Render diagnoses as human text.
+pub fn render_diagnoses(diagnoses: &[Diagnosis]) -> String {
+    let mut out = String::from("Diagnosis\n");
+    for d in diagnoses {
+        let severity = format!("{:?}", d.severity).to_uppercase();
+        out.push_str(&format!(
+            "[{}] {:?} ({:?} confidence)\n",
+            severity, d.category, d.confidence
+        ));
+        out.push_str(&format!("    {}\n", d.summary));
+        if !d.evidence.is_empty() {
+            out.push_str("    Evidence:\n");
+            for e in &d.evidence {
+                out.push_str(&format!("      - {}\n", e.detail));
+            }
+        }
+        if !d.possible_causes.is_empty() {
+            out.push_str("    Possible causes:\n");
+            for c in &d.possible_causes {
+                out.push_str(&format!("      - {c}\n"));
+            }
+        }
+        out.push('\n');
     }
     out
 }

@@ -20,9 +20,9 @@ evidence.
 ## Status
 
 Currently implements: **DNS**, **TCP**, **TLS**, **HTTPS/HTTP1.1**, **HTTP/2**,
-**HTTP/3/QUIC**, **route diagnostics (Linux, traceroute)**, and **repeated
-probing with latency statistics** (Phases 1–5). The diagnostic engine is
-planned.
+**HTTP/3/QUIC**, **route diagnostics (Linux, traceroute)**, **repeated
+probing with latency statistics**, and the **evidence-based diagnostic engine**
+(Phases 1–6).
 
 - DNS: A + AAAA via the system resolver and/or explicit DNS servers, with
   latency.
@@ -180,6 +180,44 @@ Comparing the TCP path (`http`/`http2`) with the QUIC path (`http3`) reveals
 protocol/transport-selective behavior. A QUIC-only failure is reported as a
 QUIC failure, never conflated with a TCP failure or an automatic censorship
 verdict.
+
+### Full diagnosis
+
+Run the full probe pipeline (DNS, TCP, TLS, HTTP/1.1, HTTP/2, HTTP/3 and
+repeated probes) then evaluate the evidence with the deterministic engine:
+
+```shell
+ip-tools diagnose example.com
+ip-tools diagnose example.com --json
+```
+
+Example output:
+
+```
+DNS example.com
+  system
+    A   : 104.20.23.154, 172.66.147.243 (15 ms)
+TCP connect
+  104.20.23.154:443        PASS      203 ms
+  [2606:4700:10::ac42:93f3]:443 network unreachable
+Diagnosis
+[LOW] Dns (Low confidence)
+    Resolvers disagree on example.com's addresses
+    Evidence:
+      - 2 distinct address sets returned
+    Possible causes:
+      - GeoDNS
+      - CDN / load-balanced DNS
+      - ...
+[MEDIUM] PartialConnectivity (High confidence)
+    Only some addresses of example.com are reachable
+    ...
+```
+
+The engine separates measurement from diagnosis: each diagnosis carries a
+severity, a category, a confidence, the evidence that supports it, and the
+mundane alternative explanations that remain consistent with the evidence.
+`--json` includes the full raw observations plus the diagnoses.
 
 ### Route diagnostics
 

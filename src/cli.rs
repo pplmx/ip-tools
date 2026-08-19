@@ -1,7 +1,12 @@
 use clap::{command, crate_authors, Arg, ArgAction, ArgMatches, Command};
+use ip_tools::diagnostics::{diagnose, DiagnosticInput};
 use ip_tools::dns::DnsClient;
-use ip_tools::model::{DnsRecordType, HttpObservation, ProbeResult, TcpObservation, TlsObservation};
-use ip_tools::report::{render_dns, render_http, render_probe, render_route, render_tcp, render_tls, to_json};
+use ip_tools::model::{
+    Diagnosis, DnsObservation, DnsRecordType, HttpObservation, ProbeResult, TcpObservation, TlsObservation,
+};
+use ip_tools::report::{
+    render_diagnoses, render_dns, render_http, render_probe, render_route, render_tcp, render_tls, to_json,
+};
 use ip_tools::target::Target;
 use ip_tools::TracerouteConfig;
 use ip_tools::{get_local_ip, http, http2, http3, list_net_ifs, probe, route, tcp, tls};
@@ -23,6 +28,7 @@ pub fn ip_tools_cli() -> ExitCode {
     handler(&matches)
 }
 
+#[allow(clippy::too_many_lines)] // clap subcommand declarations
 fn parser() -> ArgMatches {
     command!()
         .arg_required_else_help(true)
@@ -118,6 +124,13 @@ fn parser() -> ArgMatches {
                 )
                 .arg(timeout_arg()),
         )
+        .subcommand(
+            Command::new("diagnose")
+                .about("run the full probe pipeline and produce evidence-based diagnoses")
+                .arg(positional_target("host[:port] to diagnose (default port 443)"))
+                .arg(timeout_arg())
+                .arg(concurrency_arg()),
+        )
         .get_matches()
 }
 
@@ -176,7 +189,7 @@ fn handler(app_m: &ArgMatches) -> ExitCode {
     match app_m.subcommand() {
         Some(("get", sub_m)) => handle_get(sub_m),
         Some(("list", sub_m)) => handle_list(sub_m),
-        Some((name @ ("dns" | "tcp" | "tls" | "http" | "http2" | "http3" | "probe" | "route"), sub_m)) => {
+        Some((name @ ("dns" | "tcp" | "tls" | "http" | "http2" | "http3" | "probe" | "route" | "diagnose"), sub_m)) => {
             run_tokio(name, sub_m)
         }
         _ => {
@@ -204,6 +217,7 @@ fn run_tokio(name: &str, sub_m: &ArgMatches) -> ExitCode {
         "http3" => rt.block_on(run_http3(sub_m)),
         "probe" => rt.block_on(run_probe(sub_m)),
         "route" => rt.block_on(run_route(sub_m)),
+        "diagnose" => rt.block_on(run_diagnose(sub_m)),
         _ => unreachable!(),
     }
 }
@@ -643,6 +657,137 @@ async fn run_route(sub_m: &ArgMatches) -> ExitCode {
         print!("{}", render_route(&hops));
     }
     ExitCode::SUCCESS
+}
+
+/// Full diagnostic run: collect observations across layers, then run the
+/// deterministic engine. The diagnostic engine performs no network I/O.
+#[allow(clippy::too_many_lines)] // sequential pipeline steps are clearer inline
+async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
+    let json = sub_m.get_flag("json");
+    let target_str = sub_m.get_one::<String>("target").expect("required target");
+    let timeout_ms = *sub_m.get_one::<u64>("timeout").expect("timeout has default");
+    let concurrency = *sub_m.get_one::<usize>("concurrency").expect("concurrency has default");
+    let timeout = Duration::from_millis(timeout_ms);
+
+    let target = match Target::parse(target_str, DEFAULT_PORT) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("Error: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    // --- Measure (probe layer) ---
+    // DNS
+    let dns_client = DnsClient::new(&[], timeout, 1);
+    let mut dns_obs = Vec::new();
+    for rt in [DnsRecordType::A, DnsRecordType::Aaaa] {
+        dns_obs.extend(dns_client.resolve(&target.host, rt).await);
+    }
+
+    // Addresses and per-address probes across layers.
+    let addresses = match resolve_for_tcp(&target.host).await {
+        Ok(addrs) => addrs,
+        Err(err) => {
+            eprintln!("Error: {err}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let destinations: Vec<SocketAddr> = addresses.iter().map(|ip| SocketAddr::new(*ip, target.port)).collect();
+
+    let tcp_obs: Vec<TcpObservation> = parallel_map(destinations.clone(), concurrency, move |d| async move {
+        tcp::probe(d, timeout).await
+    })
+    .await;
+
+    let sni = target.host.clone();
+    let tls_obs: Vec<TlsObservation> = parallel_map(destinations.clone(), concurrency, move |d| {
+        let sni = sni.clone();
+        async move { tls::probe(d, &sni, timeout).await }
+    })
+    .await;
+
+    let http_obs = collect_http_probes(destinations.clone(), &target.host, concurrency, timeout).await;
+
+    let probe_obs: Vec<ProbeResult> = parallel_map(destinations.clone(), concurrency, move |d| async move {
+        probe::tcp_repeat(d, 3, timeout).await
+    })
+    .await;
+
+    // --- Diagnose (pure engine, no I/O) ---
+    let input = DiagnosticInput {
+        hostname: &target.host,
+        dns: &dns_obs,
+        tcp: &tcp_obs,
+        tls: &tls_obs,
+        http: &http_obs,
+        probes: &probe_obs,
+    };
+    let diagnoses = diagnose(&input);
+
+    if json {
+        let report = DiagnoseReport {
+            target: target.host.clone(),
+            diagnoses,
+            dns: dns_obs,
+            tcp: tcp_obs,
+            tls: tls_obs,
+            http: http_obs,
+            probes: probe_obs,
+        };
+        println!("{}", to_json(&report));
+    } else {
+        print!("{}", render_dns(&target.host, &dns_obs));
+        print!("{}", render_tcp(&tcp_obs));
+        print!("{}", render_diagnoses(&diagnoses));
+    }
+    ExitCode::SUCCESS
+}
+
+/// Aggregated JSON report: full raw observations (evidence) plus diagnoses.
+#[derive(Serialize)]
+struct DiagnoseReport {
+    target: String,
+    diagnoses: Vec<Diagnosis>,
+    dns: Vec<DnsObservation>,
+    tcp: Vec<TcpObservation>,
+    tls: Vec<TlsObservation>,
+    http: Vec<HttpObservation>,
+    probes: Vec<ProbeResult>,
+}
+
+/// Probe HTTP/1.1, HTTP/2 and HTTP/3 for every address, concatenated.
+async fn collect_http_probes(
+    destinations: Vec<SocketAddr>,
+    host: &str,
+    concurrency: usize,
+    timeout: Duration,
+) -> Vec<HttpObservation> {
+    let host_1 = host.to_string();
+    let http1: Vec<HttpObservation> = parallel_map(destinations.clone(), concurrency, move |d| {
+        let host = host_1.clone();
+        async move { http::probe(d, &host, "GET", timeout).await }
+    })
+    .await;
+
+    let host_2 = host.to_string();
+    let http2: Vec<HttpObservation> = parallel_map(destinations.clone(), concurrency, move |d| {
+        let host = host_2.clone();
+        async move { http2::probe(d, &host, "GET", timeout).await }
+    })
+    .await;
+
+    let host_3 = host.to_string();
+    let http3: Vec<HttpObservation> = parallel_map(destinations.clone(), concurrency, move |d| {
+        let host = host_3.clone();
+        async move { http3::probe(d, &host, "GET", timeout).await }
+    })
+    .await;
+
+    let mut out = http1;
+    out.extend(http2);
+    out.extend(http3);
+    out
 }
 
 /// Apply `f` to `items` concurrently, bounded by `concurrency` (capped at
