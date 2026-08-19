@@ -54,7 +54,7 @@ pub async fn probe(destination: SocketAddr, timeout: Duration) -> TcpObservation
 /// Standard `ErrorKind` covers refused/reset/timeout. Unreachable conditions
 /// have no stable `ErrorKind`, so they are recovered from the raw OS error
 /// code (Linux and macOS values).
-fn classify_io_error(e: &std::io::Error) -> FailureKind {
+pub(crate) fn classify_io_error(e: &std::io::Error) -> FailureKind {
     use FailureKind::*;
     match e.kind() {
         std::io::ErrorKind::ConnectionRefused => ConnectionRefused,

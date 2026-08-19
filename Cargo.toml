@@ -24,11 +24,19 @@ path = "src/main.rs"
 clap = { version = "~4.6.0", features = ["cargo"] }
 hickory-proto = "0.25.2"
 hickory-resolver = "0.25.2"
+http-body-util = "0.1.5"
+hyper = { version = "1.11.0", features = ["client", "http1", "http2"] }
+hyper-util = { version = "0.1.20", features = ["tokio"] }
 local-ip-address = "~0.6.0"
+rustls = { version = "0.23.43", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+rustls-native-certs = "0.8.4"
+rustls-pki-types = "1.15.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "net", "time", "sync", "io-util"] }
+tokio-rustls = { version = "0.26.4", default-features = false, features = ["ring", "tls12", "logging"] }
+x509-parser = "0.18.1"
 
 [dev-dependencies]
 assert_cmd = "2"

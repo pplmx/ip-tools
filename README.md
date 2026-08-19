@@ -19,14 +19,20 @@ evidence.
 
 ## Status
 
-Currently implements: **DNS** and **TCP** diagnostics (Phase 1). TLS, HTTP,
-HTTP/2, HTTP/3/QUIC, route diagnostics, repeated probing, and the diagnostic
-engine are planned.
+Currently implements: **DNS**, **TCP**, **TLS**, **HTTPS/HTTP1.1**, and
+**repeated probing with latency statistics** (Phases 1–2). HTTP/2, HTTP/3/QUIC,
+route diagnostics, and the diagnostic engine are planned.
 
 - DNS: A + AAAA via the system resolver and/or explicit DNS servers, with
   latency.
 - TCP: per-address connect probes with classified failure modes (timeout /
   refused / reset / unreachable) and latency.
+- TLS: handshake with SNI, ALPN, cipher, TLS version and certificate
+  subject/issuer/validity, per address.
+- HTTPS/HTTP1.1: single request per address over TLS (status, redirect,
+  protocol, body size).
+- Repeated probes: per-address success rate, min/p50/p90/p95/p99/max latency,
+  jitter, and failure distribution.
 - IPv4 and IPv6 are kept separate and never collapsed.
 - Human and `--json` output.
 
@@ -79,6 +85,73 @@ TCP connect
   104.20.23.154:443        PASS      198 ms
   172.66.147.243:443       PASS      179 ms
   [2606:4700:10::ac42:93f3]:443 network unreachable
+```
+
+### TLS diagnostics
+
+Perform a TLS handshake (with the target hostname as SNI) to each address:
+
+```shell
+ip-tools tls example.com
+```
+
+Example output:
+
+```
+TLS handshake
+  104.20.23.154:443
+    TLS: TLSv1.3
+    cipher: TLS_AES_256_GCM_SHA384
+    ALPN: h2
+    cert : CN=example.com issued by C=US, O=SSL Corporation, CN=Cloudflare TLS Issuing ECC CA 3 (valid 2026-07-29T22:10:08..2026-10-27T22:17:21)
+    latency: 447 ms
+```
+
+### HTTPS / HTTP/1.1
+
+Issue a single request over TLS to each address (redirects not followed):
+
+```shell
+ip-tools http example.com
+ip-tools http example.com --method HEAD
+```
+
+Example output:
+
+```
+HTTPS
+  104.20.23.154:443
+    HTTP/1.1 200
+    TLS: TLSv1.3
+    ALPN: http/1.1
+    body: 559 bytes
+    latency: 899 ms
+```
+
+### Repeated probes
+
+Repeatedly probe TCP connectivity and report latency statistics per address:
+
+```shell
+ip-tools probe example.com --count 100
+ip-tools probe example.com --count 100 --concurrency 16
+```
+
+Example output:
+
+```
+Repeated probes
+  104.20.23.154:443
+    attempts: 8
+    success:  8 (100.0%)
+    failure:  0
+    latency:
+      min:  197 ms
+      p50:  198 ms
+      p95:  200 ms
+      p99:  200 ms
+      max:  200 ms
+      jitter: 1 ms
 ```
 
 ### Local IP helpers

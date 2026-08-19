@@ -7,13 +7,19 @@
 
 pub mod diagnosis;
 pub mod dns;
+pub mod http;
 pub mod latency;
+pub mod probe;
 pub mod tcp;
+pub mod tls;
 
 pub use diagnosis::{Confidence, Diagnosis, DiagnosticCategory, Evidence, Severity};
 pub use dns::{DnsObservation, DnsRecordType, ResolverKind};
+pub use http::HttpObservation;
 pub use latency::{LatencyStats, LatencySummary};
+pub use probe::{FailureCount, ProbeResult};
 pub use tcp::TcpObservation;
+pub use tls::{CertificateSummary, TlsObservation};
 
 /// A classified low-level failure with a human-readable context message.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -29,7 +35,7 @@ pub struct ProbeError {
 /// The variants are kept deliberately distinct because `timeout != reset !=
 /// refused`: each implies a different failure mechanism and must never be
 /// silently collapsed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FailureKind {
     /// Operation did not complete within its configured deadline.

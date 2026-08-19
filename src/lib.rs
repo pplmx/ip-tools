@@ -15,6 +15,9 @@
 //! * [`model`] — the typed observation and diagnosis vocabulary.
 //! * [`dns`] — DNS resolution probes.
 //! * [`tcp`] — TCP connect probes with failure-mode classification.
+//! * [`tls`] — TLS handshake probes (SNI, ALPN, certificate).
+//! * [`http`] — HTTPS / HTTP1.1 request probes.
+//! * [`probe`] — repeated probing and latency statistics.
 //! * [`target`] — target (host/port) parsing.
 //! * [`report`] — human and JSON rendering.
 //! * [`error`] — context-preserving error types.
@@ -26,14 +29,18 @@
 
 pub mod dns;
 pub mod error;
+pub mod http;
 pub mod model;
+pub mod probe;
 pub mod report;
 pub mod target;
 pub mod tcp;
+pub mod tls;
 
 pub use model::{
-    Confidence, Diagnosis, DiagnosticCategory, DnsObservation, DnsRecordType, Evidence, FailureKind, IpVersion,
-    LatencyStats, ProbeError, ResolverKind, Severity, TcpObservation,
+    CertificateSummary, Confidence, Diagnosis, DiagnosticCategory, DnsObservation, DnsRecordType, Evidence,
+    FailureKind, HttpObservation, IpVersion, LatencyStats, ProbeError, ProbeResult, ResolverKind, Severity,
+    TcpObservation, TlsObservation,
 };
 
 // ---------------------------------------------------------------------------

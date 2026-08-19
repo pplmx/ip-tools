@@ -4,7 +4,10 @@
 //! complete raw observation data (via serde `Serialize` on the model types)
 //! so external systems can build their own analysis.
 
-use crate::model::{DnsObservation, DnsRecordType, ResolverKind, TcpObservation};
+use crate::model::{
+    CertificateSummary, DnsObservation, DnsRecordType, HttpObservation, ProbeResult, ResolverKind, TcpObservation,
+    TlsObservation,
+};
 
 /// Render DNS observations for `host` as human text.
 pub fn render_dns(host: &str, observations: &[DnsObservation]) -> String {
@@ -83,7 +86,128 @@ pub fn render_tcp(observations: &[TcpObservation]) -> String {
     out
 }
 
+/// Render TLS observations as human text.
+pub fn render_tls(observations: &[TlsObservation]) -> String {
+    let mut out = String::from("TLS handshake\n");
+    for obs in observations {
+        out.push_str(&format!("  {}\n", obs.destination));
+        if !obs.success {
+            let err = obs
+                .failure
+                .as_ref()
+                .map(|e| format!("{} ({})", e.kind, e.message))
+                .unwrap_or_else(|| "failed".to_string());
+            out.push_str(&format!("    {err}\n"));
+            continue;
+        }
+        out.push_str(&format!("    TLS: {}\n", obs.version.as_deref().unwrap_or("unknown")));
+        if let Some(cipher) = &obs.cipher {
+            out.push_str(&format!("    cipher: {cipher}\n"));
+        }
+        if let Some(alpn) = &obs.alpn {
+            out.push_str(&format!("    ALPN: {alpn}\n"));
+        }
+        if let Some(cert) = &obs.certificate {
+            out.push_str(&format!("    cert : {}\n", render_cert(cert)));
+        }
+        out.push_str(&format!("    latency: {} ms\n", obs.latency_ms.unwrap_or(0)));
+    }
+    out
+}
+
+/// Render a certificate summary compactly for the terminal.
+fn render_cert(cert: &CertificateSummary) -> String {
+    let valid = match (&cert.not_after_utc, &cert.not_before_utc) {
+        (Some(a), Some(b)) => format!("valid {}..{}", b.trim_end_matches('Z'), a.trim_end_matches('Z')),
+        _ => String::new(),
+    };
+    let valid = if valid.is_empty() {
+        String::new()
+    } else {
+        format!(" ({valid})")
+    };
+    format!("{} issued by {}{}", cert.subject, cert.issuer, valid)
+}
+
+/// Render HTTPS/HTTP observations as human text.
+pub fn render_http(observations: &[HttpObservation]) -> String {
+    let mut out = String::from("HTTPS\n");
+    for obs in observations {
+        out.push_str(&format!("  {}\n", obs.destination));
+        if let Some(failure) = &obs.failure {
+            out.push_str(&format!("    {} ({})\n", failure.kind, failure.message));
+            continue;
+        }
+        out.push_str(&format!(
+            "    {} {}\n",
+            obs.protocol.as_deref().unwrap_or("HTTP/1.1"),
+            obs.status.map_or_else(|| "no status".to_string(), |s| s.to_string())
+        ));
+        if let Some(location) = &obs.location {
+            out.push_str(&format!("    redirect: {location}\n"));
+        }
+        if let Some(tls) = &obs.tls {
+            if let Some(version) = &tls.version {
+                out.push_str(&format!("    TLS: {version}\n"));
+            }
+            if let Some(alpn) = &tls.alpn {
+                out.push_str(&format!("    ALPN: {alpn}\n"));
+            }
+        }
+        if let Some(bytes) = obs.body_bytes {
+            out.push_str(&format!("    body: {bytes} bytes\n"));
+        }
+        out.push_str(&format!("    latency: {} ms\n", obs.latency_ms.unwrap_or(0)));
+    }
+    out
+}
+
 /// Serialize any serde value as pretty JSON.
 pub fn to_json<T: serde::Serialize>(value: &T) -> String {
     serde_json::to_string_pretty(value).expect("serialization to JSON cannot fail")
+}
+
+/// Render repeated probe results as human text.
+pub fn render_probe(results: &[ProbeResult]) -> String {
+    let mut out = String::from("Repeated probes\n");
+    for r in results {
+        out.push_str(&format!("  {}\n", r.destination));
+        out.push_str(&format!(
+            "    attempts: {}\n    success:  {} ({})\n    failure:  {}\n",
+            r.attempts,
+            r.successes,
+            format_rate(r.success_rate),
+            r.failures
+        ));
+        let lat = &r.latency;
+        if lat.count > 0 {
+            out.push_str(&format!(
+                "    latency:\n      min:  {} ms\n      p50:  {} ms\n      p90:  {} ms\n      p95:  {} ms\n      p99:  {} ms\n      max:  {} ms\n      jitter: {} ms\n",
+                fmt(lat.min),
+                fmt(lat.p50),
+                fmt(lat.p90),
+                fmt(lat.p95),
+                fmt(lat.p99),
+                fmt(lat.max),
+                fmt(lat.jitter),
+            ));
+        }
+        if !r.failure_counts.is_empty() {
+            let dist: Vec<String> = r
+                .failure_counts
+                .iter()
+                .map(|f| format!("{}: {}", f.kind, f.count))
+                .collect();
+            out.push_str(&format!("    failures: {}\n", dist.join(", ")));
+        }
+    }
+    out
+}
+
+fn format_rate(rate: f64) -> String {
+    format!("{:.1}%", rate * 100.0)
+}
+
+fn fmt(v: Option<u64>) -> String {
+    v.map_or_else(|| "-".to_string(), |n| n.to_string())
 }
