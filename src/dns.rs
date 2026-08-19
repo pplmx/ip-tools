@@ -33,6 +33,7 @@ impl DnsClient {
     ///
     /// `timeout` bounds each individual lookup (including across retries).
     /// `attempts` is the per-query retry count used internally.
+    #[must_use]
     pub fn new(custom_servers: &[SocketAddr], timeout: Duration, attempts: usize) -> Self {
         let apply_options = |out: &mut ResolverOpts| {
             out.timeout = timeout;
@@ -123,7 +124,7 @@ async fn query(
             Vec::new(),
             Some(ProbeError {
                 kind: FailureKind::Timeout,
-                message: format!("dns lookup of {} ({}) timed out after {:?}", host, record_type, timeout),
+                message: format!("dns lookup of {host} ({record_type}) timed out after {timeout:?}"),
             }),
         ),
     };

@@ -55,16 +55,16 @@ pub async fn probe(destination: SocketAddr, timeout: Duration) -> TcpObservation
 /// have no stable `ErrorKind`, so they are recovered from the raw OS error
 /// code (Linux and macOS values).
 pub(crate) fn classify_io_error(e: &std::io::Error) -> FailureKind {
-    use FailureKind::*;
+    use FailureKind::{ConnectionRefused, ConnectionReset, HostUnreachable, NetworkUnreachable, Other, Timeout};
     match e.kind() {
         std::io::ErrorKind::ConnectionRefused => ConnectionRefused,
         std::io::ErrorKind::ConnectionReset => ConnectionReset,
         std::io::ErrorKind::TimedOut => Timeout,
         _ => match e.raw_os_error() {
             // ENETUNREACH
-            Some(101) | Some(134) => NetworkUnreachable,
+            Some(101 | 134) => NetworkUnreachable,
             // EHOSTUNREACH
-            Some(113) | Some(65) => HostUnreachable,
+            Some(113 | 65) => HostUnreachable,
             // ETIMEDOUT
             Some(110) => Timeout,
             // ECONNRESET

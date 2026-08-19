@@ -195,7 +195,7 @@ fn classify_tls_error(e: &std::io::Error) -> FailureKind {
     }
 }
 
-fn version_name(v: rustls::ProtocolVersion) -> &'static str {
+const fn version_name(v: rustls::ProtocolVersion) -> &'static str {
     match v {
         rustls::ProtocolVersion::TLSv1_2 => "TLSv1.2",
         rustls::ProtocolVersion::TLSv1_3 => "TLSv1.3",
@@ -205,8 +205,15 @@ fn version_name(v: rustls::ProtocolVersion) -> &'static str {
 
 /// Map a negotiated cipher suite to a human-readable name (falling back to a
 /// hex identifier for suites not in the table).
-fn cipher_name(cs: rustls::CipherSuite) -> &'static str {
-    use rustls::CipherSuite::*;
+const fn cipher_name(cs: rustls::CipherSuite) -> &'static str {
+    use rustls::CipherSuite::{
+        TLS13_AES_128_GCM_SHA256, TLS13_AES_256_GCM_SHA384, TLS13_CHACHA20_POLY1305_SHA256,
+        TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA, TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+        TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA, TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+        TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256, TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
+        TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256, TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
+        TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384, TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
+    };
     match cs {
         TLS13_AES_128_GCM_SHA256 => "TLS_AES_128_GCM_SHA256",
         TLS13_AES_256_GCM_SHA384 => "TLS_AES_256_GCM_SHA384",

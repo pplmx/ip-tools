@@ -34,6 +34,7 @@ pub struct DiagnosticInput<'a> {
 /// Evaluate all rules against the observations and return the resulting
 /// diagnoses, ordered deterministically. Returns a single healthy diagnosis
 /// when nothing anomalous is found.
+#[must_use]
 pub fn diagnose(input: &DiagnosticInput) -> Vec<Diagnosis> {
     let mut out = Vec::new();
     let dns_signal = dns_rules(input, &mut out);
@@ -72,19 +73,16 @@ fn dns_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosis>) -> bool {
     let mut all_sets: Vec<(String, BTreeSet<IpAddr>)> = Vec::new();
 
     for obs in input.dns {
-        match obs.error {
-            Some(_) => {
-                any_failure = true;
-                failed.push(obs);
-            }
-            None => {
-                any_success = true;
-                if !obs.records.is_empty() {
-                    all_sets.push((
-                        format!("{:?} {:?}", obs.resolver, obs.record_type),
-                        obs.records.iter().copied().collect(),
-                    ));
-                }
+        if obs.error.is_some() {
+            any_failure = true;
+            failed.push(obs);
+        } else {
+            any_success = true;
+            if !obs.records.is_empty() {
+                all_sets.push((
+                    format!("{:?} {:?}", obs.resolver, obs.record_type),
+                    obs.records.iter().copied().collect(),
+                ));
             }
         }
     }
@@ -179,10 +177,7 @@ fn connectivity_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosis>) {
         // Partial reachability.
         let failing: Vec<String> = bad.iter().map(|o| o.destination.to_string()).collect();
         let passing: Vec<String> = ok.iter().map(|o| o.destination.to_string()).collect();
-        let confidence = if failing
-            .iter()
-            .any(|f| f == passing.first().map(String::as_str).unwrap_or(""))
-        {
+        let confidence = if failing.iter().any(|f| f == passing.first().map_or("", String::as_str)) {
             Confidence::Medium
         } else if bad.iter().filter(|o| !o.success).count() > 1 {
             Confidence::High

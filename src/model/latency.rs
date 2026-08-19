@@ -83,7 +83,7 @@ impl From<&LatencyStats> for LatencySummary {
         let mean = if n == 0 {
             None
         } else {
-            let sum: u128 = stats.samples.iter().map(|&s| s as u128).sum();
+            let sum: u128 = stats.samples.iter().map(|&s| u128::from(s)).sum();
             Some((sum / n as u128) as u64)
         };
 

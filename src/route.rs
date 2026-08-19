@@ -91,11 +91,11 @@ fn traceroute_linux(target: IpAddr, cfg: &TracerouteConfig) -> Result<Vec<RouteH
                 Ok(u) => u,
                 Err(e) => return Err(format!("failed to bind UDP probe socket: {e}")),
             };
-            let local_port = udp.local_addr().map(|a| a.port()).unwrap_or(0);
-            if let Err(e) = udp.set_ttl(ttl as u32) {
+            let local_port = udp.local_addr().map_or(0, |a| a.port());
+            if let Err(e) = udp.set_ttl(u32::from(ttl)) {
                 return Err(format!("failed to set TTL {ttl}: {e}"));
             }
-            let probe_dest = SocketAddr::new(target, 33_434 + probe as u16);
+            let probe_dest = SocketAddr::new(target, 33_434 + u16::from(probe));
             let _ = udp.send_to(&[0u8; 8], probe_dest);
 
             // Read ICMP replies until we match this probe, or time out.
@@ -113,7 +113,7 @@ fn traceroute_linux(target: IpAddr, cfg: &TracerouteConfig) -> Result<Vec<RouteH
                             break;
                         }
                     }
-                    Err(_) => continue,
+                    Err(_) => {}
                 }
             }
         }
@@ -152,7 +152,7 @@ fn open_icmp_socket() -> Result<i32, String> {
             fd,
             SOL_SOCKET,
             SO_RCVTIMEO,
-            &tv as *const timeval as *const _,
+            (&raw const tv).cast(),
             std::mem::size_of::<timeval>() as u32,
         );
     }
@@ -170,11 +170,11 @@ fn recv_icmp(fd: i32, buf: &mut [u8], deadline: std::time::Instant) -> std::io::
         let n = unsafe {
             libc::recvfrom(
                 fd,
-                buf.as_mut_ptr() as *mut libc::c_void,
+                buf.as_mut_ptr().cast::<libc::c_void>(),
                 buf.len(),
                 0,
-                &mut addr as *mut libc::sockaddr_in as *mut libc::sockaddr as *mut _,
-                &mut addr_len,
+                (&raw mut addr).cast::<libc::sockaddr>().cast(),
+                &raw mut addr_len,
             )
         };
         if n > 0 {

@@ -68,7 +68,10 @@ pub enum FailureKind {
 
 impl std::fmt::Display for FailureKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use FailureKind::*;
+        use FailureKind::{
+            Certificate, ConnectionRefused, ConnectionReset, Dns, HostUnreachable, Http, NetworkUnreachable, Other,
+            Protocol, Quic, Timeout, TlsHandshake, Unknown,
+        };
         let s = match self {
             Timeout => "timeout",
             ConnectionRefused => "connection refused",

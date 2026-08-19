@@ -4,6 +4,10 @@
 //! complete raw observation data (via serde `Serialize` on the model types)
 //! so external systems can build their own analysis.
 
+// String-building helpers prefer `push_str(&format!(..))` for readability; the
+// `format_push_string` lint (pedantic) flags this deliberately-chosen style.
+#![allow(clippy::format_push_string)]
+
 use crate::model::{
     CertificateSummary, Diagnosis, DnsObservation, DnsRecordType, HttpObservation, ProbeResult, ResolverKind,
     TcpObservation, TlsObservation,
@@ -11,6 +15,7 @@ use crate::model::{
 use crate::RouteHop;
 
 /// Render DNS observations for `host` as human text.
+#[must_use]
 pub fn render_dns(host: &str, observations: &[DnsObservation]) -> String {
     let mut out = String::new();
     out.push_str(&format!("DNS {host}\n"));
@@ -44,7 +49,7 @@ fn render_dns_one(obs: &DnsObservation) -> String {
         (Some(err), _) => format!("{} ({})", err.kind, err.message),
         (None, Some(ms)) => {
             if obs.records.is_empty() {
-                format!("no records ({} ms)", ms)
+                format!("no records ({ms} ms)")
             } else {
                 let addrs: Vec<String> = obs.records.iter().map(ToString::to_string).collect();
                 format!("{} ({} ms)", addrs.join(", "), ms)
@@ -61,7 +66,7 @@ fn resolver_label(r: &ResolverKind) -> String {
     }
 }
 
-fn rt_label(rt: DnsRecordType) -> &'static str {
+const fn rt_label(rt: DnsRecordType) -> &'static str {
     match rt {
         DnsRecordType::A => "A",
         DnsRecordType::Aaaa => "AAAA",
@@ -69,6 +74,7 @@ fn rt_label(rt: DnsRecordType) -> &'static str {
 }
 
 /// Render TCP observations as human text.
+#[must_use]
 pub fn render_tcp(observations: &[TcpObservation]) -> String {
     let mut out = String::from("TCP connect\n");
     for obs in observations {
@@ -78,8 +84,7 @@ pub fn render_tcp(observations: &[TcpObservation]) -> String {
             let err = obs
                 .failure
                 .as_ref()
-                .map(|e| e.kind.to_string())
-                .unwrap_or_else(|| "failed".to_string());
+                .map_or_else(|| "failed".to_string(), |e| e.kind.to_string());
             format!("{err:10}")
         };
         out.push_str(&format!("  {:24} {status}\n", obs.destination));
@@ -88,6 +93,7 @@ pub fn render_tcp(observations: &[TcpObservation]) -> String {
 }
 
 /// Render TLS observations as human text.
+#[must_use]
 pub fn render_tls(observations: &[TlsObservation]) -> String {
     let mut out = String::from("TLS handshake\n");
     for obs in observations {
@@ -96,8 +102,7 @@ pub fn render_tls(observations: &[TlsObservation]) -> String {
             let err = obs
                 .failure
                 .as_ref()
-                .map(|e| format!("{} ({})", e.kind, e.message))
-                .unwrap_or_else(|| "failed".to_string());
+                .map_or_else(|| "failed".to_string(), |e| format!("{} ({})", e.kind, e.message));
             out.push_str(&format!("    {err}\n"));
             continue;
         }
@@ -131,6 +136,7 @@ fn render_cert(cert: &CertificateSummary) -> String {
 }
 
 /// Render HTTPS/HTTP observations as human text.
+#[must_use]
 pub fn render_http(observations: &[HttpObservation]) -> String {
     let mut out = String::from("HTTPS\n");
     for obs in observations {
@@ -164,11 +170,17 @@ pub fn render_http(observations: &[HttpObservation]) -> String {
 }
 
 /// Serialize any serde value as pretty JSON.
+///
+/// # Panics
+///
+/// Panics if serialization fails; this cannot happen for the tool's own
+/// types, which are all `Serialize`.
 pub fn to_json<T: serde::Serialize>(value: &T) -> String {
     serde_json::to_string_pretty(value).expect("serialization to JSON cannot fail")
 }
 
 /// Render repeated probe results as human text.
+#[must_use]
 pub fn render_probe(results: &[ProbeResult]) -> String {
     let mut out = String::from("Repeated probes\n");
     for r in results {
@@ -234,6 +246,7 @@ pub fn render_route(hops: &[RouteHop]) -> String {
 }
 
 /// Render diagnoses as human text.
+#[must_use]
 pub fn render_diagnoses(diagnoses: &[Diagnosis]) -> String {
     let mut out = String::from("Diagnosis\n");
     for d in diagnoses {

@@ -25,7 +25,7 @@ pub struct CertificateSummary {
 pub struct TlsObservation {
     /// Destination socket address probed.
     pub destination: SocketAddr,
-    /// Server Name Indication presented in the ClientHello.
+    /// Server Name Indication presented in the `ClientHello`.
     pub sni: String,
     /// Whether the TLS handshake completed.
     pub success: bool,

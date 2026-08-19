@@ -30,6 +30,17 @@
 //! The historical local-IP surface is preserved: [`get_local_ip`] and
 //! [`list_net_ifs`] with [`IpToolsError`].
 
+#![warn(clippy::pedantic, clippy::nursery)]
+// Timing and statistics math intentionally casts between high-precision
+// timestamps/floats and whole milliseconds. These conversions are lossy in
+// the general case but inherently safe for network latencies.
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_precision_loss,
+    clippy::cast_lossless
+)]
+
 pub mod diagnostics;
 pub mod dns;
 pub mod error;

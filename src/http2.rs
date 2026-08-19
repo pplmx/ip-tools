@@ -104,8 +104,7 @@ pub async fn probe(destination: SocketAddr, host: &str, method: &str, timeout: D
         let chunk = match tokio::time::timeout(timeout, body.data()).await {
             Ok(Some(Ok(chunk))) => chunk,
             Ok(Some(Err(e))) => return base.with_failure(h2_error("http/2 body", &e)),
-            Ok(None) => break,
-            Err(_) => break,
+            Ok(None) | Err(_) => break,
         };
         bytes_read = bytes_read.saturating_add(chunk.len() as u64);
         let _ = body.flow_control().release_capacity(chunk.len());

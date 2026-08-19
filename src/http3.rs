@@ -146,9 +146,8 @@ pub async fn probe(destination: SocketAddr, host: &str, method: &str, timeout: D
     loop {
         let chunk = match tokio::time::timeout(timeout, req_stream.recv_data()).await {
             Ok(Ok(Some(chunk))) => chunk,
-            Ok(Ok(None)) => break,
+            Ok(Ok(None)) | Err(_) => break,
             Ok(Err(e)) => return base.with_failure(failure(FailureKind::Http, format!("http/3 body failed: {e}"))),
-            Err(_) => break,
         };
         bytes_read = bytes_read.saturating_add(chunk.remaining() as u64);
         if bytes_read >= MAX_BODY_BYTES {
@@ -187,6 +186,6 @@ fn quic_tls_summary(conn: &quinn::Connection, destination: SocketAddr, host: &st
     }
 }
 
-fn failure(kind: FailureKind, message: String) -> ProbeError {
+const fn failure(kind: FailureKind, message: String) -> ProbeError {
     ProbeError { kind, message }
 }
