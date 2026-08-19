@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+|- Evolve ip-tools into a network observability and diagnostics toolkit (measurement separated from deterministic diagnosis)
+|- Async Tokio runtime foundation with explicit per-operation timeouts and bounded concurrency
+|- Strongly typed observation model (`src/model/`): DNS, TCP, latency statistics, diagnosis types, failure-kind classification
+|- DNS diagnostics: A + AAAA via system resolver and custom servers (`ip-tools dns`), with latency and per-resolver results
+|- TCP connectivity probes with classified failure modes — timeout / refused / reset / unreachable (`ip-tools tcp`)
+|- IPv4/IPv6 kept as separate first-class dimensions per address
+|- Human and `--json` output for all new subcommands
+|- Target parsing supporting host, host:port, IP literals and bracketed IPv6
+|- Documentation: core principle that a failed connection is an observation, not a verdict
+
+### Changed
+|- Add `tokio` and `hickory-resolver` dependencies
+|- Reorganize the library into `dns`, `tcp`, `model`, `report`, `target`, `error` modules (breaking but intentional)**
+
 ## [0.2.0] - 2026-07-24
 
 ### Added

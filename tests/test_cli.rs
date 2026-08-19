@@ -86,3 +86,24 @@ fn test_help_flag_shows_usage() {
         .success()
         .stdout(contains("list").and(contains("get")));
 }
+
+#[test]
+fn test_help_lists_diagnostic_subcommands() {
+    let mut cmd = Command::cargo_bin("ip-tools").unwrap();
+    cmd.arg("--help")
+        .assert()
+        .success()
+        .stdout(contains("dns").and(contains("tcp")));
+}
+
+#[test]
+fn test_dns_requires_target() {
+    let mut cmd = Command::cargo_bin("ip-tools").unwrap();
+    cmd.arg("dns").assert().failure();
+}
+
+#[test]
+fn test_tcp_requires_target() {
+    let mut cmd = Command::cargo_bin("ip-tools").unwrap();
+    cmd.arg("tcp").assert().failure();
+}
