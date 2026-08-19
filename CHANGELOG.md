@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 |- TCP connectivity probes with classified failure modes — timeout / refused / reset / unreachable (`ip-tools tcp`)
 |- TLS handshake diagnostics with SNI, ALPN, cipher, TLS version, and certificate subject/issuer/validity (`ip-tools tls`)
 |- HTTPS / HTTP1.1 probing over per-address TLS connections, with status, redirect, protocol and body size (`ip-tools http`)
+|- HTTP/2 probing over a dedicated ALPN `h2` connection (`ip-tools http2`), keeping HTTP/1.1 and HTTP/2 as first-class distinctions
 |- Repeated probing with per-address latency statistics — success rate, min/p50/p90/p95/p99/max, jitter, failure distribution (`ip-tools probe --count N`)
 |- IPv4/IPv6 kept as separate first-class dimensions per address
 |- Human and `--json` output for all new subcommands
@@ -21,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 |- Documentation: core principle that a failed connection is an observation, not a verdict
 
 ### Changed
-|- Add `tokio`, `hickory-resolver`, `rustls`, `tokio-rustls`, `rustls-native-certs`, `hyper`, `hyper-util`, `http-body-util` and `x509-parser` dependencies
+|- Add `tokio`, `hickory-resolver`, `rustls`, `tokio-rustls`, `rustls-native-certs`, `hyper`, `hyper-util`, `h2`, `http-body-util` and `x509-parser` dependencies
 |- Reorganize the library into `dns`, `tcp`, `tls`, `http`, `probe`, `model`, `report`, `target`, `error` modules (breaking but intentional)**
 
 ## [0.2.0] - 2026-07-24

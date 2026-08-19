@@ -915,6 +915,7 @@ dependencies = [
  "assert_cmd",
  "clap",
  "criterion",
+ "h2",
  "hickory-proto",
  "hickory-resolver",
  "http-body-util",

@@ -119,7 +119,7 @@ pub async fn probe(destination: SocketAddr, host: &str, method: &str, timeout: D
 
 /// Reconstruct a [`TlsObservation`] from an established connection helper so
 /// the HTTP observation carries TLS details.
-fn build_tls_observation(conn: &tls::TlsConnection, destination: SocketAddr, host: &str) -> TlsObservation {
+pub(crate) fn build_tls_observation(conn: &tls::TlsConnection, destination: SocketAddr, host: &str) -> TlsObservation {
     TlsObservation {
         destination,
         sni: host.to_string(),
@@ -133,7 +133,7 @@ fn build_tls_observation(conn: &tls::TlsConnection, destination: SocketAddr, hos
     }
 }
 
-fn http_error(step: &str, e: &hyper::Error) -> ProbeError {
+pub(crate) fn http_error(step: &str, e: &hyper::Error) -> ProbeError {
     ProbeError {
         kind: FailureKind::Http,
         message: format!("{step} failed: {e}"),
@@ -141,7 +141,7 @@ fn http_error(step: &str, e: &hyper::Error) -> ProbeError {
 }
 
 impl HttpObservation {
-    fn with_failure(mut self, failure: ProbeError) -> Self {
+    pub(crate) fn with_failure(mut self, failure: ProbeError) -> Self {
         self.failure = Some(failure);
         self
     }

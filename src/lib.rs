@@ -30,6 +30,7 @@
 pub mod dns;
 pub mod error;
 pub mod http;
+pub mod http2;
 pub mod model;
 pub mod probe;
 pub mod report;

@@ -19,8 +19,8 @@ evidence.
 
 ## Status
 
-Currently implements: **DNS**, **TCP**, **TLS**, **HTTPS/HTTP1.1**, and
-**repeated probing with latency statistics** (Phases 1–2). HTTP/2, HTTP/3/QUIC,
+Currently implements: **DNS**, **TCP**, **TLS**, **HTTPS/HTTP1.1**, **HTTP/2**,
+and **repeated probing with latency statistics** (Phases 1–3). HTTP/3/QUIC,
 route diagnostics, and the diagnostic engine are planned.
 
 - DNS: A + AAAA via the system resolver and/or explicit DNS servers, with
@@ -127,6 +127,31 @@ HTTPS
     body: 559 bytes
     latency: 899 ms
 ```
+
+### HTTP/2
+
+Perform a single request over an HTTP/2 (ALPN `h2`) connection to each address:
+
+```shell
+ip-tools http2 example.com
+ip-tools http2 example.com --method HEAD
+```
+
+Example output:
+
+```
+HTTPS
+  104.20.23.154:443
+    HTTP/2 200
+    TLS: TLSv1.3
+    ALPN: h2
+    body: 559 bytes
+    latency: 916 ms
+```
+
+Compare `http` (HTTP/1.1) and `http2` to reveal protocol-selective behavior:
+`HTTP/1.1 PASS / HTTP/2 FAIL` is an observable, useful signal — not an
+automatic censorship verdict.
 
 ### Repeated probes
 

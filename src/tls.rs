@@ -24,6 +24,8 @@ use tokio_rustls::TlsConnector;
 pub const ALPN_GENERAL: &[&[u8]] = &[b"h2", b"http/1.1"];
 /// ALPN protocols offered when forcing a plain HTTP/1.1 exchange.
 pub const ALPN_HTTP1: &[&[u8]] = &[b"http/1.1"];
+/// ALPN protocol offered when requesting HTTP/2.
+pub const ALPN_H2: &[&[u8]] = &[b"h2"];
 
 // Trusted roots, loaded once per process.
 static ROOTS: std::sync::OnceLock<rustls::RootCertStore> = std::sync::OnceLock::new();

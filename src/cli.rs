@@ -3,7 +3,7 @@ use ip_tools::dns::DnsClient;
 use ip_tools::model::{DnsRecordType, HttpObservation, ProbeResult, TcpObservation, TlsObservation};
 use ip_tools::report::{render_dns, render_http, render_probe, render_tcp, render_tls, to_json};
 use ip_tools::target::Target;
-use ip_tools::{get_local_ip, http, list_net_ifs, probe, tcp, tls};
+use ip_tools::{get_local_ip, http, http2, list_net_ifs, probe, tcp, tls};
 use serde::Serialize;
 use std::future::Future;
 use std::net::{IpAddr, SocketAddr};
@@ -67,13 +67,7 @@ fn parser() -> ArgMatches {
             Command::new("http")
                 .about("perform an HTTPS/HTTP1.1 request to a host:port across its addresses")
                 .arg(positional_target("host[:port] to probe (default port 443)"))
-                .arg(
-                    Arg::new("method")
-                        .long("method")
-                        .value_name("METHOD")
-                        .default_value("GET")
-                        .help("HTTP method to use (GET or HEAD)"),
-                )
+                .arg(method_arg())
                 .arg(timeout_arg())
                 .arg(concurrency_arg()),
         )
@@ -82,6 +76,14 @@ fn parser() -> ArgMatches {
                 .about("repeatedly probe TCP connectivity and report latency statistics")
                 .arg(positional_target("host[:port] to probe (default port 443)"))
                 .arg(count_arg())
+                .arg(timeout_arg())
+                .arg(concurrency_arg()),
+        )
+        .subcommand(
+            Command::new("http2")
+                .about("perform an HTTPS/HTTP2 request to a host:port across its addresses")
+                .arg(positional_target("host[:port] to probe (default port 443)"))
+                .arg(method_arg())
                 .arg(timeout_arg())
                 .arg(concurrency_arg()),
         )
@@ -118,6 +120,15 @@ fn count_arg() -> Arg {
         .help("number of repeated attempts per address")
 }
 
+/// Shared `--method` argument.
+fn method_arg() -> Arg {
+    Arg::new("method")
+        .long("method")
+        .value_name("METHOD")
+        .default_value("GET")
+        .help("HTTP method to use (GET or HEAD)")
+}
+
 /// Select which DNS record types to query (`--ipv4` only / `--ipv6` only).
 fn record_type_arg() -> Arg {
     Arg::new("ipv6")
@@ -134,7 +145,7 @@ fn handler(app_m: &ArgMatches) -> ExitCode {
     match app_m.subcommand() {
         Some(("get", sub_m)) => handle_get(sub_m),
         Some(("list", sub_m)) => handle_list(sub_m),
-        Some((name @ ("dns" | "tcp" | "tls" | "http" | "probe"), sub_m)) => run_tokio(name, sub_m),
+        Some((name @ ("dns" | "tcp" | "tls" | "http" | "http2" | "probe"), sub_m)) => run_tokio(name, sub_m),
         _ => {
             eprintln!("Error: unknown subcommand");
             ExitCode::FAILURE
@@ -156,6 +167,7 @@ fn run_tokio(name: &str, sub_m: &ArgMatches) -> ExitCode {
         "tcp" => rt.block_on(run_tcp(sub_m)),
         "tls" => rt.block_on(run_tls(sub_m)),
         "http" => rt.block_on(run_http(sub_m)),
+        "http2" => rt.block_on(run_http2(sub_m)),
         "probe" => rt.block_on(run_probe(sub_m)),
         _ => unreachable!(),
     }
@@ -426,6 +438,54 @@ async fn run_probe(sub_m: &ArgMatches) -> ExitCode {
         println!("{}", to_json(&results));
     } else {
         print!("{}", render_probe(&results));
+    }
+    ExitCode::SUCCESS
+}
+
+/// Resolve a target's addresses and perform an HTTPS/HTTP2 request to each in
+/// parallel (bounded by `--concurrency`).
+async fn run_http2(sub_m: &ArgMatches) -> ExitCode {
+    let json = sub_m.get_flag("json");
+    let target_str = sub_m.get_one::<String>("target").expect("required target");
+    let timeout_ms = *sub_m.get_one::<u64>("timeout").expect("timeout has default");
+    let concurrency = *sub_m.get_one::<usize>("concurrency").expect("concurrency has default");
+    let method = sub_m.get_one::<String>("method").expect("method has default");
+    let timeout = Duration::from_millis(timeout_ms);
+
+    let target = match Target::parse(target_str, DEFAULT_PORT) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("Error: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    let addresses = match resolve_for_tcp(&target.host).await {
+        Ok(addrs) => addrs,
+        Err(err) => {
+            eprintln!("Error: {err}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    let destinations: Vec<SocketAddr> = addresses.iter().map(|ip| SocketAddr::new(*ip, target.port)).collect();
+    let host = target.host.clone();
+    let method = method.clone();
+
+    let results: Vec<HttpObservation> = parallel_map(destinations, concurrency, move |dest| {
+        let host = host.clone();
+        let method = method.clone();
+        async move { http2::probe(dest, &host, &method, timeout).await }
+    })
+    .await;
+
+    let mut results = results;
+    results.sort_by_key(|o| o.destination);
+
+    if json {
+        println!("{}", to_json(&results));
+    } else {
+        print!("{}", render_http(&results));
     }
     ExitCode::SUCCESS
 }
