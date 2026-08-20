@@ -52,6 +52,10 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
         }
     };
     let dns_client = DnsClient::new(&custom_servers, timeout, 1);
+    let doh_endpoints: Vec<String> = sub_m
+        .get_many::<String>("doh")
+        .map(|vals| vals.cloned().collect())
+        .unwrap_or_default();
     let mut dns_obs = Vec::new();
     let mut addresses: Vec<IpAddr> = Vec::new();
     // Bracket-form IPv6 literals (`[::1]`) must be recognized as literals.
@@ -67,6 +71,16 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
                 }
             }
             dns_obs.extend(obs);
+            // DNS-over-HTTPS (`--doh`) resolvers join the same evidence and
+            // address pool: when the local path is being steered, the DoH
+            // answer both feeds resolver-disagreement detection and is probed.
+            for endpoint in &doh_endpoints {
+                let o = ip_tools::dns::doh_query(endpoint, &target.host, rt, timeout, insecure).await;
+                if o.error.is_none() {
+                    addresses.extend(o.records.iter().copied());
+                }
+                dns_obs.push(o);
+            }
         }
         // De-duplicate while preserving resolution order (as `resolve_for_tcp`).
         let mut seen = std::collections::HashSet::new();
@@ -74,7 +88,7 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
     }
     if addresses.is_empty() {
         eprintln!(
-            "Error: hostname {} did not resolve to any address via the system resolver",
+            "Error: hostname {} did not resolve to any address via the system resolver, --server, or --doh resolvers",
             target.host
         );
         return ExitCode::FAILURE;
