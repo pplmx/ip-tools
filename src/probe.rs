@@ -17,6 +17,25 @@ use std::time::Duration;
 /// Attempts are run sequentially per address so that the latency distribution
 /// (including jitter) reflects genuine per-attempt timing rather than
 /// concurrent-request skew. Returns an aggregated [`ProbeResult`].
+///
+/// # Examples
+///
+/// ```no_run
+/// use ip_tools::probe;
+/// use std::net::SocketAddr;
+/// use std::time::Duration;
+///
+/// # tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap().block_on(async {
+/// let addr: SocketAddr = "1.1.1.1:443".parse().unwrap();
+/// let r = probe::tcp_repeat(addr, 10, Duration::from_secs(2)).await;
+/// println!(
+///     "{}% reachable, p50={:?} ms, failures={}",
+///     r.success_rate * 100.0,
+///     r.latency.p50,
+///     r.failures,
+/// );
+/// # });
+/// ```
 pub async fn tcp_repeat(destination: SocketAddr, attempts: usize, timeout: Duration) -> ProbeResult {
     repeat_impl(destination, attempts, || async {
         let obs = tcp::probe(destination, timeout).await;
@@ -52,6 +71,20 @@ pub async fn http_repeat(
 
 /// Repeatedly probe HTTPS/HTTP2 to `destination` presenting `host`/`method`
 /// `attempts` times, aggregating latency statistics like [`tcp_repeat`].
+///
+/// # Examples
+///
+/// ```no_run
+/// use ip_tools::probe;
+/// use std::net::SocketAddr;
+/// use std::time::Duration;
+///
+/// # tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap().block_on(async {
+/// let addr: SocketAddr = "1.1.1.1:443".parse().unwrap();
+/// let r = probe::http2_repeat(addr, "1.1.1.1", "HEAD", 5, Duration::from_secs(3), false).await;
+/// println!("http2 success rate: {:.0}%", r.success_rate * 100.0);
+/// # });
+/// ```
 pub async fn http2_repeat(
     destination: SocketAddr,
     host: &str,

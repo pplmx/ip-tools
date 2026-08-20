@@ -12,6 +12,20 @@ use tokio::net::TcpStream;
 
 /// Perform a single TCP connect probe to `destination`, bounded by `timeout`.
 ///
+/// # Examples
+///
+/// ```no_run
+/// use ip_tools::tcp;
+/// use std::net::SocketAddr;
+/// use std::time::Duration;
+///
+/// # tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap().block_on(async {
+/// let addr: SocketAddr = "1.1.1.1:443".parse().unwrap();
+/// let obs = tcp::probe(addr, Duration::from_secs(2)).await;
+/// println!("reachable={} latency_ms={:?}", obs.success, obs.latency_ms);
+/// # });
+/// ```
+///
 /// Returns the observation; it never returns an `Err` — failures are captured
 /// inside the observation as a classified [`ProbeError`].
 pub async fn probe(destination: SocketAddr, timeout: Duration) -> TcpObservation {

@@ -208,6 +208,26 @@ const DOH_MAX_BODY: usize = 64 * 1024;
 #[must_use]
 // Sequential probe pipeline (TLS -> HTTP -> body -> parse) is clearer inline.
 #[allow(clippy::too_many_lines)]
+///
+/// # Examples
+///
+/// ```no_run
+/// use ip_tools::dns;
+/// use ip_tools::model::DnsRecordType;
+/// use std::time::Duration;
+///
+/// # tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap().block_on(async {
+/// let obs = dns::doh_query(
+///     "https://cloudflare-dns.com/dns-query",
+///     "example.com",
+///     DnsRecordType::A,
+///     Duration::from_secs(3),
+///     false,
+/// )
+/// .await;
+/// println!("addresses: {:?}", obs.records);
+/// # });
+/// ```
 pub async fn doh_query(
     endpoint: &str,
     host: &str,
