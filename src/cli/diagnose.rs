@@ -41,8 +41,17 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
 
     // --- Measure (probe layer) ---
     // Resolve once: the DNS observations and the probed addresses come from
-    // the same lookups (previously the hostname was resolved twice).
-    let dns_client = DnsClient::new(&[], timeout, 1);
+    // the same lookups (previously the hostname was resolved twice). Custom
+    // `--server` resolvers are included so the engine can see resolver
+    // disagreement, not just the system resolver's answer.
+    let custom_servers = match super::parse_custom_servers(sub_m) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("Error: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let dns_client = DnsClient::new(&custom_servers, timeout, 1);
     let mut dns_obs = Vec::new();
     let mut addresses: Vec<IpAddr> = Vec::new();
     if let Ok(ip) = target.host.parse::<IpAddr>() {

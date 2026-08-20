@@ -209,6 +209,33 @@ fn dns_cli_rejects_invalid_server() {
 }
 
 #[test]
+fn diagnose_cli_uses_custom_resolver_dns_observations() {
+    // diagnose --server must query the custom resolver so the DNS observations
+    // that feed the engine include resolver disagreement (previously only the
+    // system resolver was queried). A fake local DNS server supplies A
+    // 192.0.2.77.
+    let dns_server = local_dns_server(&["192.0.2.77"], &[]);
+    let out = stdout(
+        &cmd()
+            .args([
+                "diagnose",
+                "host.example",
+                "--server",
+                &dns_server.to_string(),
+                "--timeout",
+                "400",
+            ])
+            .assert()
+            .success(),
+    );
+    // The custom resolver's DNS observation must appear in the report...
+    assert!(out.contains("192.0.2.77"), "custom-resolver DNS record missing: {out}");
+    // ...and the diagnoses rendered regardless of the (unroutable TEST-NET)
+    // probe outcome.
+    assert!(out.contains("Diagnosis"), "diagnoses missing: {out}");
+}
+
+#[test]
 fn diagnose_cli_runs_full_pipeline_against_listener() {
     let addr = local_tcp_listener();
     let out = stdout(

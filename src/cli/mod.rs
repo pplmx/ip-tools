@@ -56,13 +56,7 @@ fn parser() -> ArgMatches {
             Command::new("dns")
                 .about("resolve a hostname and inspect DNS results")
                 .arg(positional_target("hostname to resolve"))
-                .arg(
-                    Arg::new("server")
-                        .long("server")
-                        .value_name("IP[:PORT]")
-                        .action(ArgAction::Append)
-                        .help("additional DNS server to query (repeatable); port defaults to 53"),
-                )
+                .arg(server_arg())
                 .arg(record_type_arg())
                 .arg(timeout_arg()),
         )
@@ -121,9 +115,18 @@ fn parser() -> ArgMatches {
         .subcommand(probe_command(
             "diagnose",
             "run the full probe pipeline and produce evidence-based diagnoses",
-            &[insecure_arg()],
+            &[insecure_arg(), server_arg()],
         ))
         .get_matches()
+}
+
+/// Common repeatable `--server` DNS-server argument.
+fn server_arg() -> Arg {
+    Arg::new("server")
+        .long("server")
+        .value_name("IP[:PORT]")
+        .action(ArgAction::Append)
+        .help("additional DNS server to query (repeatable); port defaults to 53")
 }
 
 /// Build a per-address probe subcommand: positional target plus the shared
