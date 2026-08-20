@@ -245,6 +245,15 @@ fn diagnose_cli_runs_full_pipeline_against_listener() {
             .success(),
     );
     assert!(out.contains("TCP connect"), "diagnose should show TCP phase: {out}");
+    // The full evidence stack must be rendered in text mode, not only
+    // DNS + TCP + verdicts (TLS/HTTP/probe phases may report failures
+    // against a plain listener but must still appear).
+    assert!(out.contains("TLS handshake"), "diagnose should show TLS phase: {out}");
+    assert!(out.contains("HTTPS"), "diagnose should show HTTP phases: {out}");
+    assert!(
+        out.contains("Repeated probes"),
+        "diagnose should show probe phase: {out}"
+    );
     assert!(out.contains("Diagnosis"), "diagnose should render diagnoses: {out}");
 }
 

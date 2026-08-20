@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 |- `--server` custom DNS resolvers on `diagnose` (matching `dns`), so the diagnostic engine can observe resolver disagreement rather than only the system resolver's answer
 |- `--server` custom DNS resolvers on every per-address probe subcommand (`tcp`, `tls`, `http`, `http2`, `http3`, `probe`), so probes can be steered through a trusted resolver (e.g. to check whether the system resolver is being steered); the address lookups now also honor `--timeout` instead of a hard-coded 5 s
 |- `--strict` flag on `tcp`, `tls`, `http`, `http2`, `http3` and `probe`: exit non-zero when any address probe failed to complete (failed probes remain exit-0 observations by default), for scripting/CI use
+|- `diagnose` text output now renders the full evidence stack — DNS, TCP, TLS, HTTP/1.1+2+3 and repeated probe phases — before the verdicts, instead of only DNS + TCP + verdicts (the observations were collected and shown in `--json`, but invisible in human output)
 
 ### Fixed
 |- Probe commands (and `diagnose`) could not probe bracket-form IPv6 literals: `[::1]:443` parsed the bracketed hostname and sent it to DNS (`hostname [::1] did not resolve`) instead of using it as a literal address. Resolution now strips the brackets before the literal check (TLS/HTTP SNI/Host handling already dealt with bracketed IPv6 correctly)

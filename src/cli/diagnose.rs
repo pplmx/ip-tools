@@ -11,7 +11,7 @@ use ip_tools::model::{
     Diagnosis, DnsObservation, DnsRecordType, HttpObservation, ProbeResult, TcpObservation, TlsObservation,
 };
 use ip_tools::probe as ip_probe;
-use ip_tools::report::{render_diagnoses, render_dns, render_tcp, to_json};
+use ip_tools::report::{render_diagnoses, render_dns, render_http, render_probe, render_tcp, render_tls, to_json};
 use ip_tools::target::Target;
 use ip_tools::tcp as ip_tcp;
 use ip_tools::tls as ip_tls;
@@ -132,8 +132,13 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
         };
         println!("{}", to_json(&report));
     } else {
+        // Render the full evidence stack the engine reasoned over (DNS, TCP,
+        // TLS, HTTP/1.1+2+3, repeated probes), not just DNS + TCP + verdicts.
         print!("{}", render_dns(&target.host, &dns_obs));
         print!("{}", render_tcp(&tcp_obs));
+        print!("{}", render_tls(&tls_obs));
+        print!("{}", render_http(&http_obs));
+        print!("{}", render_probe(&probe_obs));
         print!("{}", render_diagnoses(&diagnoses));
     }
     ExitCode::SUCCESS
