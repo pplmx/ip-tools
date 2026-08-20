@@ -37,6 +37,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 |- Probe commands (and `diagnose`) could not probe bracket-form IPv6 literals: `[::1]:443` parsed the bracketed hostname and sent it to DNS (`hostname [::1] did not resolve`) instead of using it as a literal address. Resolution now strips the brackets before the literal check (TLS/HTTP SNI/Host handling already dealt with bracketed IPv6 correctly)
 
+### Tested
+|- Deterministic error-path coverage for the handshake timeouts: HTTP/3 against a silent UDP socket times out (not success); HTTP/3 against a closed UDP port fails; TLS and HTTP/1.1 against a TCP listener that accepts but never speaks TLS hit the wall-clock `Timeout` bound
+
 ### Changed
 |- Add `tokio`, `hickory-resolver`, `rustls`, `tokio-rustls`, `rustls-native-certs`, `hyper`, `hyper-util`, `h2`, `quinn`, `h3`, `h3-quinn`, `http-body-util`, `x509-parser` and `libc` dependencies
 |- Raise MSRV to 1.88 (required by hickory-resolver 0.26.1, which also ships the DNS security fixes below)

@@ -13,6 +13,7 @@ use ip_tools::probe;
 use ip_tools::tcp;
 use ip_tools::test_support::FixtureServer;
 use ip_tools::tls;
+use std::net::SocketAddr;
 use std::time::Duration;
 
 const fn timeout() -> Duration {
@@ -119,6 +120,80 @@ async fn http_repeat_against_fixture_aggregates_all_protocols() {
     assert_eq!(h3.successes, c, "http3 repeat should be all-success: {h3:?}");
     assert_eq!(h3.latency.count, c, "http3 repeat should yield latency samples");
     assert!(h3.failure_counts.is_empty());
+}
+
+// --- HTTP/3 error paths (QUIC handshake/black-hole UDP) ---------------------
+
+#[tokio::test(flavor = "multi_thread")]
+async fn http3_probe_times_out_against_silent_udp_socket() {
+    // A bound-but-silent UDP socket accepts the QUIC client's packets and
+    // never answers: the handshake must time out (our wall-clock bound), not
+    // hang forever or report success.
+    let sock = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind silent udp");
+    let addr = sock.local_addr().expect("silent udp addr");
+
+    let obs = http3::probe(addr, "localhost", "GET", Duration::from_millis(600)).await;
+    assert!(obs.failure.is_some(), "silent UDP must not report success: {obs:?}");
+    let failure = obs.failure.as_ref().expect("expected a timeout failure");
+    assert_eq!(
+        failure.kind,
+        ip_tools::FailureKind::Timeout,
+        "unexpected kind: {failure:?}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn http3_probe_fails_against_closed_udp_port() {
+    // Nothing bound on the port (bound then dropped): the OS may surface an
+    // ICMP port-unreachable immediately, or the probe times out. Either way it
+    // must be a failure, never a success.
+    let port = {
+        let s = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind probe port");
+        s.local_addr().expect("probe port addr").port()
+    };
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+
+    let obs = http3::probe(addr, "localhost", "GET", Duration::from_millis(800)).await;
+    assert!(
+        obs.failure.is_some(),
+        "closed UDP port must not report success: {obs:?}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn tls_and_http_probe_time_out_when_server_never_responds() {
+    // A TCP listener that accepts connections but never sends TLS bytes: the
+    // handshake must hit our wall-clock bound (Timeout), not hang or succeed.
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind listener");
+    let addr = listener.local_addr().expect("listener addr");
+    let held = tokio::spawn(async move {
+        // Hold every accepted stream open (a dropped stream would send EOF/RST
+        // and the client would fail fast with a handshake error, not timeout).
+        // `forget` leaks the fd purposely: it stays open, unread, for the rest
+        // of the test process.
+        while let Ok((stream, _peer)) = listener.accept().await {
+            std::mem::forget(stream);
+        }
+    });
+
+    let obs = tls::probe(addr, "localhost", Duration::from_millis(500)).await;
+    assert!(!obs.success, "black-holed TLS must not succeed: {obs:?}");
+    assert_eq!(
+        obs.failure.as_ref().map(|f| f.kind),
+        Some(ip_tools::FailureKind::Timeout),
+        "expected a TLS handshake timeout: {obs:?}"
+    );
+
+    let obs = http::probe(addr, "localhost", "GET", Duration::from_millis(500)).await;
+    assert_eq!(
+        obs.failure.as_ref().map(|f| f.kind),
+        Some(ip_tools::FailureKind::Timeout),
+        "expected an HTTP handshake timeout: {obs:?}"
+    );
+
+    held.abort();
 }
 
 #[test]
