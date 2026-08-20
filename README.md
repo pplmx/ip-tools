@@ -21,8 +21,7 @@ evidence.
 
 Currently implements: **DNS**, **TCP**, **TLS**, **HTTPS/HTTP1.1**, **HTTP/2**,
 **HTTP/3/QUIC**, **route diagnostics (Linux, traceroute)**, **repeated
-probing with latency statistics**, and the **evidence-based diagnostic engine**
-(Phases 1–6).
+probing with latency statistics**, and the **evidence-based diagnostic engine**.
 
 - DNS: A + AAAA via the system resolver and/or explicit DNS servers, with
   latency.
