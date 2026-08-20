@@ -63,32 +63,32 @@ fn parser() -> ArgMatches {
         .subcommand(probe_command(
             "tcp",
             "test TCP connectivity to a host:port across its addresses",
-            &[],
+            &[strict_arg()],
         ))
         .subcommand(probe_command(
             "tls",
             "perform TLS handshake to a host:port across its addresses",
-            &[insecure_arg()],
+            &[insecure_arg(), strict_arg()],
         ))
         .subcommand(probe_command(
             "http",
             "perform an HTTPS/HTTP1.1 request to a host:port across its addresses",
-            &[method_arg(), insecure_arg()],
+            &[method_arg(), insecure_arg(), strict_arg()],
         ))
         .subcommand(probe_command(
             "probe",
             "repeatedly probe TCP connectivity and report latency statistics",
-            &[count_arg()],
+            &[count_arg(), strict_arg()],
         ))
         .subcommand(probe_command(
             "http2",
             "perform an HTTPS/HTTP2 request to a host:port across its addresses",
-            &[method_arg(), insecure_arg()],
+            &[method_arg(), insecure_arg(), strict_arg()],
         ))
         .subcommand(probe_command(
             "http3",
             "perform an HTTPS/HTTP3 (QUIC) request to a host:port across its addresses",
-            &[method_arg(), insecure_arg()],
+            &[method_arg(), insecure_arg(), strict_arg()],
         ))
         .subcommand(
             Command::new("route")
@@ -192,6 +192,14 @@ fn insecure_arg() -> Arg {
         .help("skip TLS/QUIC certificate validation (e.g. for self-signed or private-PKI endpoints)")
 }
 
+/// `--strict` argument (exit non-zero when any probe could not complete).
+fn strict_arg() -> Arg {
+    Arg::new("strict")
+        .long("strict")
+        .action(ArgAction::SetTrue)
+        .help("exit non-zero if any address probe failed to complete (for scripting/CI)")
+}
+
 /// Select which DNS record types to query (`--ipv6` only, else both).
 fn record_type_arg() -> Arg {
     Arg::new("ipv6")
@@ -253,6 +261,7 @@ pub async fn run_probe_flow<O, Fut>(
     sub_m: &ArgMatches,
     render: fn(&[O]) -> String,
     sort_key: fn(&O) -> SocketAddr,
+    failed: fn(&O) -> bool,
     probe: impl Fn(String, SocketAddr, Duration) -> Fut + Send + Sync + 'static,
 ) -> ExitCode
 where
@@ -260,6 +269,7 @@ where
     Fut: Future<Output = O> + Send + 'static,
 {
     let json = sub_m.get_flag("json");
+    let strict = sub_m.get_flag("strict");
     let target_str = sub_m.get_one::<String>("target").expect("required target");
     let timeout_ms = *sub_m.get_one::<u64>("timeout").expect("timeout has default");
     let concurrency = *sub_m.get_one::<usize>("concurrency").expect("concurrency has default");
@@ -305,6 +315,17 @@ where
         println!("{}", to_json(&results));
     } else {
         print!("{}", render(&results));
+    }
+
+    // `--strict`: a failed probe is an observation, not an error, but for
+    // scripting/CI a caller often wants a non-zero exit when any address
+    // could not be reached. Output above is still rendered in full either way.
+    if strict {
+        let failed_count = results.iter().filter(|o| failed(o)).count();
+        if failed_count > 0 {
+            eprintln!("Error: {failed_count}/{} probes failed to complete", results.len());
+            return ExitCode::FAILURE;
+        }
     }
     ExitCode::SUCCESS
 }

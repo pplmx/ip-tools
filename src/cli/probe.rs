@@ -15,6 +15,7 @@ pub(super) async fn run_probe(sub_m: &ArgMatches) -> ExitCode {
         sub_m,
         render_probe,
         |result: &ProbeResult| result.destination,
+        |result: &ProbeResult| result.failures > 0,
         move |_host, dest, timeout| async move { ip_probe::tcp_repeat(dest, count, timeout).await },
     )
     .await

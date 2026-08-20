@@ -348,3 +348,54 @@ fn probe_cli_rejects_invalid_server() {
     );
     assert!(err.contains("Error"), "invalid server must error: {err}");
 }
+
+/// A loopback TCP port that nothing is listening on (bound then dropped).
+fn closed_loopback_port() -> SocketAddr {
+    let l = TcpListener::bind("127.0.0.1:0").expect("bind probe port");
+    l.local_addr().expect("probe port addr")
+}
+
+#[test]
+fn strict_exits_nonzero_only_when_probe_fails() {
+    // A failed probe is an observation: by default the CLI still exits 0...
+    let closed = closed_loopback_port();
+    cmd()
+        .args(["tcp", &closed.to_string(), "--timeout", "400"])
+        .assert()
+        .success();
+
+    // ...but `--strict` turns any failed probe into a non-zero exit.
+    let err = stderr(
+        &cmd()
+            .args(["tcp", &closed.to_string(), "--timeout", "400", "--strict"])
+            .assert()
+            .failure(),
+    );
+    assert!(err.contains("failed"), "strict failure should be reported: {err}");
+
+    // When every probe completes, --strict must still exit 0.
+    let ok = local_tcp_listener();
+    cmd()
+        .args(["tcp", &ok.to_string(), "--timeout", "800", "--strict"])
+        .assert()
+        .success();
+
+    // The repeated-probe subcommand shares the strict semantic (any failed
+    // attempt exits non-zero).
+    cmd()
+        .args([
+            "probe",
+            &closed.to_string(),
+            "--strict",
+            "--count",
+            "2",
+            "--timeout",
+            "400",
+        ])
+        .assert()
+        .failure();
+    cmd()
+        .args(["probe", &ok.to_string(), "--strict", "--count", "2", "--timeout", "800"])
+        .assert()
+        .success();
+}

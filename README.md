@@ -302,6 +302,21 @@ Repeated probes
       jitter: 1 ms
 ```
 
+### Scripting exit codes
+
+A failed probe is an observation, not an error, so by default the CLI exits
+`0` as long as the run completed. For scripting and CI, pass `--strict`
+(on `tcp`, `tls`, `http`, `http2`, `http3` and `probe`) to exit non-zero
+whenever any address probe failed to complete:
+
+```shell
+ip-tools tcp example.com --strict && echo "all addresses reachable"
+ip-tools probe example.com --count 20 --strict || echo "packet loss detected"
+```
+
+Output is still rendered in full; only the exit code changes. For `probe`,
+any failed attempt makes `--strict` exit non-zero.
+
 ### Local IP helpers
 
 ```shell

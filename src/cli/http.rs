@@ -16,6 +16,7 @@ pub(super) async fn run_http(sub_m: &ArgMatches) -> ExitCode {
         sub_m,
         render_http,
         |obs: &HttpObservation| obs.destination,
+        |obs: &HttpObservation| obs.failure.is_some(),
         move |host, dest, timeout| {
             let method = method.clone();
             async move {
