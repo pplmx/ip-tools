@@ -1,5 +1,6 @@
 //! DNS diagnostics: resolve A / AAAA records via the system resolver and/or
-//! explicitly configured DNS servers.
+//! explicitly configured DNS servers, and optionally DNS-over-HTTPS
+//! (RFC 8484) endpoints.
 //!
 //! Resolver disagreement (different addresses from different resolvers) is
 //! *reported*, never automatically classified as poisoning — the diagnostic
@@ -10,8 +11,10 @@ use hickory_resolver::config::{ConnectionConfig, NameServerConfig, ProtocolConfi
 use hickory_resolver::net::runtime::TokioRuntimeProvider;
 use hickory_resolver::proto::rr::RData;
 use hickory_resolver::TokioResolver;
+use http_body_util::{BodyExt, Empty, Limited};
+use hyper_util::rt::TokioIo;
 use std::collections::HashMap;
-use std::net::{IpAddr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::time::{Duration, Instant};
 
 /// A set of DNS resolvers to query.
@@ -191,6 +194,384 @@ async fn resolver_ip_lookup(
         .collect())
 }
 
+// --- DNS-over-HTTPS (RFC 8484) ------------------------------------------------
+
+/// Maximum response body a `DoH` endpoint is allowed to return.
+const DOH_MAX_BODY: usize = 64 * 1024;
+
+/// Query a `DNS`-over-HTTPS endpoint for `host`/`record_type` over a
+/// `TLS`-wrapped `HTTP/1.1` request and build a [`DnsObservation`].
+///
+/// `endpoint` is an `https://` URL like `https://cloudflare-dns.com/dns-query`;
+/// `insecure` skips certificate validation (needed for `IP`-literal endpoints
+/// whose cert is issued to the hostname, e.g. `https://1.1.1.1/dns-query`).
+#[must_use]
+// Sequential probe pipeline (TLS -> HTTP -> body -> parse) is clearer inline.
+#[allow(clippy::too_many_lines)]
+pub async fn doh_query(
+    endpoint: &str,
+    host: &str,
+    record_type: DnsRecordType,
+    timeout: Duration,
+    insecure: bool,
+) -> DnsObservation {
+    let start = Instant::now();
+    let step = |kind: FailureKind, message: String| ProbeError { kind, message };
+    let base = DnsObservation {
+        hostname: host.to_string(),
+        resolver: ResolverKind::Doh(endpoint.to_string()),
+        record_type,
+        records: Vec::new(),
+        latency_ms: None,
+        error: None,
+    };
+    let fail = |kind, message| DnsObservation {
+        error: Some(step(kind, message)),
+        ..base.clone()
+    };
+
+    let (ehost, eport, path) = match parse_doh_url(endpoint) {
+        Ok(p) => p,
+        Err(msg) => return fail(FailureKind::Other, msg),
+    };
+    let ip = match resolve_doh_host(&ehost, timeout).await {
+        Ok(ip) => ip,
+        Err(msg) => return fail(FailureKind::Dns, msg),
+    };
+    let query = match build_query(host, record_type) {
+        Ok(q) => q,
+        Err(msg) => return fail(FailureKind::Protocol, msg),
+    };
+
+    // TLS handshake to the endpoint (its hostname as SNI), then one HTTP/1.1
+    // GET whose body is the DNS wire-format response.
+    let roots = crate::tls::roots();
+    let mode = if insecure {
+        crate::tls::TlsMode::Insecure
+    } else {
+        crate::tls::TlsMode::Roots(&roots)
+    };
+    let conn = match crate::tls::connect_to(
+        SocketAddr::new(ip, eport),
+        &ehost,
+        crate::tls::ALPN_HTTP1,
+        timeout,
+        mode,
+    )
+    .await
+    {
+        Ok(c) => c,
+        Err(f) => return DnsObservation { error: Some(f), ..base },
+    };
+
+    let handshake = hyper::client::conn::http1::handshake(TokioIo::new(conn.stream));
+    let (mut sender, connection) = match tokio::time::timeout(timeout, handshake).await {
+        Ok(Ok(pair)) => pair,
+        Ok(Err(e)) => {
+            return fail(
+                FailureKind::Dns,
+                format!("http/1.1 handshake with DoH endpoint failed: {e}"),
+            )
+        }
+        Err(_) => {
+            return fail(
+                FailureKind::Timeout,
+                format!("DoH handshake to {endpoint} timed out after {timeout:?}"),
+            )
+        }
+    };
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    let uri = format!("{path}?dns={}", base64url(&query));
+    let request = match hyper::Request::builder()
+        .method("GET")
+        .uri(uri)
+        .header("host", &ehost)
+        .header("accept", "application/dns-message")
+        .header("user-agent", "ip-tools")
+        .body(Empty::<hyper::body::Bytes>::new())
+    {
+        Ok(r) => r,
+        Err(e) => return fail(FailureKind::Protocol, format!("could not build DoH request: {e}")),
+    };
+
+    let response = match tokio::time::timeout(timeout, sender.send_request(request)).await {
+        Ok(Ok(r)) => r,
+        Ok(Err(e)) => return fail(FailureKind::Dns, format!("DoH request failed: {e}")),
+        Err(_) => {
+            return fail(
+                FailureKind::Timeout,
+                format!("DoH request to {endpoint} timed out after {timeout:?}"),
+            )
+        }
+    };
+
+    let status = response.status().as_u16();
+    let body = response.into_body();
+    let limited = Limited::new(body, DOH_MAX_BODY);
+    let bytes = match tokio::time::timeout(timeout, limited.collect()).await {
+        Ok(Ok(collected)) => collected.to_bytes(),
+        Ok(Err(e)) => return fail(FailureKind::Dns, format!("DoH body read failed: {e}")),
+        Err(_) => {
+            return fail(
+                FailureKind::Timeout,
+                format!("DoH body from {endpoint} timed out after {timeout:?}"),
+            )
+        }
+    };
+    if status != 200 {
+        return fail(
+            FailureKind::Dns,
+            format!("DoH endpoint {endpoint} responded HTTP {status}"),
+        );
+    }
+    let records = match parse_dns_response(&bytes, record_type) {
+        Ok(r) => r,
+        Err(msg) => {
+            return fail(
+                FailureKind::Dns,
+                format!("DoH endpoint {endpoint} returned an invalid response: {msg}"),
+            )
+        }
+    };
+
+    DnsObservation {
+        records,
+        latency_ms: Some(start.elapsed().as_millis() as u64),
+        ..base
+    }
+}
+
+/// Split an `https://host[:port]/path` endpoint URL into its components
+/// (port defaults to 443, path to `/dns-query`).
+fn parse_doh_url(url: &str) -> Result<(String, u16, String), String> {
+    let rest = url
+        .strip_prefix("https://")
+        .ok_or_else(|| format!("DoH endpoint {url:?} must be an https:// URL"))?;
+    let (authority, path) = match rest.split_once('/') {
+        Some((authority, path)) => (authority, format!("/{path}")),
+        None => (rest, "/dns-query".to_string()),
+    };
+    if authority.is_empty() {
+        return Err(format!("DoH endpoint {url:?} has an empty authority"));
+    }
+    // `[::1]:443`, `[::1]`, `host:8080`, `host`, `1.1.1.1`
+    let (host, port) = if let Some(rest) = authority.strip_prefix('[') {
+        let (addr, port) = match rest.split_once(']') {
+            Some((addr, "")) => (addr, 443u16),
+            Some((addr, port)) => {
+                let port = port
+                    .strip_prefix(':')
+                    .ok_or_else(|| format!("DoH endpoint {url:?} has a malformed bracket authority"))?
+                    .parse::<u16>()
+                    .map_err(|_| format!("DoH endpoint {url:?} has a non-numeric port"))?;
+                (addr, port)
+            }
+            None => return Err(format!("DoH endpoint {url:?} has an unterminated '['")),
+        };
+        (addr.to_string(), port)
+    } else if let Some((host, port)) = authority.rsplit_once(':') {
+        let port = port
+            .parse::<u16>()
+            .map_err(|_| format!("DoH endpoint {url:?} has a non-numeric port"))?;
+        (host.to_string(), port)
+    } else {
+        (authority.to_string(), 443)
+    };
+    if host.is_empty() {
+        return Err(format!("DoH endpoint {url:?} has an empty host"));
+    }
+    Ok((host, port, path))
+}
+
+/// Resolve the `DoH` endpoint's hostname to one connectable address
+/// (`IPv4` first), using the system resolver. `IP` literals pass through
+/// unchanged.
+async fn resolve_doh_host(host: &str, timeout: Duration) -> Result<IpAddr, String> {
+    if let Ok(ip) = host.parse::<IpAddr>() {
+        return Ok(ip);
+    }
+    let resolver = TokioResolver::builder_tokio()
+        .map_err(|e| format!("could not build resolver for DoH endpoint host: {e}"))?
+        .build()
+        .map_err(|e| format!("could not build resolver for DoH endpoint host: {e}"))?;
+    let wanted = |rec: &hickory_resolver::proto::rr::Record| match rec.data {
+        RData::A(ip) => Some(IpAddr::from(*ip)),
+        RData::AAAA(ip) => Some(IpAddr::from(*ip)),
+        _ => None,
+    };
+    if let Ok(Ok(lookup)) = tokio::time::timeout(timeout, resolver.ipv4_lookup(host)).await {
+        if let Some(ip) = lookup.answers().iter().find_map(wanted) {
+            return Ok(ip);
+        }
+    }
+    if let Ok(Ok(lookup)) = tokio::time::timeout(timeout, resolver.ipv6_lookup(host)).await {
+        if let Some(ip) = lookup.answers().iter().find_map(wanted) {
+            return Ok(ip);
+        }
+    }
+    Err(format!(
+        "could not resolve DoH endpoint host {host:?} via the system resolver"
+    ))
+}
+
+/// Build a single-question DNS query message (RFC 1035 §4.1) with recursion
+/// requested and an arbitrary id.
+fn build_query(host: &str, record_type: DnsRecordType) -> Result<Vec<u8>, String> {
+    let mut out = Vec::with_capacity(host.len() + 32);
+    out.extend_from_slice(&0u16.to_be_bytes()); // id
+    out.extend_from_slice(&0x0100u16.to_be_bytes()); // flags: RD
+    out.extend_from_slice(&1u16.to_be_bytes()); // QDCOUNT
+    out.extend_from_slice(&[0, 0, 0, 0, 0, 0]); // AN/NS/ARCOUNT
+    for label in host.split('.') {
+        if label.is_empty() || label.len() > 63 {
+            return Err(format!("hostname {host:?} has an invalid DNS label"));
+        }
+        out.push(label.len() as u8);
+        out.extend_from_slice(label.as_bytes());
+    }
+    out.push(0); // root label
+    let qtype: u16 = match record_type {
+        DnsRecordType::A => 1,
+        DnsRecordType::Aaaa => 28,
+    };
+    out.extend_from_slice(&qtype.to_be_bytes());
+    out.extend_from_slice(&1u16.to_be_bytes()); // CLASS IN
+    Ok(out)
+}
+
+/// Parse a DNS response message, returning the addresses of the wanted
+/// record type from the answer section (RFC 1035 §4.1.3, with name
+/// compression support).
+fn parse_dns_response(bytes: &[u8], want: DnsRecordType) -> Result<Vec<IpAddr>, String> {
+    if bytes.len() < 12 {
+        return Err("message shorter than the 12-byte header".to_string());
+    }
+    let qdcount = u16::from_be_bytes([bytes[4], bytes[5]]) as usize;
+    let ancount = u16::from_be_bytes([bytes[6], bytes[7]]) as usize;
+    let mut pos = 12;
+    for _ in 0..qdcount {
+        pos = skip_name(bytes, pos)?; // question name
+        pos += 4; // qtype + qclass
+    }
+    let mut addrs = Vec::new();
+    for _ in 0..ancount {
+        pos = skip_name(bytes, pos)?; // answer name (possibly a pointer)
+        if pos + 10 > bytes.len() {
+            return Err("truncated answer header".to_string());
+        }
+        let rtype = u16::from_be_bytes([bytes[pos], bytes[pos + 1]]);
+        // skip class (2) + ttl (4)
+        let rdlen = u16::from_be_bytes([bytes[pos + 8], bytes[pos + 9]]) as usize;
+        pos += 10;
+        let end = pos + rdlen;
+        if end > bytes.len() {
+            return Err("truncated rdata".to_string());
+        }
+        let rdata = &bytes[pos..end];
+        pos = end;
+        match (rtype, want) {
+            (1, DnsRecordType::A) if rdlen == 4 => {
+                addrs.push(IpAddr::V4(Ipv4Addr::new(rdata[0], rdata[1], rdata[2], rdata[3])));
+            }
+            (28, DnsRecordType::Aaaa) if rdlen == 16 => {
+                addrs.push(IpAddr::V6(Ipv6Addr::from(
+                    <[u8; 16]>::try_from(rdata).expect("rdlen checked above"),
+                )));
+            }
+            _ => {} // other record types are ignored
+        }
+    }
+    Ok(addrs)
+}
+
+/// Return the byte position just past the name at `start`. Handles plain
+/// label sequences and a trailing compression pointer (which is validated by
+/// a bounded walk of its target).
+fn skip_name(bytes: &[u8], start: usize) -> Result<usize, String> {
+    let mut pos = start;
+    loop {
+        let b = *bytes
+            .get(pos)
+            .ok_or_else(|| format!("name overruns message at {pos}"))?;
+        if b == 0 {
+            return Ok(pos + 1);
+        }
+        if b & 0xC0 == 0xC0 {
+            let target = (u16::from(b & 0x3F) << 8) | u16::from(*bytes.get(pos + 1).ok_or("truncated pointer")?);
+            let target = usize::from(target);
+            if target >= bytes.len() {
+                return Err("compression pointer out of range".to_string());
+            }
+            validate_name(bytes, target, 0)?;
+            return Ok(pos + 2);
+        }
+        let len = usize::from(b);
+        if len == 0 || len > 63 {
+            return Err("bad label length".to_string());
+        }
+        pos += 1 + len;
+        if pos > bytes.len() {
+            return Err("name overruns message".to_string());
+        }
+    }
+}
+
+/// Validate the label chain at `start`, capping compression hops to bound
+/// pointer loops.
+fn validate_name(bytes: &[u8], start: usize, depth: usize) -> Result<(), String> {
+    if depth > 8 {
+        return Err("too many compression-pointer hops".to_string());
+    }
+    let mut pos = start;
+    loop {
+        let b = *bytes
+            .get(pos)
+            .ok_or_else(|| format!("name overruns message at {pos}"))?;
+        if b == 0 {
+            return Ok(());
+        }
+        if b & 0xC0 == 0xC0 {
+            let target = (u16::from(b & 0x3F) << 8) | u16::from(*bytes.get(pos + 1).ok_or("truncated pointer")?);
+            let target = usize::from(target);
+            if target >= bytes.len() {
+                return Err("compression pointer out of range".to_string());
+            }
+            return validate_name(bytes, target, depth + 1);
+        }
+        let len = usize::from(b);
+        if len == 0 || len > 63 {
+            return Err("bad label length".to_string());
+        }
+        pos += 1 + len;
+        if pos > bytes.len() {
+            return Err("name overruns message".to_string());
+        }
+    }
+}
+
+/// RFC 4648 §5 base64url encoding without padding (as required by RFC 8484).
+fn base64url(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let b0 = chunk[0];
+        let b1 = chunk.get(1).copied().unwrap_or(0);
+        let b2 = chunk.get(2).copied().unwrap_or(0);
+        out.push(ALPHABET[usize::from(b0 >> 2)] as char);
+        out.push(ALPHABET[usize::from(((b0 & 0x03) << 4) | (b1 >> 4))] as char);
+        if chunk.len() > 1 {
+            out.push(ALPHABET[usize::from(((b1 & 0x0F) << 2) | (b2 >> 6))] as char);
+        }
+        if chunk.len() > 2 {
+            out.push(ALPHABET[usize::from(b2 & 0x3F)] as char);
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -314,6 +695,92 @@ mod tests {
         assert!(o.error.is_none(), "unexpected error: {:?}", o.error);
         assert_eq!(o.records, vec!["2001:db8::1".parse::<IpAddr>().unwrap()]);
         assert_eq!(o.record_type, DnsRecordType::Aaaa);
+    }
+
+    #[test]
+    fn base64url_encodes_without_padding() {
+        assert_eq!(base64url(b""), "");
+        assert_eq!(base64url(b"f"), "Zg");
+        assert_eq!(base64url(b"fo"), "Zm8");
+        assert_eq!(base64url(b"foobar"), "Zm9vYmFy");
+        // URL-safe alphabet: 0xFB 0xEF 0xFF -> 111110 111110 111111 111111
+        assert_eq!(base64url(&[0xFB, 0xEF, 0xFF]), "--__");
+    }
+
+    #[test]
+    fn doh_url_is_parsed_into_host_port_path() {
+        assert_eq!(
+            parse_doh_url("https://1.1.1.1/dns-query").unwrap(),
+            ("1.1.1.1".to_string(), 443, "/dns-query".to_string())
+        );
+        assert_eq!(
+            parse_doh_url("https://cloudflare-dns.com").unwrap(),
+            ("cloudflare-dns.com".to_string(), 443, "/dns-query".to_string())
+        );
+        assert_eq!(
+            parse_doh_url("https://dns.google:443/resolve").unwrap(),
+            ("dns.google".to_string(), 443, "/resolve".to_string())
+        );
+        assert_eq!(
+            parse_doh_url("https://[::1]:8853/dns-query").unwrap(),
+            ("::1".to_string(), 8853, "/dns-query".to_string())
+        );
+        assert!(parse_doh_url("http://1.1.1.1/dns-query").is_err());
+        assert!(parse_doh_url("https://").is_err());
+        assert!(parse_doh_url("").is_err());
+    }
+
+    #[test]
+    fn query_builds_a_standard_message() {
+        let q = build_query("host.example", DnsRecordType::A).unwrap();
+        // 12-byte header: id 0, flags RD, QDCOUNT 1, then NS/AR counts of 0
+        assert_eq!(&q[0..4], &[0, 0, 0x01, 0x00]);
+        assert_eq!(&q[4..6], &[0x00, 0x01]); // QDCOUNT
+        assert_eq!(&q[6..12], &[0, 0, 0, 0, 0, 0]); // AN/NS/AR
+                                                    // question at 12: 4 host 7 example 0 root, qtype A, qclass IN
+        assert_eq!(
+            &q[12..],
+            &[4, b'h', b'o', b's', b't', 7, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 0, 0, 1, 0, 1]
+        );
+        // AAAA uses qtype 28
+        let q6 = build_query("host.example", DnsRecordType::Aaaa).unwrap();
+        assert_eq!(&q6[q6.len() - 4..], &[0, 28, 0, 1]);
+        assert!(build_query("foo..example", DnsRecordType::A).is_err()); // empty label
+        assert!(build_query(&"a".repeat(64), DnsRecordType::A).is_err()); // label > 63 bytes
+        assert!(build_query("", DnsRecordType::A).is_err());
+    }
+
+    #[test]
+    fn parses_answers_with_compression_pointers() {
+        // A response like the fixture's: one echoed question, two answers via
+        // a compression pointer (0xC00C) to the question name.
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&[0x12, 0x34, 0x81, 0x80, 0, 1, 0, 2, 0, 0, 0, 0]); // header
+        bytes.extend_from_slice(&[
+            4, b'h', b'o', b's', b't', 7, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 0,
+        ]); // name
+        bytes.extend_from_slice(&[0, 1, 0, 1]); // qtype A, qclass IN
+        bytes.extend_from_slice(&[0xC0, 0x0C, 0, 1, 0, 1, 0, 0, 0, 60, 0, 4]); // ptr -> A
+        bytes.extend_from_slice(&[192, 0, 2, 77]);
+        bytes.extend_from_slice(&[0xC0, 0x0C, 0, 28, 0, 1, 0, 0, 0, 60, 0, 16]); // ptr -> AAAA
+        bytes.extend_from_slice(&[0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x77]);
+
+        assert_eq!(
+            parse_dns_response(&bytes, DnsRecordType::A).unwrap(),
+            vec!["192.0.2.77".parse::<IpAddr>().unwrap()]
+        );
+        assert_eq!(
+            parse_dns_response(&bytes, DnsRecordType::Aaaa).unwrap(),
+            vec!["2001:db8::77".parse::<IpAddr>().unwrap()]
+        );
+        // malformed messages are rejected, not misread
+        assert!(parse_dns_response(&bytes[..6], DnsRecordType::A).is_err());
+        let mut bad = bytes.clone();
+        bad[7] = 200; // ANCOUNT claims 200 answers: truncated -> rejected
+        assert!(parse_dns_response(&bad, DnsRecordType::A).is_err());
+        // a pointer loop is detected rather than hanging
+        let looped = vec![0x12, 0x34, 0x81, 0x80, 0, 0, 0, 1, 0, 0, 0, 0, 0xC0, 0x0E, 0xC0, 0x0C];
+        assert!(parse_dns_response(&looped, DnsRecordType::A).is_err());
     }
 
     #[tokio::test]

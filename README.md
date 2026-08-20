@@ -82,6 +82,23 @@ DNS example.com
     A   : 104.20.23.154 (71 ms)
 ```
 
+#### DNS-over-HTTPS
+
+Query a DNS-over-HTTPS (RFC 8484) endpoint directly, so the answer cannot
+be seen or altered by the local resolver:
+
+```shell
+ip-tools dns example.com --doh https://cloudflare-dns.com/dns-query
+ip-tools dns example.com --doh https://1.1.1.1/dns-query --insecure
+ip-tools dns example.com --doh https://dns.google/dns-query --doh https://mozilla.cloudflare-dns.com/dns-query
+```
+
+Each `--doh` endpoint is queried for both A and AAAA (subject to `--ipv6`)
+and reported alongside the system and `--server` results, so disagreement
+between the local path and an encrypted, tamper-resistant path is visible
+side by side. `--insecure` is only needed for IP-literal endpoints whose
+TLS certificate is issued to the hostname (e.g. `1.1.1.1`).
+
 ### Custom DNS resolvers
 
 Every subcommand that resolves a hostname — `dns`, `tcp`, `tls`, `http`,

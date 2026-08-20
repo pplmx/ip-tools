@@ -63,6 +63,7 @@ fn resolver_label(r: &ResolverKind) -> String {
     match r {
         ResolverKind::System => "system".to_string(),
         ResolverKind::Custom(addr) => addr.to_string(),
+        ResolverKind::Doh(endpoint) => endpoint.clone(),
     }
 }
 

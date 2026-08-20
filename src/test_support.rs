@@ -108,6 +108,21 @@ impl FixtureServer {
 
 use rcgen::CertifiedKey;
 
+/// Canned `DNS`-over-HTTPS response served by the fixture at `/dns-query`:
+/// `host.example` `IN A` (`192.0.2.77`) and `IN AAAA` (`2001:db8::77`), both
+/// using a compression pointer (`0xC00C`) to the question name.
+const DOH_RESPONSE: &[u8] = &[
+    // header: id 0x1234, flags 0x8180, QD=1, AN=2, NS=0, AR=0
+    0x12, 0x34, 0x81, 0x80, 0x00, 0x01, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00,
+    // question name: host.example (4 host, 7 example, 0 root)
+    0x04, b'h', b'o', b's', b't', 0x07, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 0x00, // qtype A, qclass IN
+    0x00, 0x01, 0x00, 0x01, // answer 1: pointer to the question name, type A, class IN, ttl 60, rdlen 4
+    0xC0, 0x0C, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x3C, 0x00, 0x04, 192, 0, 2, 77,
+    // answer 2: pointer, type AAAA, class IN, ttl 60, rdlen 16, 2001:db8::77
+    0xC0, 0x0C, 0x00, 0x1C, 0x00, 0x01, 0x00, 0x00, 0x00, 0x3C, 0x00, 0x10, 0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x77,
+];
+
 /// Accept TLS connections and serve HTTP/1.1 or HTTP/2 chosen by negotiated
 /// ALPN.
 async fn run_tcp_server(listener: tokio::net::TcpListener, acceptor: tokio_rustls::TlsAcceptor) {
@@ -122,7 +137,19 @@ async fn run_tcp_server(listener: tokio::net::TcpListener, acceptor: tokio_rustl
             };
             let negotiated_h2 = tls.get_ref().1.alpn_protocol().is_some_and(|a| a == b"h2");
             let io = hyper_util::rt::TokioIo::new(tls);
-            let service = hyper::service::service_fn(|_req: hyper::Request<hyper::body::Incoming>| async {
+            let service = hyper::service::service_fn(|req: hyper::Request<hyper::body::Incoming>| async move {
+                if req.uri().path().starts_with("/dns-query") {
+                    // Serve a canned DNS-over-HTTPS response (RFC 8484): one
+                    // question echoed (host.example IN A) plus two answers
+                    // (A 192.0.2.77, AAAA 2001:db8::77) using a compression
+                    // pointer to the question name.
+                    let resp = hyper::Response::builder()
+                        .status(200)
+                        .header("content-type", "application/dns-message")
+                        .body(http_body_util::Full::new(bytes::Bytes::from_static(DOH_RESPONSE)))
+                        .expect("static doh response");
+                    return Ok::<_, std::convert::Infallible>(resp);
+                }
                 Ok::<_, std::convert::Infallible>(hyper::Response::new(http_body_util::Full::new(
                     bytes::Bytes::from_static(b"ok"),
                 )))

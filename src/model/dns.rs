@@ -9,6 +9,8 @@ pub enum ResolverKind {
     System,
     /// An explicitly configured DNS server.
     Custom(SocketAddr),
+    /// A DNS-over-HTTPS (RFC 8484) endpoint, e.g. `https://1.1.1.1/dns-query`.
+    Doh(String),
 }
 
 /// A DNS record type/query family.

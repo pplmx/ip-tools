@@ -197,6 +197,46 @@ async fn tls_and_http_probe_time_out_when_server_never_responds() {
 }
 
 #[test]
+fn dns_cli_queries_doh_fixture_endpoint() {
+    // End-to-end DNS-over-HTTPS: `dns --doh <fixture>/dns-query --insecure`
+    // must GET the endpoint (which the fixture serves with a canned RFC 8484
+    // response) and surface the A and AAAA records it answered, labeled by
+    // the endpoint URL.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let endpoint = format!("https://{}/dns-query", fixture.tcp_addr());
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "dns",
+            "host.example",
+            "--doh",
+            &endpoint,
+            "--insecure",
+            "--timeout",
+            "2000",
+        ])
+        .output()
+        .expect("run dns --doh");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "dns --doh should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(stdout.contains("192.0.2.77"), "DoH A record missing: {stdout}");
+    assert!(stdout.contains("2001:db8::77"), "DoH AAAA record missing: {stdout}");
+    assert!(
+        stdout.contains(&endpoint),
+        "DoH endpoint should be labeled in output: {stdout}"
+    );
+}
+
+#[test]
 fn probe_cli_http2_repeats_fixture_via_protocol_flag() {
     // End-to-end: `probe --protocol http2 --insecure` repeats HTTP/2 against
     // the self-signed fixture and aggregates 3 successes.

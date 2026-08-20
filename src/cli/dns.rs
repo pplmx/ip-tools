@@ -35,6 +35,11 @@ pub(super) async fn run_dns(sub_m: &ArgMatches) -> ExitCode {
 
     let client = DnsClient::new(&custom, timeout, 1);
     let only_v6 = sub_m.get_flag("ipv6");
+    let insecure = sub_m.get_flag("insecure");
+    let doh_endpoints: Vec<String> = sub_m
+        .get_many::<String>("doh")
+        .map(|vals| vals.cloned().collect())
+        .unwrap_or_default();
 
     let mut observations = Vec::new();
     let record_types = if only_v6 {
@@ -44,6 +49,9 @@ pub(super) async fn run_dns(sub_m: &ArgMatches) -> ExitCode {
     };
     for rt in record_types {
         observations.extend(client.resolve(&target.host, rt).await);
+        for endpoint in &doh_endpoints {
+            observations.push(ip_tools::dns::doh_query(endpoint, &target.host, rt, timeout, insecure).await);
+        }
     }
 
     if json {
