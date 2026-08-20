@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 |- Restore runnable doc-tests (`# Examples`) for the legacy local-IP helpers (`get_local_ip`, `list_net_ifs`) so the CI `doctest` job verifies real, compiled examples again
 |- `--insecure` flag on `tls`, `http`, `http2`, `http3` and `diagnose` (plus `probe_insecure` library functions) to skip TLS/QUIC certificate validation for self-signed or private-PKI endpoints; signatures are still verified on the wire
 |- `--server` custom DNS resolvers on `diagnose` (matching `dns`), so the diagnostic engine can observe resolver disagreement rather than only the system resolver's answer
+|- `--server` custom DNS resolvers on every per-address probe subcommand (`tcp`, `tls`, `http`, `http2`, `http3`, `probe`), so probes can be steered through a trusted resolver (e.g. to check whether the system resolver is being steered); the address lookups now also honor `--timeout` instead of a hard-coded 5 s
 
 ### Changed
 |- Add `tokio`, `hickory-resolver`, `rustls`, `tokio-rustls`, `rustls-native-certs`, `hyper`, `hyper-util`, `h2`, `quinn`, `h3`, `h3-quinn`, `http-body-util`, `x509-parser` and `libc` dependencies

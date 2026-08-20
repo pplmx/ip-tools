@@ -115,7 +115,7 @@ fn parser() -> ArgMatches {
         .subcommand(probe_command(
             "diagnose",
             "run the full probe pipeline and produce evidence-based diagnoses",
-            &[insecure_arg(), server_arg()],
+            &[insecure_arg()],
         ))
         .get_matches()
 }
@@ -139,7 +139,10 @@ fn probe_command(name: &'static str, about: &'static str, extras: &[Arg]) -> Com
     for extra in extras {
         cmd = cmd.arg(extra.clone());
     }
-    cmd.arg(timeout_arg()).arg(concurrency_arg())
+    // Every probe subcommand can resolve the target through explicit DNS
+    // servers (`--server`, as in `dns` and `diagnose`) — useful when the
+    // system resolver may be steered or unhealthy.
+    cmd.arg(server_arg()).arg(timeout_arg()).arg(concurrency_arg())
 }
 
 /// Common `--timeout` argument (milliseconds).
@@ -270,7 +273,15 @@ where
         }
     };
 
-    let addresses = match resolve_for_tcp(&target.host).await {
+    let servers = match parse_custom_servers(sub_m) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("Error: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    let addresses = match resolve_for_tcp_servers(&target.host, &servers, timeout).await {
         Ok(addrs) => addrs,
         Err(err) => {
             eprintln!("Error: {err}");
@@ -379,14 +390,27 @@ where
     out
 }
 
-/// Resolve a hostname to its addresses (A + AAAA).
+/// Resolve a hostname to its addresses via the system resolver only.
 ///
 /// If `host` is already an IP literal, it is used directly.
 pub async fn resolve_for_tcp(host: &str) -> Result<Vec<IpAddr>, String> {
+    resolve_for_tcp_servers(host, &[], Duration::from_millis(DEFAULT_TIMEOUT_MS)).await
+}
+
+/// Resolve a hostname to its addresses via the system resolver plus any
+/// explicit `--server` resolvers (A + AAAA, de-duplicated, order-preserving).
+///
+/// If `host` is already an IP literal, it is used directly. `timeout` bounds
+/// each individual lookup so a slow resolver cannot outlive the probe.
+pub async fn resolve_for_tcp_servers(
+    host: &str,
+    servers: &[SocketAddr],
+    timeout: Duration,
+) -> Result<Vec<IpAddr>, String> {
     if let Ok(ip) = host.parse::<IpAddr>() {
         return Ok(vec![ip]);
     }
-    let client = DnsClient::new(&[], Duration::from_millis(DEFAULT_TIMEOUT_MS), 1);
+    let client = DnsClient::new(servers, timeout, 1);
     let mut addrs = Vec::new();
     for rt in [DnsRecordType::A, DnsRecordType::Aaaa] {
         for obs in client.resolve(host, rt).await {
@@ -397,7 +421,7 @@ pub async fn resolve_for_tcp(host: &str) -> Result<Vec<IpAddr>, String> {
     }
     if addrs.is_empty() {
         return Err(format!(
-            "hostname {host} did not resolve to any address via the system resolver"
+            "hostname {host} did not resolve to any address via the configured resolvers"
         ));
     }
     // De-duplicate while preserving order.

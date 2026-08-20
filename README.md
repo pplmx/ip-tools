@@ -82,6 +82,22 @@ DNS example.com
     A   : 104.20.23.154 (71 ms)
 ```
 
+### Custom DNS resolvers
+
+Every subcommand that resolves a hostname — `dns`, `tcp`, `tls`, `http`,
+`http2`, `http3`, `probe` and `diagnose` — accepts repeatable `--server`
+arguments to query explicit DNS servers in addition to the system resolver:
+
+```shell
+ip-tools tcp host.example --server 1.1.1.1 --server 8.8.8.8
+ip-tools probe host.example --server 1.1.1.1 --count 20
+```
+
+Probing through a chosen resolver is how you check whether the *system*
+resolver is the thing being steered: compare the addresses returned by
+`1.1.1.1` with those from the system resolver, then probe them. Addresses are
+de-duplicated, and IP-literal targets skip resolution entirely.
+
 ### TCP connectivity
 
 Probe TCP connectivity to a host, across every address it resolves to:

@@ -298,3 +298,53 @@ fn invalid_target_produces_clean_error() {
     let err = stderr(&cmd().args(["tcp", "1.2.3.4.5"]).assert().failure());
     assert!(err.contains("Error"), "invalid target must error: {err}");
 }
+
+#[test]
+fn probe_cli_resolves_via_custom_dns_server() {
+    // `--server` must steer resolution for the probe commands, not just
+    // `dns`/`diagnose`: the only address for the reserved `.example` hostname
+    // comes from the custom DNS server (the system resolver returns NXDOMAIN),
+    // and that address is what gets probed.
+    let dns_server = local_dns_server(&["127.0.0.1"], &[]);
+    let listener = local_tcp_listener();
+    let target = format!("host.example:{}", listener.port());
+    let out = stdout(
+        &cmd()
+            .args(["tcp", &target, "--server", &dns_server.to_string(), "--timeout", "800"])
+            .assert()
+            .success(),
+    );
+    assert!(out.contains("PASS"), "tcp via custom resolver should PASS: {out}");
+
+    // The same steering applies to the repeated-probe subcommand (shared flow).
+    let out = stdout(
+        &cmd()
+            .args([
+                "probe",
+                &target,
+                "--server",
+                &dns_server.to_string(),
+                "--count",
+                "2",
+                "--timeout",
+                "800",
+            ])
+            .assert()
+            .success(),
+    );
+    assert!(
+        out.contains("127.0.0.1") && out.contains("success:  2"),
+        "probe via custom resolver should show 2 successes on the custom address: {out}"
+    );
+}
+
+#[test]
+fn probe_cli_rejects_invalid_server() {
+    let err = stderr(
+        &cmd()
+            .args(["tcp", "example.com", "--server", "not-an-ip"])
+            .assert()
+            .failure(),
+    );
+    assert!(err.contains("Error"), "invalid server must error: {err}");
+}
