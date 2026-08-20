@@ -237,6 +237,42 @@ fn dns_cli_queries_doh_fixture_endpoint() {
 }
 
 #[test]
+fn dns_cli_doh_reports_error_from_a_non_dns_endpoint() {
+    // A 200 response that is not a DNS message (the fixture's plain route)
+    // must surface as a DoH error observation, not an empty success.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let endpoint = format!("https://{}/", fixture.tcp_addr());
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "dns",
+            "host.example",
+            "--doh",
+            &endpoint,
+            "--insecure",
+            "--timeout",
+            "2000",
+        ])
+        .output()
+        .expect("run dns --doh against a non-DNS endpoint");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "dns --doh should still exit 0 (an error is an observation): {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.contains("invalid response"),
+        "expected a DoH parse-error observation: {stdout}"
+    );
+}
+
+#[test]
 fn probe_cli_http2_repeats_fixture_via_protocol_flag() {
     // End-to-end: `probe --protocol http2 --insecure` repeats HTTP/2 against
     // the self-signed fixture and aggregates 3 successes.

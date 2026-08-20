@@ -37,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 |- Probe commands (and `diagnose`) could not probe bracket-form IPv6 literals: `[::1]:443` parsed the bracketed hostname and sent it to DNS (`hostname [::1] did not resolve`) instead of using it as a literal address. Resolution now strips the brackets before the literal check (TLS/HTTP SNI/Host handling already dealt with bracketed IPv6 correctly)
+|- DoH queries now surface the DNS response code: a `SERVFAIL`/`NXDOMAIN`/`REFUSED` answer (HTTP 200, non-NOERROR RCODE) is reported as a failed `Dns` observation instead of an empty-record success, and a 200 body that is not a valid DNS message reports an error rather than silently succeeding
 
 ### Tested
 |- Deterministic error-path coverage for the handshake timeouts: HTTP/3 against a silent UDP socket times out (not success); HTTP/3 against a closed UDP port fails; TLS and HTTP/1.1 against a TCP listener that accepts but never speaks TLS hit the wall-clock `Timeout` bound

@@ -327,8 +327,8 @@ pub async fn doh_query(
             format!("DoH endpoint {endpoint} responded HTTP {status}"),
         );
     }
-    let records = match parse_dns_response(&bytes, record_type) {
-        Ok(r) => r,
+    let parsed = match parse_dns_response(&bytes, record_type) {
+        Ok(p) => p,
         Err(msg) => {
             return fail(
                 FailureKind::Dns,
@@ -336,11 +336,39 @@ pub async fn doh_query(
             )
         }
     };
+    // A non-NOERROR response code means the resolution itself failed (e.g.
+    // SERVFAIL, NXDOMAIN), even though the endpoint answered HTTP 200.
+    if parsed.rcode != 0 {
+        return DnsObservation {
+            records: Vec::new(),
+            latency_ms: None,
+            error: Some(step(
+                FailureKind::Dns,
+                format!("DoH endpoint {endpoint} answered {}", rcode_name(parsed.rcode)),
+            )),
+            ..base
+        };
+    }
 
     DnsObservation {
-        records,
+        records: parsed.records,
         latency_ms: Some(start.elapsed().as_millis() as u64),
         ..base
+    }
+}
+
+/// Human-readable name for a common DNS response code (RFC 1035 §4.1.1).
+#[must_use]
+const fn rcode_name(rcode: u8) -> &'static str {
+    match rcode {
+        0 => "NoError",
+        1 => "FormErr",
+        2 => "ServFail",
+        3 => "NXDomain",
+        4 => "NotImp",
+        5 => "Refused",
+        9 => "NotAuth",
+        _ => "UnknownError",
     }
 }
 
@@ -442,13 +470,25 @@ fn build_query(host: &str, record_type: DnsRecordType) -> Result<Vec<u8>, String
     Ok(out)
 }
 
-/// Parse a DNS response message, returning the addresses of the wanted
-/// record type from the answer section (RFC 1035 §4.1.3, with name
-/// compression support).
-fn parse_dns_response(bytes: &[u8], want: DnsRecordType) -> Result<Vec<IpAddr>, String> {
+/// A parsed DNS response: the response code (RCODE, low nibble of the header
+/// flags) plus the requested record type's addresses from the answer section.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ParsedDnsResponse {
+    /// `0` means `NOERROR`; 1-5 are `FORMERR`..`REFUSED`; anything else is an
+    /// extension code.
+    rcode: u8,
+    /// Addresses of the wanted record type found in the answers.
+    records: Vec<IpAddr>,
+}
+
+/// Parse a DNS response message (RFC 1035 §4.1.3, with name compression
+/// support), returning the response code and the wanted record type's
+/// addresses from the answer section.
+fn parse_dns_response(bytes: &[u8], want: DnsRecordType) -> Result<ParsedDnsResponse, String> {
     if bytes.len() < 12 {
         return Err("message shorter than the 12-byte header".to_string());
     }
+    let rcode = bytes[3] & 0x0F;
     let qdcount = u16::from_be_bytes([bytes[4], bytes[5]]) as usize;
     let ancount = u16::from_be_bytes([bytes[6], bytes[7]]) as usize;
     let mut pos = 12;
@@ -484,7 +524,7 @@ fn parse_dns_response(bytes: &[u8], want: DnsRecordType) -> Result<Vec<IpAddr>, 
             _ => {} // other record types are ignored
         }
     }
-    Ok(addrs)
+    Ok(ParsedDnsResponse { rcode, records: addrs })
 }
 
 /// Return the byte position just past the name at `start`. Handles plain
@@ -765,14 +805,21 @@ mod tests {
         bytes.extend_from_slice(&[0xC0, 0x0C, 0, 28, 0, 1, 0, 0, 0, 60, 0, 16]); // ptr -> AAAA
         bytes.extend_from_slice(&[0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x77]);
 
-        assert_eq!(
-            parse_dns_response(&bytes, DnsRecordType::A).unwrap(),
-            vec!["192.0.2.77".parse::<IpAddr>().unwrap()]
-        );
-        assert_eq!(
-            parse_dns_response(&bytes, DnsRecordType::Aaaa).unwrap(),
-            vec!["2001:db8::77".parse::<IpAddr>().unwrap()]
-        );
+        let a = parse_dns_response(&bytes, DnsRecordType::A).unwrap();
+        assert_eq!(a.rcode, 0, "NOERROR expected");
+        assert_eq!(a.records, vec!["192.0.2.77".parse::<IpAddr>().unwrap()]);
+        let aaaa = parse_dns_response(&bytes, DnsRecordType::Aaaa).unwrap();
+        assert_eq!(aaaa.rcode, 0);
+        assert_eq!(aaaa.records, vec!["2001:db8::77".parse::<IpAddr>().unwrap()]);
+
+        // A response code (e.g. NXDOMAIN=3) is surfaced, not read as success.
+        let mut nxdomain = bytes.clone();
+        nxdomain[3] = 0x80 | 0x03; // flags 0x8183, rcode NXDomain
+        nxdomain[7] = 0; // ANCOUNT 0: NXDOMAIN carries no answers
+        let nx = parse_dns_response(&nxdomain, DnsRecordType::A).unwrap();
+        assert_eq!(nx.rcode, 3);
+        assert!(nx.records.is_empty());
+
         // malformed messages are rejected, not misread
         assert!(parse_dns_response(&bytes[..6], DnsRecordType::A).is_err());
         let mut bad = bytes.clone();
@@ -781,6 +828,15 @@ mod tests {
         // a pointer loop is detected rather than hanging
         let looped = vec![0x12, 0x34, 0x81, 0x80, 0, 0, 0, 1, 0, 0, 0, 0, 0xC0, 0x0E, 0xC0, 0x0C];
         assert!(parse_dns_response(&looped, DnsRecordType::A).is_err());
+    }
+
+    #[test]
+    fn rcode_names_cover_common_codes() {
+        assert_eq!(rcode_name(0), "NoError");
+        assert_eq!(rcode_name(2), "ServFail");
+        assert_eq!(rcode_name(3), "NXDomain");
+        assert_eq!(rcode_name(5), "Refused");
+        assert_eq!(rcode_name(77), "UnknownError");
     }
 
     #[tokio::test]
