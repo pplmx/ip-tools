@@ -345,6 +345,11 @@ fn handle_list(sub_m: &ArgMatches) -> ExitCode {
 
 /// Apply `f` to `items` concurrently, bounded by `concurrency` (capped at
 /// [`MAX_CONCURRENCY`]).
+///
+/// A task that panics is reported on stderr and dropped: for a diagnostics
+/// tool, silently missing an address would make the report look complete when
+/// it is not. Well-behaved probe closures capture failures into observations,
+/// so this only fires on programming errors.
 pub async fn parallel_map<I, T, F, Fut>(items: Vec<I>, concurrency: usize, f: F) -> Vec<T>
 where
     I: Send + 'static,
@@ -366,8 +371,9 @@ where
     }
     let mut out = Vec::with_capacity(tasks.len());
     while let Some(res) = tasks.join_next().await {
-        if let Ok(value) = res {
-            out.push(value);
+        match res {
+            Ok(value) => out.push(value),
+            Err(err) => eprintln!("Error: a parallel probe task failed and its result was dropped: {err}"),
         }
     }
     out
@@ -429,4 +435,24 @@ struct IpOutput {
 struct InterfaceOutput {
     name: String,
     ip: IpAddr,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn parallel_map_drops_panicking_tasks_without_propagating() {
+        // A panicking probe future must not bubble up; its result is dropped
+        // (and reported on stderr), so the caller still gets a Vec.
+        let results = parallel_map(vec![1u8, 2u8], 1, |_| async move { panic!("probe task panicked") }).await;
+        assert!(results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn parallel_map_returns_all_values_in_any_order() {
+        let mut results = parallel_map(vec![1u8, 2, 3], 2, |n| async move { n * 2 }).await;
+        results.sort_unstable();
+        assert_eq!(results, vec![2, 4, 6]);
+    }
 }
