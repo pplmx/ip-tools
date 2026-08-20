@@ -356,6 +356,37 @@ fn closed_loopback_port() -> SocketAddr {
 }
 
 #[test]
+fn tcp_cli_probes_bracketed_ipv6_literal() {
+    // Bracket-form IPv6 targets (as produced by the `[::1]:port` syntax) must
+    // resolve to the literal and be probed, instead of being sent to a DNS
+    // resolver. Skipped when the platform has no IPv6 loopback.
+    let Ok(listener) = TcpListener::bind("[::1]:0") else {
+        eprintln!("skipping: no IPv6 loopback available");
+        return;
+    };
+    let addr = listener.local_addr().expect("v6 listener address");
+    std::thread::spawn(move || while listener.accept().is_ok() {});
+    // SocketAddr's Display is already bracket-form: `[::1]:1234`.
+    let out = stdout(
+        &cmd()
+            .args(["tcp", &addr.to_string(), "--timeout", "800"])
+            .assert()
+            .success(),
+    );
+    assert!(out.contains("PASS"), "bracketed IPv6 target should PASS: {out}");
+
+    // The TLS command must also accept a bracketed IPv6 literal (SNI handling
+    // exists, but the request-build must not fail on the bracket form).
+    let out = stdout(
+        &cmd()
+            .args(["tls", &addr.to_string(), "--timeout", "800"])
+            .assert()
+            .success(),
+    );
+    assert!(out.contains("TLS handshake"), "tls CLI header missing: {out}");
+}
+
+#[test]
 fn strict_exits_nonzero_only_when_probe_fails() {
     // A failed probe is an observation: by default the CLI still exits 0...
     let closed = closed_loopback_port();

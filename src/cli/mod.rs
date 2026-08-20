@@ -428,6 +428,9 @@ pub async fn resolve_for_tcp_servers(
     servers: &[SocketAddr],
     timeout: Duration,
 ) -> Result<Vec<IpAddr>, String> {
+    // Bracket-form IPv6 literals (`[::1]`, as parsed from `[::1]:443`) must be
+    // recognized as literals here, not sent to a resolver.
+    let host = host.trim_start_matches('[').trim_end_matches(']');
     if let Ok(ip) = host.parse::<IpAddr>() {
         return Ok(vec![ip]);
     }
@@ -499,5 +502,18 @@ mod tests {
         let mut results = parallel_map(vec![1u8, 2, 3], 2, |n| async move { n * 2 }).await;
         results.sort_unstable();
         assert_eq!(results, vec![2, 4, 6]);
+    }
+
+    #[tokio::test]
+    async fn resolve_recognizes_ip_literals_bracketed_or_bare() {
+        // Bracket-form IPv6 (`[::1]`, as parsed from `[::1]:443`) must resolve
+        // to itself rather than being sent to a DNS resolver.
+        let short = Duration::from_millis(50);
+        let want: Vec<IpAddr> = vec!["::1".parse().unwrap()];
+        assert_eq!(resolve_for_tcp_servers("[::1]", &[], short).await.unwrap(), want);
+        assert_eq!(resolve_for_tcp_servers("::1", &[], short).await.unwrap(), want);
+        let v4: Vec<IpAddr> = vec!["127.0.0.1".parse().unwrap()];
+        assert_eq!(resolve_for_tcp_servers("127.0.0.1", &[], short).await.unwrap(), v4);
+        assert_eq!(resolve_for_tcp_servers("[127.0.0.1]", &[], short).await.unwrap(), v4);
     }
 }

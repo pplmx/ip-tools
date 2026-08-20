@@ -32,6 +32,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 |- `--server` custom DNS resolvers on every per-address probe subcommand (`tcp`, `tls`, `http`, `http2`, `http3`, `probe`), so probes can be steered through a trusted resolver (e.g. to check whether the system resolver is being steered); the address lookups now also honor `--timeout` instead of a hard-coded 5 s
 |- `--strict` flag on `tcp`, `tls`, `http`, `http2`, `http3` and `probe`: exit non-zero when any address probe failed to complete (failed probes remain exit-0 observations by default), for scripting/CI use
 
+### Fixed
+|- Probe commands (and `diagnose`) could not probe bracket-form IPv6 literals: `[::1]:443` parsed the bracketed hostname and sent it to DNS (`hostname [::1] did not resolve`) instead of using it as a literal address. Resolution now strips the brackets before the literal check (TLS/HTTP SNI/Host handling already dealt with bracketed IPv6 correctly)
+
 ### Changed
 |- Add `tokio`, `hickory-resolver`, `rustls`, `tokio-rustls`, `rustls-native-certs`, `hyper`, `hyper-util`, `h2`, `quinn`, `h3`, `h3-quinn`, `http-body-util`, `x509-parser` and `libc` dependencies
 |- Raise MSRV to 1.88 (required by hickory-resolver 0.26.1, which also ships the DNS security fixes below)

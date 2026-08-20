@@ -54,7 +54,9 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
     let dns_client = DnsClient::new(&custom_servers, timeout, 1);
     let mut dns_obs = Vec::new();
     let mut addresses: Vec<IpAddr> = Vec::new();
-    if let Ok(ip) = target.host.parse::<IpAddr>() {
+    // Bracket-form IPv6 literals (`[::1]`) must be recognized as literals.
+    let literal = target.host.trim_start_matches('[').trim_end_matches(']');
+    if let Ok(ip) = literal.parse::<IpAddr>() {
         addresses.push(ip);
     } else {
         for rt in [DnsRecordType::A, DnsRecordType::Aaaa] {
