@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 |- Target parsing supporting host, host:port, IP literals and bracketed IPv6
 |- Documentation: core principle that a failed connection is an observation, not a verdict
 |- Restore runnable doc-tests (`# Examples`) for the legacy local-IP helpers (`get_local_ip`, `list_net_ifs`) so the CI `doctest` job verifies real, compiled examples again
+|- `--insecure` flag on `tls`, `http`, `http2`, `http3` and `diagnose` (plus `probe_insecure` library functions) to skip TLS/QUIC certificate validation for self-signed or private-PKI endpoints; signatures are still verified on the wire
 
 ### Changed
 |- Add `tokio`, `hickory-resolver`, `rustls`, `tokio-rustls`, `rustls-native-certs`, `hyper`, `hyper-util`, `h2`, `quinn`, `h3`, `h3-quinn`, `http-body-util`, `x509-parser` and `libc` dependencies

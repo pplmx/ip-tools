@@ -47,6 +47,15 @@ pub(crate) fn roots() -> rustls::RootCertStore {
         .clone()
 }
 
+/// Which trust configuration a TLS connection should use.
+#[derive(Clone, Copy)]
+pub(crate) enum TlsMode<'a> {
+    /// Verify the peer against an explicit root store.
+    Roots(&'a rustls::RootCertStore),
+    /// Skip certificate validation entirely (the `--insecure` CLI flag).
+    Insecure,
+}
+
 /// Build a TLS client configuration offering the given ALPN protocols and
 /// trusting `roots`.
 fn client_config(alpn: &[&[u8]], roots: &rustls::RootCertStore) -> Arc<rustls::ClientConfig> {
@@ -55,6 +64,63 @@ fn client_config(alpn: &[&[u8]], roots: &rustls::RootCertStore) -> Arc<rustls::C
         .with_no_client_auth();
     config.alpn_protocols = alpn.iter().map(|p| p.to_vec()).collect();
     Arc::new(config)
+}
+
+/// Build a TLS client configuration that skips certificate verification.
+///
+/// Used only by the explicit `--insecure` CLI flag for probing self-signed or
+/// private-PKI endpoints; signatures are still verified, so the wire
+/// cryptography is unchanged.
+pub(crate) fn insecure_client_config(alpn: &[&[u8]]) -> Arc<rustls::ClientConfig> {
+    let provider = Arc::new(rustls::crypto::ring::default_provider());
+    let mut config = rustls::ClientConfig::builder_with_provider(provider.clone())
+        .with_safe_default_protocol_versions()
+        .expect("ring supports the default TLS protocols")
+        .dangerous()
+        .with_custom_certificate_verifier(Arc::new(NoCertificateVerification(provider)))
+        .with_no_client_auth();
+    config.alpn_protocols = alpn.iter().map(|p| p.to_vec()).collect();
+    Arc::new(config)
+}
+
+/// A [`rustls::client::danger::ServerCertVerifier`] that accepts any
+/// certificate (public key and signature chains are still checked).
+#[derive(Debug)]
+struct NoCertificateVerification(Arc<rustls::crypto::CryptoProvider>);
+
+impl rustls::client::danger::ServerCertVerifier for NoCertificateVerification {
+    fn verify_server_cert(
+        &self,
+        _end_entity: &rustls_pki_types::CertificateDer<'_>,
+        _intermediates: &[rustls_pki_types::CertificateDer<'_>],
+        _server_name: &rustls_pki_types::ServerName<'_>,
+        _ocsp_response: &[u8],
+        _now: rustls_pki_types::UnixTime,
+    ) -> Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
+        Ok(rustls::client::danger::ServerCertVerified::assertion())
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        message: &[u8],
+        cert: &rustls_pki_types::CertificateDer<'_>,
+        dss: &rustls::DigitallySignedStruct,
+    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        rustls::crypto::verify_tls12_signature(message, cert, dss, &self.0.signature_verification_algorithms)
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        message: &[u8],
+        cert: &rustls_pki_types::CertificateDer<'_>,
+        dss: &rustls::DigitallySignedStruct,
+    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        rustls::crypto::verify_tls13_signature(message, cert, dss, &self.0.signature_verification_algorithms)
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
+        self.0.signature_verification_algorithms.supported_schemes()
+    }
 }
 
 /// A completed TLS handshake together with the negotiated parameters.
@@ -74,15 +140,13 @@ pub(crate) struct TlsConnection {
 }
 
 /// Perform TCP connect + TLS handshake to `destination` presenting `sni`,
-/// bounded by `timeout`, trusting an explicit root store (used to verify
-/// in-process test fixtures with self-signed certificates; the CLI and system
-/// probes pass `[roots()]`).
-pub(crate) async fn connect_with_roots(
+/// bounded by `timeout`, using the given trust mode.
+pub(crate) async fn connect_to(
     destination: SocketAddr,
     sni: &str,
     alpn: &[&[u8]],
     timeout: Duration,
-    roots: &rustls::RootCertStore,
+    mode: TlsMode<'_>,
 ) -> Result<TlsConnection, ProbeError> {
     let start = Instant::now();
 
@@ -108,7 +172,10 @@ pub(crate) async fn connect_with_roots(
             message: format!("cannot use {sni:?} as a server name"),
         });
     };
-    let connector = TlsConnector::from(client_config(alpn, roots));
+    let connector = TlsConnector::from(match mode {
+        TlsMode::Roots(roots) => client_config(alpn, roots),
+        TlsMode::Insecure => insecure_client_config(alpn),
+    });
     let handshake = connector.connect(name, stream);
     let tls_stream = match tokio::time::timeout(timeout, handshake).await {
         Ok(Ok(s)) => s,
@@ -149,7 +216,7 @@ pub(crate) async fn connect_with_roots(
 /// Perform a single TLS handshake to `destination` presenting `sni`, bounded
 /// by `timeout`, and record a complete observation.
 pub async fn probe(destination: SocketAddr, sni: &str, timeout: Duration) -> TlsObservation {
-    probe_with_roots(destination, sni, timeout, &roots()).await
+    probe_impl(destination, sni, timeout, TlsMode::Roots(&roots())).await
 }
 
 /// [`probe`] trusting an explicit root store, for verifying TLS fixtures.
@@ -159,8 +226,18 @@ pub async fn probe_with_roots(
     timeout: Duration,
     roots: &rustls::RootCertStore,
 ) -> TlsObservation {
+    probe_impl(destination, sni, timeout, TlsMode::Roots(roots)).await
+}
+
+/// [`probe`] without certificate validation (the `--insecure` CLI flag).
+pub async fn probe_insecure(destination: SocketAddr, sni: &str, timeout: Duration) -> TlsObservation {
+    probe_impl(destination, sni, timeout, TlsMode::Insecure).await
+}
+
+/// Shared probe body for the given trust mode.
+async fn probe_impl(destination: SocketAddr, sni: &str, timeout: Duration, mode: TlsMode<'_>) -> TlsObservation {
     let start = Instant::now();
-    match connect_with_roots(destination, sni, ALPN_GENERAL, timeout, roots).await {
+    match connect_to(destination, sni, ALPN_GENERAL, timeout, mode).await {
         Ok(conn) => TlsObservation {
             destination,
             sni: sni.to_string(),

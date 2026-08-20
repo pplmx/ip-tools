@@ -108,7 +108,13 @@ Perform a TLS handshake (with the target hostname as SNI) to each address:
 
 ```shell
 ip-tools tls example.com
+ip-tools tls 10.0.0.5:443 --insecure   # skip certificate validation
 ```
+
+`--insecure` (also on `http`, `http2`, `http3` and `diagnose`) skips TLS/QUIC
+certificate validation — useful for self-signed or private-PKI endpoints.
+Signatures on the wire are still verified; only the certificate chain check is
+skipped.
 
 Example output:
 

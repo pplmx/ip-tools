@@ -25,6 +25,7 @@ use std::time::Duration;
 #[allow(clippy::too_many_lines)] // sequential pipeline steps are clearer inline
 pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
     let json = sub_m.get_flag("json");
+    let insecure = sub_m.get_flag("insecure");
     let target_str = sub_m.get_one::<String>("target").expect("required target");
     let timeout_ms = *sub_m.get_one::<u64>("timeout").expect("timeout has default");
     let concurrency = *sub_m.get_one::<usize>("concurrency").expect("concurrency has default");
@@ -80,11 +81,17 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
     let sni = target.host.clone();
     let tls_obs: Vec<TlsObservation> = parallel_map(destinations.clone(), concurrency, move |d| {
         let sni = sni.clone();
-        async move { ip_tls::probe(d, &sni, timeout).await }
+        async move {
+            if insecure {
+                ip_tls::probe_insecure(d, &sni, timeout).await
+            } else {
+                ip_tls::probe(d, &sni, timeout).await
+            }
+        }
     })
     .await;
 
-    let http_obs = collect_http_probes(destinations.clone(), &target.host, concurrency, timeout).await;
+    let http_obs = collect_http_probes(destinations.clone(), &target.host, concurrency, timeout, insecure).await;
 
     let probe_obs: Vec<ProbeResult> = parallel_map(destinations.clone(), concurrency, move |d| async move {
         ip_probe::tcp_repeat(d, 3, timeout).await
@@ -139,25 +146,44 @@ async fn collect_http_probes(
     host: &str,
     concurrency: usize,
     timeout: Duration,
+    insecure: bool,
 ) -> Vec<HttpObservation> {
     let host_1 = host.to_string();
     let http1: Vec<HttpObservation> = parallel_map(destinations.clone(), concurrency, move |d| {
         let host = host_1.clone();
-        async move { ip_http::probe(d, &host, "GET", timeout).await }
+        async move {
+            if insecure {
+                ip_http::probe_insecure(d, &host, "GET", timeout).await
+            } else {
+                ip_http::probe(d, &host, "GET", timeout).await
+            }
+        }
     })
     .await;
 
     let host_2 = host.to_string();
     let http2: Vec<HttpObservation> = parallel_map(destinations.clone(), concurrency, move |d| {
         let host = host_2.clone();
-        async move { ip_http2::probe(d, &host, "GET", timeout).await }
+        async move {
+            if insecure {
+                ip_http2::probe_insecure(d, &host, "GET", timeout).await
+            } else {
+                ip_http2::probe(d, &host, "GET", timeout).await
+            }
+        }
     })
     .await;
 
     let host_3 = host.to_string();
     let http3: Vec<HttpObservation> = parallel_map(destinations.clone(), concurrency, move |d| {
         let host = host_3.clone();
-        async move { ip_http3::probe(d, &host, "GET", timeout).await }
+        async move {
+            if insecure {
+                ip_http3::probe_insecure(d, &host, "GET", timeout).await
+            } else {
+                ip_http3::probe(d, &host, "GET", timeout).await
+            }
+        }
     })
     .await;
 

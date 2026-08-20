@@ -14,7 +14,14 @@ use std::time::{Duration, Instant};
 /// Perform a single HTTPS/HTTP/2 request to `destination` (connecting to its
 /// IP) presenting `host` as SNI, bounded by `timeout`.
 pub async fn probe(destination: SocketAddr, host: &str, method: &str, timeout: Duration) -> HttpObservation {
-    probe_with_roots(destination, host, method, timeout, &crate::tls::roots()).await
+    probe_impl(
+        destination,
+        host,
+        method,
+        timeout,
+        crate::tls::TlsMode::Roots(&crate::tls::roots()),
+    )
+    .await
 }
 
 /// [`probe`] trusting an explicit root store, for verifying TLS fixtures.
@@ -25,10 +32,26 @@ pub async fn probe_with_roots(
     timeout: Duration,
     roots: &rustls::RootCertStore,
 ) -> HttpObservation {
+    probe_impl(destination, host, method, timeout, crate::tls::TlsMode::Roots(roots)).await
+}
+
+/// [`probe`] without certificate validation (the `--insecure` CLI flag).
+pub async fn probe_insecure(destination: SocketAddr, host: &str, method: &str, timeout: Duration) -> HttpObservation {
+    probe_impl(destination, host, method, timeout, crate::tls::TlsMode::Insecure).await
+}
+
+/// Shared probe body for the given trust mode.
+async fn probe_impl(
+    destination: SocketAddr,
+    host: &str,
+    method: &str,
+    timeout: Duration,
+    mode: crate::tls::TlsMode<'_>,
+) -> HttpObservation {
     let start = Instant::now();
     let base = HttpObservation::base(destination, host, method);
 
-    let conn = match crate::tls::connect_with_roots(destination, host, crate::tls::ALPN_H2, timeout, roots).await {
+    let conn = match crate::tls::connect_to(destination, host, crate::tls::ALPN_H2, timeout, mode).await {
         Ok(c) => c,
         Err(failure) => return base.with_failure(failure),
     };

@@ -15,13 +15,22 @@ use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-/// Build a QUIC client configuration verifying against `roots` and
-/// advertising ALPN `h3`.
-fn quic_client_config(roots: &rustls::RootCertStore) -> Result<QuinnClientConfig, String> {
-    let mut rustls_cfg = rustls::ClientConfig::builder()
-        .with_root_certificates(roots.clone())
-        .with_no_client_auth();
-    rustls_cfg.alpn_protocols = vec![b"h3".to_vec()];
+/// Build a QUIC client configuration for the given trust mode (insecure skips
+/// certificate validation, per the `--insecure` CLI flag).
+fn quic_client_config_from(mode: crate::tls::TlsMode<'_>) -> Result<QuinnClientConfig, String> {
+    let rustls_cfg = match mode {
+        crate::tls::TlsMode::Roots(roots) => {
+            let mut cfg = rustls::ClientConfig::builder()
+                .with_root_certificates(roots.clone())
+                .with_no_client_auth();
+            cfg.alpn_protocols = vec![b"h3".to_vec()];
+            cfg
+        }
+        crate::tls::TlsMode::Insecure => {
+            let cfg = crate::tls::insecure_client_config(&[b"h3"]);
+            (*cfg).clone()
+        }
+    };
     let quic_cfg = QuicClientConfig::try_from(rustls_cfg).map_err(|e| format!("invalid QUIC config: {e}"))?;
     Ok(QuinnClientConfig::new(Arc::new(quic_cfg)))
 }
@@ -38,7 +47,14 @@ fn client_endpoint(destination: SocketAddr) -> Result<Endpoint, String> {
 /// Perform a single HTTP/3 request over QUIC to `destination` (its IP)
 /// presenting `host` as the server name, bounded by `timeout`.
 pub async fn probe(destination: SocketAddr, host: &str, method: &str, timeout: Duration) -> HttpObservation {
-    probe_with_roots(destination, host, method, timeout, &crate::tls::roots()).await
+    probe_impl(
+        destination,
+        host,
+        method,
+        timeout,
+        crate::tls::TlsMode::Roots(&crate::tls::roots()),
+    )
+    .await
 }
 
 /// [`probe`] trusting an explicit root store, for verifying QUIC fixtures.
@@ -49,6 +65,22 @@ pub async fn probe_with_roots(
     timeout: Duration,
     roots: &rustls::RootCertStore,
 ) -> HttpObservation {
+    probe_impl(destination, host, method, timeout, crate::tls::TlsMode::Roots(roots)).await
+}
+
+/// [`probe`] without certificate validation (the `--insecure` CLI flag).
+pub async fn probe_insecure(destination: SocketAddr, host: &str, method: &str, timeout: Duration) -> HttpObservation {
+    probe_impl(destination, host, method, timeout, crate::tls::TlsMode::Insecure).await
+}
+
+/// Shared probe body for the given trust mode.
+async fn probe_impl(
+    destination: SocketAddr,
+    host: &str,
+    method: &str,
+    timeout: Duration,
+    mode: crate::tls::TlsMode<'_>,
+) -> HttpObservation {
     let start = Instant::now();
     let base = HttpObservation::base(destination, host, method);
 
@@ -56,7 +88,7 @@ pub async fn probe_with_roots(
         Ok(e) => e,
         Err(msg) => return base.with_failure(failure(FailureKind::Other, msg)),
     };
-    let config = match quic_client_config(roots) {
+    let config = match quic_client_config_from(mode) {
         Ok(c) => c,
         Err(msg) => return base.with_failure(failure(FailureKind::Other, msg)),
     };

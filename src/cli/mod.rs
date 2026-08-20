@@ -69,32 +69,32 @@ fn parser() -> ArgMatches {
         .subcommand(probe_command(
             "tcp",
             "test TCP connectivity to a host:port across its addresses",
-            None,
+            &[],
         ))
         .subcommand(probe_command(
             "tls",
             "perform TLS handshake to a host:port across its addresses",
-            None,
+            &[insecure_arg()],
         ))
         .subcommand(probe_command(
             "http",
             "perform an HTTPS/HTTP1.1 request to a host:port across its addresses",
-            Some(method_arg()),
+            &[method_arg(), insecure_arg()],
         ))
         .subcommand(probe_command(
             "probe",
             "repeatedly probe TCP connectivity and report latency statistics",
-            Some(count_arg()),
+            &[count_arg()],
         ))
         .subcommand(probe_command(
             "http2",
             "perform an HTTPS/HTTP2 request to a host:port across its addresses",
-            Some(method_arg()),
+            &[method_arg(), insecure_arg()],
         ))
         .subcommand(probe_command(
             "http3",
             "perform an HTTPS/HTTP3 (QUIC) request to a host:port across its addresses",
-            Some(method_arg()),
+            &[method_arg(), insecure_arg()],
         ))
         .subcommand(
             Command::new("route")
@@ -121,20 +121,20 @@ fn parser() -> ArgMatches {
         .subcommand(probe_command(
             "diagnose",
             "run the full probe pipeline and produce evidence-based diagnoses",
-            None,
+            &[insecure_arg()],
         ))
         .get_matches()
 }
 
 /// Build a per-address probe subcommand: positional target plus the shared
-/// `--timeout`/`--concurrency` flags, and an optional subcommand-specific flag
-/// (e.g. `--method`) inserted after the target.
-fn probe_command(name: &'static str, about: &'static str, extra: Option<Arg>) -> Command {
+/// `--timeout`/`--concurrency` flags, and subcommand-specific flags (e.g.
+/// `--method`, `--insecure`) inserted after the target.
+fn probe_command(name: &'static str, about: &'static str, extras: &[Arg]) -> Command {
     let mut cmd = Command::new(name)
         .about(about)
         .arg(positional_target("host[:port] to probe (default port 443)"));
-    if let Some(extra) = extra {
-        cmd = cmd.arg(extra);
+    for extra in extras {
+        cmd = cmd.arg(extra.clone());
     }
     cmd.arg(timeout_arg()).arg(concurrency_arg())
 }
@@ -176,6 +176,14 @@ fn method_arg() -> Arg {
         .value_name("METHOD")
         .default_value("GET")
         .help("HTTP method to use (GET or HEAD)")
+}
+
+/// Shared `--insecure` argument (skip TLS/QUIC certificate validation).
+fn insecure_arg() -> Arg {
+    Arg::new("insecure")
+        .long("insecure")
+        .action(ArgAction::SetTrue)
+        .help("skip TLS/QUIC certificate validation (e.g. for self-signed or private-PKI endpoints)")
 }
 
 /// Select which DNS record types to query (`--ipv6` only, else both).

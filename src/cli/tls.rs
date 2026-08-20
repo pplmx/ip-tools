@@ -10,11 +10,18 @@ use std::process::ExitCode;
 /// Resolve a target's addresses and perform a TLS handshake (with the target
 /// hostname as SNI) to each in parallel.
 pub(super) async fn run_tls(sub_m: &ArgMatches) -> ExitCode {
+    let insecure = sub_m.get_flag("insecure");
     run_probe_flow(
         sub_m,
         render_tls,
         |obs: &TlsObservation| obs.destination,
-        |host, dest, timeout| async move { ip_tls::probe(dest, &host, timeout).await },
+        move |host, dest, timeout| async move {
+            if insecure {
+                ip_tls::probe_insecure(dest, &host, timeout).await
+            } else {
+                ip_tls::probe(dest, &host, timeout).await
+            }
+        },
     )
     .await
 }

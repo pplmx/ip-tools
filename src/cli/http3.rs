@@ -11,13 +11,20 @@ use std::process::ExitCode;
 /// each in parallel (bounded by `--concurrency`).
 pub(super) async fn run_http3(sub_m: &ArgMatches) -> ExitCode {
     let method = sub_m.get_one::<String>("method").expect("method has default").clone();
+    let insecure = sub_m.get_flag("insecure");
     run_probe_flow(
         sub_m,
         render_http,
         |obs: &HttpObservation| obs.destination,
         move |host, dest, timeout| {
             let method = method.clone();
-            async move { ip_http3::probe(dest, &host, &method, timeout).await }
+            async move {
+                if insecure {
+                    ip_http3::probe_insecure(dest, &host, &method, timeout).await
+                } else {
+                    ip_http3::probe(dest, &host, &method, timeout).await
+                }
+            }
         },
     )
     .await
