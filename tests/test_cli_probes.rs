@@ -253,12 +253,15 @@ fn route_cli_runs_or_errors_gracefully_on_loopback() {
         .assert();
     let code = assert.get_output().status.code().unwrap_or(-999);
     let text = format!("{}\n{}", stdout(&assert), stderr(&assert));
+    let lower = text.to_lowercase();
     if code == 0 {
         assert!(text.contains("Traceroute"), "expected traceroute output: {text}");
     } else {
+        // Linux without privileges -> ICMP/root error; non-Linux -> the
+        // "supported only on Linux" gate. Either way it must not panic.
         assert!(
-            text.to_lowercase().contains("icmp") || text.contains("root"),
-            "unprivileged route must explain it needs ICMP/root: {text}"
+            lower.contains("icmp") || lower.contains("root") || lower.contains("linux"),
+            "route must explain it needs ICMP/root (linux) or is unsupported: {text}"
         );
     }
 }

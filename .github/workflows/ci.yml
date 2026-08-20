@@ -122,7 +122,17 @@ jobs:
                 # generated with (text comparison below), so the gate is
                 # reproducible across environments.
                 run: cargo install cargo-public-api --version 0.52.0 --locked
+            -   name: Install nightly toolchain (rustdoc JSON)
+                # cargo-public-api builds rustdoc JSON with a nightly rustc; the
+                # pinned date matches the toolchain used to generate the
+                # committed api-baseline.txt so the -sss text comparison stays
+                # stable. Bump the date and regenerate the baseline together.
+                uses: dtolnay/rust-toolchain@master
+                with:
+                    toolchain: nightly-2026-07-25
             -   name: Check public API diff
+                env:
+                    RUSTUP_TOOLCHAIN: nightly-2026-07-25
                 run: cargo public-api --manifest-path Cargo.toml -sss | diff - api-baseline.txt
 
     deny:
