@@ -331,7 +331,14 @@ mod tests {
             .find(|o| o.resolver == ResolverKind::Custom(addr))
             .expect("custom resolver observation");
         assert!(o.records.is_empty());
+        // The observation must be a failure; the exact kind is hickory's (a
+        // Timeout on Linux, a Dns "no connections available" error on Windows
+        // where the UDP connect fails immediately).
         let err = o.error.as_ref().expect("expected a failure observation");
-        assert_eq!(err.kind, FailureKind::Timeout, "got: {err:?}");
+        assert!(
+            matches!(err.kind, FailureKind::Timeout | FailureKind::Dns),
+            "got unexpected failure kind: {err:?}"
+        );
+        assert!(o.latency_ms.is_none());
     }
 }
