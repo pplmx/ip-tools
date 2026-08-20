@@ -6,7 +6,7 @@
 //! Latencies are measured with monotonic clocks.
 
 use crate::model::probe::{FailureCount, ProbeResult};
-use crate::model::{FailureKind, LatencyStats};
+use crate::model::{FailureKind, HttpObservation, LatencyStats};
 use crate::tcp;
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -18,17 +18,115 @@ use std::time::Duration;
 /// (including jitter) reflects genuine per-attempt timing rather than
 /// concurrent-request skew. Returns an aggregated [`ProbeResult`].
 pub async fn tcp_repeat(destination: SocketAddr, attempts: usize, timeout: Duration) -> ProbeResult {
+    repeat_impl(destination, attempts, || async {
+        let obs = tcp::probe(destination, timeout).await;
+        if obs.success {
+            (true, obs.latency_ms, None)
+        } else {
+            (false, None, obs.failure.map(|f| f.kind))
+        }
+    })
+    .await
+}
+
+/// Repeatedly probe HTTPS/HTTP1.1 to `destination` presenting `host`/`method`
+/// `attempts` times, aggregating latency statistics like [`tcp_repeat`].
+pub async fn http_repeat(
+    destination: SocketAddr,
+    host: &str,
+    method: &str,
+    attempts: usize,
+    timeout: Duration,
+    insecure: bool,
+) -> ProbeResult {
+    repeat_impl(destination, attempts, || async {
+        let obs = if insecure {
+            crate::http::probe_insecure(destination, host, method, timeout).await
+        } else {
+            crate::http::probe(destination, host, method, timeout).await
+        };
+        http_outcome(obs)
+    })
+    .await
+}
+
+/// Repeatedly probe HTTPS/HTTP2 to `destination` presenting `host`/`method`
+/// `attempts` times, aggregating latency statistics like [`tcp_repeat`].
+pub async fn http2_repeat(
+    destination: SocketAddr,
+    host: &str,
+    method: &str,
+    attempts: usize,
+    timeout: Duration,
+    insecure: bool,
+) -> ProbeResult {
+    repeat_impl(destination, attempts, || async {
+        let obs = if insecure {
+            crate::http2::probe_insecure(destination, host, method, timeout).await
+        } else {
+            crate::http2::probe(destination, host, method, timeout).await
+        };
+        http_outcome(obs)
+    })
+    .await
+}
+
+/// Repeatedly probe HTTPS/HTTP3 (QUIC) to `destination` presenting
+/// `host`/`method` `attempts` times, aggregating latency statistics like
+/// [`tcp_repeat`].
+pub async fn http3_repeat(
+    destination: SocketAddr,
+    host: &str,
+    method: &str,
+    attempts: usize,
+    timeout: Duration,
+    insecure: bool,
+) -> ProbeResult {
+    repeat_impl(destination, attempts, || async {
+        let obs = if insecure {
+            crate::http3::probe_insecure(destination, host, method, timeout).await
+        } else {
+            crate::http3::probe(destination, host, method, timeout).await
+        };
+        http_outcome(obs)
+    })
+    .await
+}
+
+/// Map a single HTTP probe observation onto the shared (success, latency,
+/// failure-kind) aggregation tuple: an error status (e.g. 5xx) is still a
+/// completed probe, so only a transport/protocol failure counts as failed.
+fn http_outcome(obs: HttpObservation) -> (bool, Option<u64>, Option<FailureKind>) {
+    if obs.failure.is_none() {
+        (true, obs.latency_ms, None)
+    } else {
+        let kind = obs.failure.map(|f| f.kind);
+        (false, None, kind)
+    }
+}
+
+/// Shared aggregation over repeated per-attempt outcomes: success flag,
+/// latency millis (on success), and the classified failure kind (on failure).
+///
+/// Attempts are run sequentially per address so that the latency distribution
+/// (including jitter) reflects genuine per-attempt timing rather than
+/// concurrent-request skew.
+async fn repeat_impl<F, Fut>(destination: SocketAddr, attempts: usize, mut attempt: F) -> ProbeResult
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = (bool, Option<u64>, Option<FailureKind>)>,
+{
     let mut latency = LatencyStats::default();
     let mut failures: HashMap<FailureKind, usize> = HashMap::new();
     let mut successes = 0usize;
 
     for _ in 0..attempts {
-        let obs = tcp::probe(destination, timeout).await;
-        if obs.success {
+        let (ok, latency_ms, kind) = attempt().await;
+        if ok {
             successes += 1;
-            latency.push(obs.latency_ms.unwrap_or(0));
-        } else if let Some(err) = obs.failure {
-            *failures.entry(err.kind).or_default() += 1;
+            latency.push(latency_ms.unwrap_or(0));
+        } else if let Some(kind) = kind {
+            *failures.entry(kind).or_default() += 1;
         }
     }
 

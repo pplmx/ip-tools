@@ -77,8 +77,8 @@ fn parser() -> ArgMatches {
         ))
         .subcommand(probe_command(
             "probe",
-            "repeatedly probe TCP connectivity and report latency statistics",
-            &[count_arg(), strict_arg()],
+            "repeatedly probe connectivity and report latency statistics",
+            &[count_arg(), strict_arg(), protocol_arg(), method_arg(), insecure_arg()],
         ))
         .subcommand(probe_command(
             "http2",
@@ -173,6 +173,16 @@ fn count_arg() -> Arg {
         .value_parser(clap::value_parser!(usize))
         .default_value("10")
         .help("number of repeated attempts per address")
+}
+
+/// `--protocol` argument selecting which transport/protocol to repeat-probe.
+fn protocol_arg() -> Arg {
+    Arg::new("protocol")
+        .long("protocol")
+        .value_name("TCP|HTTP|HTTP2|HTTP3")
+        .value_parser(["tcp", "http", "http2", "http3"])
+        .default_value("tcp")
+        .help("protocol to repeatedly probe (tcp, http, http2 or http3)")
 }
 
 /// Shared `--method` argument.

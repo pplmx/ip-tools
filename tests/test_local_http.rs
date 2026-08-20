@@ -9,6 +9,7 @@ use assert_cmd::Command;
 use ip_tools::http;
 use ip_tools::http2;
 use ip_tools::http3;
+use ip_tools::probe;
 use ip_tools::tcp;
 use ip_tools::test_support::FixtureServer;
 use ip_tools::tls;
@@ -102,6 +103,61 @@ async fn http_probes_work_insecure_against_self_signed_fixture() {
     let h3 = http3::probe_insecure(fixture.udp_addr(), "localhost", "GET", timeout()).await;
     assert_eq!(h3.status, Some(200), "http3 insecure: {h3:?}");
     assert_eq!(h3.protocol.as_deref(), Some("HTTP/3"));
+}
+
+// --- repeated HTTP probing (probe --protocol) ---------------------------------
+
+#[tokio::test(flavor = "multi_thread")]
+async fn http_repeat_against_fixture_aggregates_all_protocols() {
+    let fixture = FixtureServer::start().await;
+    let c = 3usize;
+    let h1 = probe::http_repeat(fixture.tcp_addr(), "localhost", "GET", c, timeout(), true).await;
+    assert_eq!(h1.successes, c, "http1 repeat should be all-success: {h1:?}");
+    let h2 = probe::http2_repeat(fixture.tcp_addr(), "localhost", "GET", c, timeout(), true).await;
+    assert_eq!(h2.successes, c, "http2 repeat should be all-success: {h2:?}");
+    let h3 = probe::http3_repeat(fixture.udp_addr(), "localhost", "GET", c, timeout(), true).await;
+    assert_eq!(h3.successes, c, "http3 repeat should be all-success: {h3:?}");
+    assert_eq!(h3.latency.count, c, "http3 repeat should yield latency samples");
+    assert!(h3.failure_counts.is_empty());
+}
+
+#[test]
+fn probe_cli_http2_repeats_fixture_via_protocol_flag() {
+    // End-to-end: `probe --protocol http2 --insecure` repeats HTTP/2 against
+    // the self-signed fixture and aggregates 3 successes.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let addr = fixture.tcp_addr().to_string();
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "probe",
+            &addr,
+            "--protocol",
+            "http2",
+            "--count",
+            "3",
+            "--insecure",
+            "--timeout",
+            "2000",
+        ])
+        .output()
+        .expect("run probe --protocol http2");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "probe --protocol http2 should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.contains("Repeated probes"),
+        "repeated-probe heading missing: {stdout}"
+    );
+    assert!(stdout.contains("success:  3"), "expected 3 successes: {stdout}");
 }
 
 #[test]

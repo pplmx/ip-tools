@@ -292,6 +292,9 @@ pub ip_tools::model::TlsObservation::sni: alloc::string::String
 pub ip_tools::model::TlsObservation::success: bool
 pub ip_tools::model::TlsObservation::version: core::option::Option<alloc::string::String>
 pub mod ip_tools::probe
+pub async fn ip_tools::probe::http2_repeat(core::net::socket_addr::SocketAddr, &str, &str, usize, core::time::Duration, bool) -> ip_tools::model::probe::ProbeResult
+pub async fn ip_tools::probe::http3_repeat(core::net::socket_addr::SocketAddr, &str, &str, usize, core::time::Duration, bool) -> ip_tools::model::probe::ProbeResult
+pub async fn ip_tools::probe::http_repeat(core::net::socket_addr::SocketAddr, &str, &str, usize, core::time::Duration, bool) -> ip_tools::model::probe::ProbeResult
 pub async fn ip_tools::probe::tcp_repeat(core::net::socket_addr::SocketAddr, usize, core::time::Duration) -> ip_tools::model::probe::ProbeResult
 pub mod ip_tools::report
 pub fn ip_tools::report::render_diagnoses(&[ip_tools::model::diagnosis::Diagnosis]) -> alloc::string::String

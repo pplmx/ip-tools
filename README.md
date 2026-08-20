@@ -278,12 +278,21 @@ frequently deprioritize or filter TTL-expired responses.
 
 ### Repeated probes
 
-Repeatedly probe TCP connectivity and report latency statistics per address:
+Repeatedly probe connectivity and report latency statistics per address.
+TCP is the default; `--protocol http|http2|http3` repeats an HTTP/1.1,
+HTTP/2 or HTTP/3 request instead (with `--method` and, for self-signed
+endpoints, `--insecure`):
 
 ```shell
 ip-tools probe example.com --count 100
 ip-tools probe example.com --count 100 --concurrency 16
+ip-tools probe example.com --protocol http2 --count 100 --method HEAD
+ip-tools probe example.com --protocol http3 --count 30 --insecure
 ```
+
+Per-address attempts run sequentially (so the latency distribution reflects
+genuine per-attempt timing and jitter); addresses are probed in parallel,
+bounded by `--concurrency`.
 
 Example output:
 
