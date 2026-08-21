@@ -71,6 +71,11 @@ ip-tools dns example.com --ipv6        # AAAA only
 ip-tools dns example.com --json        # raw observations as JSON
 ```
 
+An IP-literal target is shorthand for "this is already an address": `dns
+1.1.1.1` reports the literal as its own `A` record (and a clean NODATA-style
+empty `AAAA`), with no resolver consulted — consistent with the probe
+subcommands, and never a `--strict` failure.
+
 Example output:
 
 ```

@@ -112,3 +112,34 @@ fn test_each_diagnostic_subcommand_rejects_missing_target() {
         cmd.arg(sub).assert().failure();
     }
 }
+
+#[test]
+fn test_dns_literal_target_reports_the_address_itself() {
+    // `dns 1.1.1.1` must not ask the resolver to look up a *name* "1.1.1.1."
+    // (which answers "no records found"): an IP literal is already an address,
+    // so its identity is reported directly and deterministically (no network).
+    let mut cmd = Command::cargo_bin("ip-tools").unwrap();
+    cmd.args(["dns", "1.1.1.1"])
+        .assert()
+        .success()
+        .stdout(contains("1.1.1.1 (0 ms)").and(contains("no records found").not()));
+}
+
+#[test]
+fn test_dns_literal_target_with_strict_exits_zero() {
+    // A literal target is trivially "resolved" (it is its own address), so
+    // `--strict` must not treat it as a failed lookup.
+    let mut cmd = Command::cargo_bin("ip-tools").unwrap();
+    cmd.args(["dns", "1.1.1.1", "--strict"]).assert().success();
+}
+
+#[test]
+fn test_dns_bracketed_ipv6_literal_reports_the_address_itself() {
+    // Bracket-form IPv6 literals (`[::1]`, as accepted by target parsing) are
+    // addresses too, not names to resolve.
+    let mut cmd = Command::cargo_bin("ip-tools").unwrap();
+    cmd.args(["dns", "[::1]"])
+        .assert()
+        .success()
+        .stdout(contains("::1 (0 ms)"));
+}
