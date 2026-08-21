@@ -1,7 +1,7 @@
 //! Protocol-layer diagnostic rules: TLS, HTTP, QUIC and intermittent probes.
 
 use super::DiagnosticInput;
-use crate::model::{Confidence, Diagnosis, DiagnosticCategory, Evidence, ProbeResult, Severity};
+use crate::model::{Confidence, Diagnosis, DiagnosticCategory, Evidence, FailureKind, ProbeResult, Severity};
 
 /// TLS handshake failures on addresses where TCP connected.
 pub(super) fn tls_layer_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosis>) {
@@ -32,7 +32,7 @@ pub(super) fn tls_layer_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosis>)
     }
 }
 
-/// HTTP-layer errors (non-2xx status or transport failure).
+/// HTTP-layer errors (non-2xx status or an HTTP-protocol-layer failure).
 pub(super) fn http_layer_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosis>) {
     let mut failing: Vec<String> = Vec::new();
     for h in input.http {
@@ -42,7 +42,17 @@ pub(super) fn http_layer_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosis>
         // error. Only count it here when TCP actually connected.
         let inherited_tcp =
             h.failure.is_some() && input.tcp.iter().any(|t| t.destination == h.destination && !t.success);
-        let layer_failed = (h.failure.is_some() && !inherited_tcp) || h.status.is_some_and(|s| s >= 400);
+        // Failures owned by another layer's rule must not be re-reported
+        // here: a QUIC transport failure is the `quic_rules` verdict and a
+        // TLS handshake / certificate failure is `tls_layer_rules`' — the
+        // same cause must not be double-counted as an HTTP-layer error.
+        let own_failure = h.failure.as_ref().is_some_and(|e| {
+            !matches!(
+                e.kind,
+                FailureKind::Quic | FailureKind::TlsHandshake | FailureKind::Certificate
+            )
+        });
+        let layer_failed = (own_failure && !inherited_tcp) || h.status.is_some_and(|s| s >= 400);
         if layer_failed {
             failing.push(format!(
                 "{} -> {}",
@@ -269,6 +279,64 @@ mod tests {
         let obs = [http("2.2.2.2:443", "HTTP/1.1", None, Some("request failed"))];
         let mut out = Vec::new();
         http_layer_rules(&input(&[], &obs, &[]), &mut out);
+        assert!(out.iter().any(|d| d.category == DiagnosticCategory::Http));
+    }
+
+    #[test]
+    fn http_layer_ignores_failures_owned_by_other_layers() {
+        // A QUIC transport failure and a TLS handshake/certificate failure
+        // each belong to their own layer rule; on a TCP-connected address
+        // they must not be re-raised as an HTTP-layer error too.
+        let with_kind = |kind| HttpObservation {
+            destination: "1.1.1.1:443".parse().unwrap(),
+            host: "example.com".into(),
+            method: "GET".into(),
+            tls: None,
+            protocol: Some("HTTP/3".into()),
+            status: None,
+            location: None,
+            body_bytes: None,
+            latency_ms: None,
+            failure: Some(ProbeError {
+                kind,
+                message: "another layer's failure".into(),
+            }),
+        };
+        let tcp_ok = [TcpObservation {
+            destination: "1.1.1.1:443".parse().unwrap(),
+            success: true,
+            latency_ms: Some(5),
+            failure: None,
+        }];
+        for kind in [FailureKind::Quic, FailureKind::TlsHandshake, FailureKind::Certificate] {
+            let mut out = Vec::new();
+            http_layer_rules(
+                &DiagnosticInput {
+                    hostname: "example.com",
+                    dns: &[],
+                    tcp: &tcp_ok,
+                    tls: &[],
+                    http: &[with_kind(kind)],
+                    probes: &[],
+                },
+                &mut out,
+            );
+            assert!(out.is_empty(), "{kind:?} must not be re-raised as an HTTP-layer error");
+        }
+
+        // A genuine HTTP-protocol-layer failure still raises it.
+        let mut out = Vec::new();
+        http_layer_rules(
+            &DiagnosticInput {
+                hostname: "example.com",
+                dns: &[],
+                tcp: &tcp_ok,
+                tls: &[],
+                http: &[with_kind(FailureKind::Http)],
+                probes: &[],
+            },
+            &mut out,
+        );
         assert!(out.iter().any(|d| d.category == DiagnosticCategory::Http));
     }
 
