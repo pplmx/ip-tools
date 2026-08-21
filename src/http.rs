@@ -53,7 +53,13 @@ async fn probe_impl(
     mode: crate::tls::TlsMode<'_>,
 ) -> HttpObservation {
     let start = Instant::now();
-    let base = HttpObservation::base(destination, host, method);
+    // Name the protocol up front so a *failed* observation keeps its identity
+    // (HTTP/2 and HTTP/3 failures would otherwise be indistinguishable from a
+    // bare base and the QUIC diagnostics could never see a failed h3 probe).
+    let base = HttpObservation {
+        protocol: Some("HTTP/1.1".to_string()),
+        ..HttpObservation::base(destination, host, method)
+    };
 
     // 1. TLS handshake (HTTP/1.1 ALPN).
     let tls_obs;

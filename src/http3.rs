@@ -82,7 +82,14 @@ async fn probe_impl(
     mode: crate::tls::TlsMode<'_>,
 ) -> HttpObservation {
     let start = Instant::now();
-    let base = HttpObservation::base(destination, host, method);
+    // Name the protocol up front so a *failed* observation keeps its identity:
+    // the QUIC diagnostics and the QUIC-only filtering signal match on
+    // `protocol == "HTTP/3"`, so a failed h3 probe that lost its protocol
+    // would be invisible to them.
+    let base = HttpObservation {
+        protocol: Some("HTTP/3".to_string()),
+        ..HttpObservation::base(destination, host, method)
+    };
 
     let mut endpoint = match client_endpoint(destination) {
         Ok(e) => e,

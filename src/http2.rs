@@ -49,7 +49,13 @@ async fn probe_impl(
     mode: crate::tls::TlsMode<'_>,
 ) -> HttpObservation {
     let start = Instant::now();
-    let base = HttpObservation::base(destination, host, method);
+    // Name the protocol up front so a *failed* observation keeps its identity
+    // (an h2 failure would otherwise look like a bare base and the HTTP/2 row
+    // of a failing host would be mislabeled).
+    let base = HttpObservation {
+        protocol: Some("HTTP/2".to_string()),
+        ..HttpObservation::base(destination, host, method)
+    };
 
     let conn = match crate::tls::connect_to(destination, host, crate::tls::ALPN_H2, timeout, mode).await {
         Ok(c) => c,

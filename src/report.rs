@@ -143,7 +143,15 @@ pub fn render_http(observations: &[HttpObservation]) -> String {
     for obs in observations {
         out.push_str(&format!("  {}\n", obs.destination));
         if let Some(failure) = &obs.failure {
-            out.push_str(&format!("    {} ({})\n", failure.kind, failure.message));
+            // Name the protocol so the HTTP/1.1, HTTP/2 and HTTP/3 rows of a
+            // failing host are distinguishable (a success row already shows
+            // its protocol).
+            out.push_str(&format!(
+                "    {} {} ({})\n",
+                obs.protocol.as_deref().unwrap_or("HTTP/1.1"),
+                failure.kind,
+                failure.message
+            ));
             continue;
         }
         out.push_str(&format!(
@@ -454,7 +462,7 @@ mod tests {
             host: "example.com".into(),
             method: "GET".into(),
             tls: None,
-            protocol: None,
+            protocol: Some("HTTP/2".into()),
             status: None,
             location: None,
             body_bytes: None,
@@ -497,6 +505,9 @@ mod tests {
         assert!(out.contains("redirect: https://example.com/login"));
         assert!(out.contains("body: 1234 bytes"));
         assert!(out.contains("request failed"));
+        // A failed observation must name its protocol so the HTTP/1.1, HTTP/2
+        // and HTTP/3 rows of a failing host are distinguishable.
+        assert!(out.contains("HTTP/2 http"), "failure row must name the protocol: {out}");
         assert!(out.contains("no status"));
         // Without an explicit protocol, HTTP/1.1 is assumed.
         assert!(out.contains("HTTP/1.1"));

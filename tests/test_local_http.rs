@@ -276,6 +276,13 @@ async fn http3_probe_times_out_when_quic_handshake_never_reaches_h3() {
         ip_tools::FailureKind::Timeout,
         "expected a clean Timeout, got {obs:?}"
     );
+    // A failed h3 probe must keep its protocol identity so the QUIC
+    // diagnostics and the report can see it as HTTP/3.
+    assert_eq!(
+        obs.protocol.as_deref(),
+        Some("HTTP/3"),
+        "failed h3 probe must retain its protocol: {obs:?}"
+    );
 }
 
 // --- repeated HTTP probing (probe --protocol) ---------------------------------
@@ -312,6 +319,11 @@ async fn http3_probe_times_out_against_silent_udp_socket() {
         ip_tools::FailureKind::Timeout,
         "unexpected kind: {failure:?}"
     );
+    assert_eq!(
+        obs.protocol.as_deref(),
+        Some("HTTP/3"),
+        "failed h3 probe must retain its protocol: {obs:?}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -326,6 +338,11 @@ async fn http3_probe_fails_against_closed_udp_port() {
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
 
     let obs = http3::probe(addr, "localhost", "GET", Duration::from_millis(800)).await;
+    assert_eq!(
+        obs.protocol.as_deref(),
+        Some("HTTP/3"),
+        "failed h3 probe must retain its protocol: {obs:?}"
+    );
     assert!(
         obs.failure.is_some(),
         "closed UDP port must not report success: {obs:?}"

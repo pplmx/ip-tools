@@ -132,7 +132,10 @@ fn tls_cli_reports_failure_against_plain_listener() {
 #[test]
 fn http_cli_probes_fail_against_plain_listener() {
     let addr = local_tcp_listener();
-    for sub in ["http", "http2", "http3"] {
+    // Each failed probe must keep and render its protocol identity, so the
+    // HTTP/1.1, HTTP/2 and HTTP/3 rows are distinguishable on a failing host.
+    let expected = [("http", "HTTP/1.1"), ("http2", "HTTP/2"), ("http3", "HTTP/3")];
+    for (sub, protocol) in expected {
         let out = stdout(
             &cmd()
                 .args([sub, &addr.to_string(), "--timeout", "800"])
@@ -142,6 +145,10 @@ fn http_cli_probes_fail_against_plain_listener() {
         assert!(
             out.contains("HTTPS") || out.contains("failed") || out.contains("timed out"),
             "{sub} CLI should render a probe report: {out}"
+        );
+        assert!(
+            out.contains(protocol),
+            "{sub} failure must keep its protocol label ({protocol}): {out}"
         );
     }
 }
