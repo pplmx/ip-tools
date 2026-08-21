@@ -12,6 +12,45 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::time::Duration;
 
+/// Repeatedly probe a TLS handshake to `destination`, aggregating
+/// handshake-latency statistics like [`tcp_repeat`] (with `--insecure`
+/// support).
+///
+/// # Examples
+///
+/// ```no_run
+/// use ip_tools::probe;
+/// use std::net::SocketAddr;
+/// use std::time::Duration;
+///
+/// # tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap().block_on(async {
+/// let addr: SocketAddr = "1.1.1.1:443".parse().unwrap();
+/// let r = probe::tls_repeat(addr, "1.1.1.1", 5, Duration::from_secs(3), false).await;
+/// println!("tls success rate: {:.0}%", r.success_rate * 100.0);
+/// # });
+/// ```
+pub async fn tls_repeat(
+    destination: SocketAddr,
+    sni: &str,
+    attempts: usize,
+    timeout: Duration,
+    insecure: bool,
+) -> ProbeResult {
+    repeat_impl(destination, attempts, || async {
+        let obs = if insecure {
+            crate::tls::probe_insecure(destination, sni, timeout).await
+        } else {
+            crate::tls::probe(destination, sni, timeout).await
+        };
+        if obs.success {
+            (true, obs.latency_ms, None)
+        } else {
+            (false, None, obs.failure.map(|f| f.kind))
+        }
+    })
+    .await
+}
+
 /// Repeatedly probe TCP connectivity to `destination` `attempts` times.
 ///
 /// Attempts are run sequentially per address so that the latency distribution

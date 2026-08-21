@@ -168,6 +168,32 @@ fn probe_cli_repeats_and_aggregates() {
 }
 
 #[test]
+fn probe_cli_protocol_tls_accepts_and_reports_failures_on_plain_listener() {
+    // `probe --protocol tls` must be accepted by the CLI and aggregate TLS
+    // handshakes. Against a plain TCP listener the handshake fails, so the
+    // report shows a classified failure, not a crash or a misleading success.
+    let addr = local_tcp_listener();
+    let out = stdout(
+        &cmd()
+            .args([
+                "probe",
+                &addr.to_string(),
+                "--protocol",
+                "tls",
+                "--count",
+                "2",
+                "--timeout",
+                "800",
+            ])
+            .assert()
+            .success(),
+    );
+    assert!(out.contains("Repeated probes"), "probe heading missing: {out}");
+    assert!(out.contains("attempts: 2"), "expected 2 attempts: {out}");
+    assert!(out.contains("failure:  2"), "expected 2 failures: {out}");
+}
+
+#[test]
 fn probe_cli_rejects_zero_count() {
     // `--count 0` would probe nothing yet render a vacuous "0 attempts, 0.0%
     // success" report and exit 0; a count of zero is a caller mistake and must

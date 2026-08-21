@@ -192,10 +192,10 @@ fn count_arg() -> Arg {
 fn protocol_arg() -> Arg {
     Arg::new("protocol")
         .long("protocol")
-        .value_name("TCP|HTTP|HTTP2|HTTP3")
-        .value_parser(["tcp", "http", "http2", "http3"])
+        .value_name("TCP|TLS|HTTP|HTTP2|HTTP3")
+        .value_parser(["tcp", "tls", "http", "http2", "http3"])
         .default_value("tcp")
-        .help("protocol to repeatedly probe (tcp, http, http2 or http3)")
+        .help("protocol to repeatedly probe (tcp, tls, http, http2 or http3)")
 }
 
 /// Shared `--method` argument.

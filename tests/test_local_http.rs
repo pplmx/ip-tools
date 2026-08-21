@@ -301,6 +301,25 @@ async fn http_repeat_against_fixture_aggregates_all_protocols() {
     assert!(h3.failure_counts.is_empty());
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn tls_repeat_against_fixture_aggregates_handshake_latency() {
+    let fixture = FixtureServer::start().await;
+    let c = 3usize;
+    let t = probe::tls_repeat(fixture.tcp_addr(), "localhost", c, timeout(), true).await;
+    assert_eq!(t.successes, c, "tls repeat should be all-success: {t:?}");
+    assert_eq!(t.latency.count, c, "tls repeat should yield latency samples");
+    assert!(t.failure_counts.is_empty(), "no failures expected: {t:?}");
+    // Without --insecure, the self-signed fixture must fail every handshake
+    // and count as failures (a classified handshake/certificate failure),
+    // never a silent success.
+    let strict = probe::tls_repeat(fixture.tcp_addr(), "localhost", c, timeout(), false).await;
+    assert_eq!(
+        strict.successes, 0,
+        "self-signed fixture must fail hardened: {strict:?}"
+    );
+    assert_eq!(strict.failures, c, "every handshake should be a failure: {strict:?}");
+}
+
 // --- HTTP/3 error paths (QUIC handshake/black-hole UDP) ---------------------
 
 #[tokio::test(flavor = "multi_thread")]

@@ -36,6 +36,7 @@ pub(super) async fn run_probe(sub_m: &ArgMatches) -> ExitCode {
             let protocol = protocol.clone();
             async move {
                 match protocol.as_str() {
+                    "tls" => ip_probe::tls_repeat(dest, &host, count, timeout, insecure).await,
                     "http" => ip_probe::http_repeat(dest, &host, &method, count, timeout, insecure).await,
                     "http2" => ip_probe::http2_repeat(dest, &host, &method, count, timeout, insecure).await,
                     "http3" => ip_probe::http3_repeat(dest, &host, &method, count, timeout, insecure).await,
