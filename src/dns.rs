@@ -420,6 +420,14 @@ fn parse_doh_url(url: &str) -> Result<(String, u16, String), String> {
             None => return Err(format!("DoH endpoint {url:?} has an unterminated '['")),
         };
         (addr.to_string(), port)
+    } else if authority.matches(':').count() > 1 {
+        // A bare IPv6 literal is not a valid URI authority: RFC 3986 §3.2.2
+        // requires brackets. Guarding this here turns `https://::1/dns-query`
+        // into a clear error instead of misreading `::1` as host + port and
+        // failing later with a vague "could not resolve" message.
+        return Err(format!(
+            "DoH endpoint {url:?} has an unbracketed IPv6 authority (use [addr]:port)"
+        ));
     } else if let Some((host, port)) = authority.rsplit_once(':') {
         let port = port
             .parse::<u16>()
@@ -788,6 +796,27 @@ mod tests {
         assert!(parse_doh_url("http://1.1.1.1/dns-query").is_err());
         assert!(parse_doh_url("https://").is_err());
         assert!(parse_doh_url("").is_err());
+    }
+
+    #[test]
+    fn doh_url_rejects_malformed_authorities() {
+        // Unterminated bracket: the closing ']' is missing.
+        assert!(parse_doh_url("https://[::1/dns-query").is_err());
+        assert!(parse_doh_url("https://1.1.1.1").is_ok());
+        // Non-numeric port (bracketed or plain form) is rejected.
+        assert!(parse_doh_url("https://[::1]:dns/dns-query").is_err());
+        assert!(parse_doh_url("https://example.com:port/dns-query").is_err());
+        // Empty host is rejected.
+        assert!(parse_doh_url("https://:443/dns-query").is_err());
+        // A bare IPv6 literal is not a valid URI authority (RFC 3986 §3.2.2):
+        // it must be bracketed. Without a guard, `https://::1/dns-query` is
+        // misread as host `::` + non-deterministic port and only fails later
+        // with a confusing "could not resolve" error.
+        assert!(
+            parse_doh_url("https://::1/dns-query").is_err(),
+            "unbracketed IPv6 authority must be rejected up front"
+        );
+        assert!(parse_doh_url("https://a:b:c/dns-query").is_err());
     }
 
     #[test]
