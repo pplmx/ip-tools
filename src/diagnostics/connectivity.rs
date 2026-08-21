@@ -38,6 +38,22 @@ pub(super) fn connectivity_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosi
     }
 
     if !ok.is_empty() && !bad.is_empty() {
+        // A failure the host's own stack reports as `network unreachable` /
+        // `host unreachable` (ENETUNREACH / EHOSTUNREACH) is emitted *before
+        // any packet is sent* for that address — e.g. an address family with
+        // no global route. It is a local routing verdict, not evidence about
+        // the destination, so when *every* failing address is such a verdict
+        // there is no path evidence of a partially reachable destination: the
+        // address-family rule reports that local condition instead. The
+        // per-address failures remain visible in the evidence stack.
+        let all_local_unreachability = bad.iter().all(|o| {
+            o.failure
+                .as_ref()
+                .is_some_and(|f| matches!(f.kind, FailureKind::NetworkUnreachable | FailureKind::HostUnreachable))
+        });
+        if all_local_unreachability {
+            return;
+        }
         // Partial reachability.
         let failing: Vec<String> = bad.iter().map(|o| o.destination.to_string()).collect();
         let passing: Vec<String> = ok.iter().map(|o| o.destination.to_string()).collect();

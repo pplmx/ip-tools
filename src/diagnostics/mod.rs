@@ -164,6 +164,86 @@ mod tests {
     }
 
     #[test]
+    fn partial_connectivity_not_raised_when_all_failures_are_local_unreachability() {
+        // A healthy dual-stack host whose IPv6 has no route (this machine's
+        // exact condition): the IPv6 TCP observations fail with
+        // NetworkUnreachable, which the host's own stack reports before any
+        // packet is sent — a local routing verdict, not evidence about the
+        // destination. The reachability rule must not read it as "only some
+        // destination addresses work" (its causes are CDN node failure /
+        // destination filtering / routing asymmetry): the address-family rule
+        // already reports the local cause. See `ipv6_locally_unreachable_does_*`.
+        let tcp = [
+            tp("1.1.1.1:443", true),
+            TcpObservation {
+                destination: "[2001:db8::1]:443".parse().unwrap(),
+                success: false,
+                latency_ms: None,
+                failure: Some(ProbeError {
+                    kind: FailureKind::NetworkUnreachable,
+                    message: "network unreachable".into(),
+                }),
+            },
+            TcpObservation {
+                destination: "[2001:db8::2]:443".parse().unwrap(),
+                success: false,
+                latency_ms: None,
+                failure: Some(ProbeError {
+                    kind: FailureKind::NetworkUnreachable,
+                    message: "network unreachable".into(),
+                }),
+            },
+        ];
+        let out = diagnose(&input(&[], &tcp, &[], &[], &[]));
+        assert!(
+            !categories(&out).contains(&DiagnosticCategory::PartialConnectivity),
+            "locally-unroutable family must not be read as destination partial connectivity: {out:?}"
+        );
+        // The correct, honest diagnosis for the failed family is still raised.
+        assert!(categories(&out).contains(&DiagnosticCategory::AddressFamily));
+    }
+
+    #[test]
+    fn partial_connectivity_fires_when_any_failure_is_path_evidence() {
+        // As soon as one failing address shows a genuine path failure (a
+        // timeout — a packet was sent and no answer came back), partial
+        // connectivity is real and must still fire even if other failures on
+        // the same destination are locally unreachable.
+        let tcp = [
+            tp("1.1.1.1:443", true),
+            TcpObservation {
+                destination: "[2001:db8::1]:443".parse().unwrap(),
+                success: false,
+                latency_ms: None,
+                failure: Some(ProbeError {
+                    kind: FailureKind::NetworkUnreachable,
+                    message: "network unreachable".into(),
+                }),
+            },
+            TcpObservation {
+                destination: "[2001:db8::2]:443".parse().unwrap(),
+                success: false,
+                latency_ms: None,
+                failure: Some(ProbeError {
+                    kind: FailureKind::Timeout,
+                    message: "timed out".into(),
+                }),
+            },
+        ];
+        let out = diagnose(&input(&[], &tcp, &[], &[], &[]));
+        assert!(categories(&out).contains(&DiagnosticCategory::PartialConnectivity));
+        // With more than one failing address the reachability rule still
+        // claims High confidence — the local-unreachability addresses are also
+        // genuinely unreachable, and at least one path failure is real.
+        let p = out
+            .iter()
+            .find(|d| d.category == DiagnosticCategory::PartialConnectivity)
+            .unwrap();
+        assert_eq!(p.confidence, Confidence::High);
+        assert!(categories(&out).contains(&DiagnosticCategory::AddressFamily));
+    }
+
+    #[test]
     fn tls_layer_failure_where_tcp_ok() {
         let tcp = [tp("1.1.1.1:443", true)];
         let tls = [TlsObservation {
