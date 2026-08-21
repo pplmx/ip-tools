@@ -167,6 +167,10 @@ pub fn render_http(observations: &[HttpObservation]) -> String {
         if presented_name_differs(&obs.host, obs.destination) {
             out.push_str(&format!("    host: {}\n", obs.host));
         }
+        // Show the requested path when it is not the default `/` (`--path`).
+        if obs.path != "/" {
+            out.push_str(&format!("    path: {}\n", obs.path));
+        }
         if let Some(failure) = &obs.failure {
             // Name the protocol so the HTTP/1.1, HTTP/2 and HTTP/3 rows of a
             // failing host are distinguishable (a success row already shows
@@ -474,6 +478,7 @@ mod tests {
             destination: "1.1.1.1:443".parse().unwrap(),
             host: "example.com".into(),
             method: "GET".into(),
+            path: "/".into(),
             tls: Some(tls(true)),
             protocol: Some("HTTP/2".into()),
             status: Some(200),
@@ -486,6 +491,7 @@ mod tests {
             destination: "2.2.2.2:443".parse().unwrap(),
             host: "example.com".into(),
             method: "GET".into(),
+            path: "/".into(),
             tls: None,
             protocol: Some("HTTP/2".into()),
             status: None,
@@ -501,6 +507,7 @@ mod tests {
             destination: "3.3.3.3:443".parse().unwrap(),
             host: "example.com".into(),
             method: "HEAD".into(),
+            path: "/".into(),
             tls: None,
             protocol: None,
             status: None,
@@ -515,6 +522,7 @@ mod tests {
             destination: "4.4.4.4:443".parse().unwrap(),
             host: "example.com".into(),
             method: "GET".into(),
+            path: "/".into(),
             tls: None,
             protocol: None,
             status: Some(301),

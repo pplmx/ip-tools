@@ -11,6 +11,7 @@ use std::process::ExitCode;
 /// in parallel (bounded by `--concurrency`).
 pub(super) async fn run_http(sub_m: &ArgMatches) -> ExitCode {
     let method = sub_m.get_one::<String>("method").expect("method has default").clone();
+    let path = sub_m.get_one::<String>("path").expect("path has default").clone();
     let insecure = sub_m.get_flag("insecure");
     run_probe_flow(
         sub_m,
@@ -19,11 +20,12 @@ pub(super) async fn run_http(sub_m: &ArgMatches) -> ExitCode {
         |obs: &HttpObservation| obs.failure.is_some(),
         move |host, dest, timeout| {
             let method = method.clone();
+            let path = path.clone();
             async move {
                 if insecure {
-                    ip_http::probe_insecure(dest, &host, &method, timeout).await
+                    ip_http::probe_insecure(dest, &host, &method, &path, timeout).await
                 } else {
-                    ip_http::probe(dest, &host, &method, timeout).await
+                    ip_http::probe(dest, &host, &method, &path, timeout).await
                 }
             }
         },

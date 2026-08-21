@@ -76,7 +76,7 @@ fn parser() -> ArgMatches {
         .subcommand(probe_command(
             "http",
             "perform an HTTPS/HTTP1.1 request to a host:port across its addresses",
-            &[method_arg(), insecure_arg(), strict_arg(), sni_arg()],
+            &[method_arg(), insecure_arg(), strict_arg(), sni_arg(), path_arg()],
         ))
         .subcommand(probe_command(
             "probe",
@@ -88,17 +88,18 @@ fn parser() -> ArgMatches {
                 method_arg(),
                 insecure_arg(),
                 sni_arg(),
+                path_arg(),
             ],
         ))
         .subcommand(probe_command(
             "http2",
             "perform an HTTPS/HTTP2 request to a host:port across its addresses",
-            &[method_arg(), insecure_arg(), strict_arg(), sni_arg()],
+            &[method_arg(), insecure_arg(), strict_arg(), sni_arg(), path_arg()],
         ))
         .subcommand(probe_command(
             "http3",
             "perform an HTTPS/HTTP3 (QUIC) request to a host:port across its addresses",
-            &[method_arg(), insecure_arg(), strict_arg(), sni_arg()],
+            &[method_arg(), insecure_arg(), strict_arg(), sni_arg(), path_arg()],
         ))
         .subcommand(
             Command::new("route")
@@ -227,6 +228,15 @@ fn sni_arg() -> Arg {
         .long("sni")
         .value_name("NAME")
         .help("present this hostname as SNI (and HTTP Host) instead of the target host")
+}
+
+/// `--path` argument: the HTTP request path to probe (e.g. `/`, `/healthz`).
+fn path_arg() -> Arg {
+    Arg::new("path")
+        .long("path")
+        .value_name("PATH")
+        .default_value("/")
+        .help("HTTP request path to probe")
 }
 
 /// Shared `--insecure` argument (skip TLS/QUIC certificate validation).

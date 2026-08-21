@@ -21,6 +21,7 @@ pub(super) async fn run_probe(sub_m: &ArgMatches) -> ExitCode {
         return ExitCode::FAILURE;
     }
     let method = sub_m.get_one::<String>("method").expect("method has default").clone();
+    let path = sub_m.get_one::<String>("path").expect("path has default").clone();
     let insecure = sub_m.get_flag("insecure");
     let protocol = sub_m
         .get_one::<String>("protocol")
@@ -33,13 +34,14 @@ pub(super) async fn run_probe(sub_m: &ArgMatches) -> ExitCode {
         |result: &ProbeResult| result.failures > 0,
         move |host, dest, timeout| {
             let method = method.clone();
+            let path = path.clone();
             let protocol = protocol.clone();
             async move {
                 match protocol.as_str() {
                     "tls" => ip_probe::tls_repeat(dest, &host, count, timeout, insecure).await,
-                    "http" => ip_probe::http_repeat(dest, &host, &method, count, timeout, insecure).await,
-                    "http2" => ip_probe::http2_repeat(dest, &host, &method, count, timeout, insecure).await,
-                    "http3" => ip_probe::http3_repeat(dest, &host, &method, count, timeout, insecure).await,
+                    "http" => ip_probe::http_repeat(dest, &host, &method, &path, count, timeout, insecure).await,
+                    "http2" => ip_probe::http2_repeat(dest, &host, &method, &path, count, timeout, insecure).await,
+                    "http3" => ip_probe::http3_repeat(dest, &host, &method, &path, count, timeout, insecure).await,
                     _ => ip_probe::tcp_repeat(dest, count, timeout).await,
                 }
             }

@@ -33,17 +33,17 @@ pub ip_tools::error::DiagError::Timeout::destination: alloc::string::String
 pub ip_tools::error::DiagError::Timeout::operation: &'static str
 pub ip_tools::error::DiagError::Timeout::timeout: core::time::Duration
 pub mod ip_tools::http
-pub async fn ip_tools::http::probe(core::net::socket_addr::SocketAddr, &str, &str, core::time::Duration) -> ip_tools::model::http::HttpObservation
-pub async fn ip_tools::http::probe_insecure(core::net::socket_addr::SocketAddr, &str, &str, core::time::Duration) -> ip_tools::model::http::HttpObservation
-pub async fn ip_tools::http::probe_with_roots(core::net::socket_addr::SocketAddr, &str, &str, core::time::Duration, &rustls::webpki::anchors::RootCertStore) -> ip_tools::model::http::HttpObservation
+pub async fn ip_tools::http::probe(core::net::socket_addr::SocketAddr, &str, &str, &str, core::time::Duration) -> ip_tools::model::http::HttpObservation
+pub async fn ip_tools::http::probe_insecure(core::net::socket_addr::SocketAddr, &str, &str, &str, core::time::Duration) -> ip_tools::model::http::HttpObservation
+pub async fn ip_tools::http::probe_with_roots(core::net::socket_addr::SocketAddr, &str, &str, &str, core::time::Duration, &rustls::webpki::anchors::RootCertStore) -> ip_tools::model::http::HttpObservation
 pub mod ip_tools::http2
-pub async fn ip_tools::http2::probe(core::net::socket_addr::SocketAddr, &str, &str, core::time::Duration) -> ip_tools::model::http::HttpObservation
-pub async fn ip_tools::http2::probe_insecure(core::net::socket_addr::SocketAddr, &str, &str, core::time::Duration) -> ip_tools::model::http::HttpObservation
-pub async fn ip_tools::http2::probe_with_roots(core::net::socket_addr::SocketAddr, &str, &str, core::time::Duration, &rustls::webpki::anchors::RootCertStore) -> ip_tools::model::http::HttpObservation
+pub async fn ip_tools::http2::probe(core::net::socket_addr::SocketAddr, &str, &str, &str, core::time::Duration) -> ip_tools::model::http::HttpObservation
+pub async fn ip_tools::http2::probe_insecure(core::net::socket_addr::SocketAddr, &str, &str, &str, core::time::Duration) -> ip_tools::model::http::HttpObservation
+pub async fn ip_tools::http2::probe_with_roots(core::net::socket_addr::SocketAddr, &str, &str, &str, core::time::Duration, &rustls::webpki::anchors::RootCertStore) -> ip_tools::model::http::HttpObservation
 pub mod ip_tools::http3
-pub async fn ip_tools::http3::probe(core::net::socket_addr::SocketAddr, &str, &str, core::time::Duration) -> ip_tools::model::http::HttpObservation
-pub async fn ip_tools::http3::probe_insecure(core::net::socket_addr::SocketAddr, &str, &str, core::time::Duration) -> ip_tools::model::http::HttpObservation
-pub async fn ip_tools::http3::probe_with_roots(core::net::socket_addr::SocketAddr, &str, &str, core::time::Duration, &rustls::webpki::anchors::RootCertStore) -> ip_tools::model::http::HttpObservation
+pub async fn ip_tools::http3::probe(core::net::socket_addr::SocketAddr, &str, &str, &str, core::time::Duration) -> ip_tools::model::http::HttpObservation
+pub async fn ip_tools::http3::probe_insecure(core::net::socket_addr::SocketAddr, &str, &str, &str, core::time::Duration) -> ip_tools::model::http::HttpObservation
+pub async fn ip_tools::http3::probe_with_roots(core::net::socket_addr::SocketAddr, &str, &str, &str, core::time::Duration, &rustls::webpki::anchors::RootCertStore) -> ip_tools::model::http::HttpObservation
 pub mod ip_tools::model
 pub mod ip_tools::model::diagnosis
 pub enum ip_tools::model::diagnosis::Confidence
@@ -104,6 +104,7 @@ pub ip_tools::model::http::HttpObservation::host: alloc::string::String
 pub ip_tools::model::http::HttpObservation::latency_ms: core::option::Option<u64>
 pub ip_tools::model::http::HttpObservation::location: core::option::Option<alloc::string::String>
 pub ip_tools::model::http::HttpObservation::method: alloc::string::String
+pub ip_tools::model::http::HttpObservation::path: alloc::string::String
 pub ip_tools::model::http::HttpObservation::protocol: core::option::Option<alloc::string::String>
 pub ip_tools::model::http::HttpObservation::status: core::option::Option<u16>
 pub ip_tools::model::http::HttpObservation::tls: core::option::Option<ip_tools::model::tls::TlsObservation>
@@ -245,6 +246,7 @@ pub ip_tools::model::HttpObservation::host: alloc::string::String
 pub ip_tools::model::HttpObservation::latency_ms: core::option::Option<u64>
 pub ip_tools::model::HttpObservation::location: core::option::Option<alloc::string::String>
 pub ip_tools::model::HttpObservation::method: alloc::string::String
+pub ip_tools::model::HttpObservation::path: alloc::string::String
 pub ip_tools::model::HttpObservation::protocol: core::option::Option<alloc::string::String>
 pub ip_tools::model::HttpObservation::status: core::option::Option<u16>
 pub ip_tools::model::HttpObservation::tls: core::option::Option<ip_tools::model::tls::TlsObservation>
@@ -295,9 +297,9 @@ pub ip_tools::model::TlsObservation::sni: alloc::string::String
 pub ip_tools::model::TlsObservation::success: bool
 pub ip_tools::model::TlsObservation::version: core::option::Option<alloc::string::String>
 pub mod ip_tools::probe
-pub async fn ip_tools::probe::http2_repeat(core::net::socket_addr::SocketAddr, &str, &str, usize, core::time::Duration, bool) -> ip_tools::model::probe::ProbeResult
-pub async fn ip_tools::probe::http3_repeat(core::net::socket_addr::SocketAddr, &str, &str, usize, core::time::Duration, bool) -> ip_tools::model::probe::ProbeResult
-pub async fn ip_tools::probe::http_repeat(core::net::socket_addr::SocketAddr, &str, &str, usize, core::time::Duration, bool) -> ip_tools::model::probe::ProbeResult
+pub async fn ip_tools::probe::http2_repeat(core::net::socket_addr::SocketAddr, &str, &str, &str, usize, core::time::Duration, bool) -> ip_tools::model::probe::ProbeResult
+pub async fn ip_tools::probe::http3_repeat(core::net::socket_addr::SocketAddr, &str, &str, &str, usize, core::time::Duration, bool) -> ip_tools::model::probe::ProbeResult
+pub async fn ip_tools::probe::http_repeat(core::net::socket_addr::SocketAddr, &str, &str, &str, usize, core::time::Duration, bool) -> ip_tools::model::probe::ProbeResult
 pub async fn ip_tools::probe::tcp_repeat(core::net::socket_addr::SocketAddr, usize, core::time::Duration) -> ip_tools::model::probe::ProbeResult
 pub async fn ip_tools::probe::tls_repeat(core::net::socket_addr::SocketAddr, &str, usize, core::time::Duration, bool) -> ip_tools::model::probe::ProbeResult
 pub mod ip_tools::report
@@ -428,6 +430,7 @@ pub ip_tools::HttpObservation::host: alloc::string::String
 pub ip_tools::HttpObservation::latency_ms: core::option::Option<u64>
 pub ip_tools::HttpObservation::location: core::option::Option<alloc::string::String>
 pub ip_tools::HttpObservation::method: alloc::string::String
+pub ip_tools::HttpObservation::path: alloc::string::String
 pub ip_tools::HttpObservation::protocol: core::option::Option<alloc::string::String>
 pub ip_tools::HttpObservation::status: core::option::Option<u16>
 pub ip_tools::HttpObservation::tls: core::option::Option<ip_tools::model::tls::TlsObservation>

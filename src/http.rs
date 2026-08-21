@@ -16,12 +16,20 @@ use std::time::{Duration, Instant};
 /// Perform a single HTTPS/HTTP/1.1 request to `destination` (connecting to
 /// its IP) presenting `host` as SNI and `Host` header, bounded by `timeout`.
 ///
-/// `method` is `GET`, `HEAD`, etc. Failures are captured in the observation.
-pub async fn probe(destination: SocketAddr, host: &str, method: &str, timeout: Duration) -> HttpObservation {
+/// `method` is `GET`, `HEAD`, etc. `path` is the request target (e.g. `/`,
+/// `/healthz`). Failures are captured in the observation.
+pub async fn probe(
+    destination: SocketAddr,
+    host: &str,
+    method: &str,
+    path: &str,
+    timeout: Duration,
+) -> HttpObservation {
     probe_impl(
         destination,
         host,
         method,
+        path,
         timeout,
         crate::tls::TlsMode::Roots(&crate::tls::roots()),
     )
@@ -33,15 +41,30 @@ pub async fn probe_with_roots(
     destination: SocketAddr,
     host: &str,
     method: &str,
+    path: &str,
     timeout: Duration,
     roots: &rustls::RootCertStore,
 ) -> HttpObservation {
-    probe_impl(destination, host, method, timeout, crate::tls::TlsMode::Roots(roots)).await
+    probe_impl(
+        destination,
+        host,
+        method,
+        path,
+        timeout,
+        crate::tls::TlsMode::Roots(roots),
+    )
+    .await
 }
 
 /// [`probe`] without certificate validation (the `--insecure` CLI flag).
-pub async fn probe_insecure(destination: SocketAddr, host: &str, method: &str, timeout: Duration) -> HttpObservation {
-    probe_impl(destination, host, method, timeout, crate::tls::TlsMode::Insecure).await
+pub async fn probe_insecure(
+    destination: SocketAddr,
+    host: &str,
+    method: &str,
+    path: &str,
+    timeout: Duration,
+) -> HttpObservation {
+    probe_impl(destination, host, method, path, timeout, crate::tls::TlsMode::Insecure).await
 }
 
 /// Shared probe body for the given trust mode.
@@ -49,6 +72,7 @@ async fn probe_impl(
     destination: SocketAddr,
     host: &str,
     method: &str,
+    path: &str,
     timeout: Duration,
     mode: crate::tls::TlsMode<'_>,
 ) -> HttpObservation {
@@ -58,7 +82,7 @@ async fn probe_impl(
     // bare base and the QUIC diagnostics could never see a failed h3 probe).
     let base = HttpObservation {
         protocol: Some("HTTP/1.1".to_string()),
-        ..HttpObservation::base(destination, host, method)
+        ..HttpObservation::base(destination, host, method, path)
     };
 
     // 1. TLS handshake (HTTP/1.1 ALPN).
@@ -90,7 +114,7 @@ async fn probe_impl(
     // 3. Build and send the request.
     let request = match hyper::Request::builder()
         .method(method)
-        .uri("/")
+        .uri(path)
         .header("host", host)
         .header("user-agent", "ip-tools")
         .header("accept", "*/*")

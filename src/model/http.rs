@@ -19,6 +19,8 @@ pub struct HttpObservation {
     pub host: String,
     /// HTTP method used (e.g. `GET`, `HEAD`).
     pub method: String,
+    /// Request path (e.g. `/`, `/healthz`).
+    pub path: String,
     /// Underlying TLS handshake when it succeeded.
     pub tls: Option<TlsObservation>,
     /// Wire protocol, e.g. `HTTP/1.1`.
@@ -40,11 +42,12 @@ pub struct HttpObservation {
 impl HttpObservation {
     /// Construct the blank start of an observation before any probe step runs.
     /// Failures are attached via [`Self::with_failure`].
-    pub(crate) fn base(destination: SocketAddr, host: &str, method: &str) -> Self {
+    pub(crate) fn base(destination: SocketAddr, host: &str, method: &str, path: &str) -> Self {
         Self {
             destination,
             host: host.to_string(),
             method: method.to_string(),
+            path: path.to_string(),
             tls: None,
             protocol: None,
             status: None,

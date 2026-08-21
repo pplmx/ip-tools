@@ -209,7 +209,13 @@ Issue a single request over TLS to each address (redirects not followed):
 ```shell
 ip-tools http example.com
 ip-tools http example.com --method HEAD
+ip-tools http example.com --path /healthz
 ```
+
+`--path` requests a specific resource instead of the default `/` (also on
+`http2`, `http3` and `probe --protocol http|http2|http3`), so path-dependent
+behavior — a WAF rule, a CDN cache key, a per-endpoint route — can be
+observed. The report shows the path when it is not `/`.
 
 Example output:
 

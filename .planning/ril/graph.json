@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-21T19:04:46+00:00",
+  "updated_at": "2026-08-21T19:54:47+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -207,10 +207,10 @@
     "TASK-sni-diagnose": {
       "id": "TASK-sni-diagnose",
       "type": "task",
-      "status": "active",
-      "version": 1,
+      "status": "resolved",
+      "version": 2,
       "created_at": "2026-08-21T17:57:26+00:00",
-      "updated_at": "2026-08-21T17:57:26+00:00",
+      "updated_at": "2026-08-21T19:32:44+00:00",
       "touched_round": 0,
       "category": "core-feature",
       "severity": 0.8,
@@ -240,6 +240,58 @@
       "touched_round": 0,
       "commit": "798b73581f7712f1f7c3216029838ce7867ff88c",
       "summary": "--sni <name> on tls/http/http2/http3/probe presents the chosen hostname as SNI (+ HTTP Host) while probing the target addresses; human reports now surface the presented name when it differs from the destination literal; 3 fixture-gated integration tests"
+    },
+    "CHG-sni-diagnose": {
+      "id": "CHG-sni-diagnose",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-21T19:32:44+00:00",
+      "updated_at": "2026-08-21T19:32:44+00:00",
+      "touched_round": 0,
+      "commit": "e530477c72e5a49a16c0f4f1e6b3bd2c3eb42882",
+      "summary": "diagnose --sni <name> presents the chosen hostname as SNI/Host across the full probe pipeline while the target stays the probe set; CLI test pins output surfaces the name and keeps the literal as destination"
+    },
+    "TASK-path-http": {
+      "id": "TASK-path-http",
+      "type": "task",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-21T19:54:47+00:00",
+      "updated_at": "2026-08-21T19:54:47+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.8,
+      "confidence": 1.0,
+      "effort": 0.55,
+      "unlock_factor": 1.2,
+      "summary": "--path <p> on http/http2/http3/probe: the probes currently hard-code the request path to /, so path-dependent behaviors (WAF rules, CDN cache keys, per-endpoint certs, health endpoints) cannot be observed; add a path parameter through the library probe fns, model (HttpObservation.path) and report"
+    },
+    "ISS-path-hardcoded": {
+      "id": "ISS-path-hardcoded",
+      "type": "issue",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-21T19:54:47+00:00",
+      "updated_at": "2026-08-21T19:54:47+00:00",
+      "touched_round": 0,
+      "summary": "HTTP/1.1/2/3 probes always request \"/\", so a user cannot observe how a destination behaves for a specific resource (e.g. /healthz or a path behind a WAF); the method (--method) and hostname (--sni) are controllable but the path is not",
+      "severity": "medium"
+    },
+    "TASK-header-http": {
+      "id": "TASK-header-http",
+      "type": "task",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-21T19:54:47+00:00",
+      "updated_at": "2026-08-21T19:54:47+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.7,
+      "confidence": 1.0,
+      "effort": 0.4,
+      "unlock_factor": 1.0,
+      "summary": "--header NAME:VALUE (repeatable) on http/http2/http3/probe to send custom request headers (e.g. Authorization, User-Agent, cookie) — currently the probes hard-code user-agent/accept and allow no request customization"
     }
   },
   "edges": [
@@ -284,6 +336,24 @@
       "to": "ISS-sni-not-exposed",
       "type": "resolves",
       "created_at": "2026-08-21T19:04:46+00:00"
+    },
+    {
+      "from": "CHG-sni-diagnose",
+      "to": "TASK-sni-diagnose",
+      "type": "implements",
+      "created_at": "2026-08-21T19:32:44+00:00"
+    },
+    {
+      "from": "ISS-path-hardcoded",
+      "to": "COMP-http",
+      "type": "located_in",
+      "created_at": "2026-08-21T19:54:47+00:00"
+    },
+    {
+      "from": "TASK-path-http",
+      "to": "ISS-path-hardcoded",
+      "type": "addresses",
+      "created_at": "2026-08-21T19:54:47+00:00"
     }
   ]
 }

@@ -46,11 +46,20 @@ fn client_endpoint(destination: SocketAddr) -> Result<Endpoint, String> {
 
 /// Perform a single HTTP/3 request over QUIC to `destination` (its IP)
 /// presenting `host` as the server name, bounded by `timeout`.
-pub async fn probe(destination: SocketAddr, host: &str, method: &str, timeout: Duration) -> HttpObservation {
+///
+/// `path` is the request target (e.g. `/`, `/healthz`).
+pub async fn probe(
+    destination: SocketAddr,
+    host: &str,
+    method: &str,
+    path: &str,
+    timeout: Duration,
+) -> HttpObservation {
     probe_impl(
         destination,
         host,
         method,
+        path,
         timeout,
         crate::tls::TlsMode::Roots(&crate::tls::roots()),
     )
@@ -62,15 +71,30 @@ pub async fn probe_with_roots(
     destination: SocketAddr,
     host: &str,
     method: &str,
+    path: &str,
     timeout: Duration,
     roots: &rustls::RootCertStore,
 ) -> HttpObservation {
-    probe_impl(destination, host, method, timeout, crate::tls::TlsMode::Roots(roots)).await
+    probe_impl(
+        destination,
+        host,
+        method,
+        path,
+        timeout,
+        crate::tls::TlsMode::Roots(roots),
+    )
+    .await
 }
 
 /// [`probe`] without certificate validation (the `--insecure` CLI flag).
-pub async fn probe_insecure(destination: SocketAddr, host: &str, method: &str, timeout: Duration) -> HttpObservation {
-    probe_impl(destination, host, method, timeout, crate::tls::TlsMode::Insecure).await
+pub async fn probe_insecure(
+    destination: SocketAddr,
+    host: &str,
+    method: &str,
+    path: &str,
+    timeout: Duration,
+) -> HttpObservation {
+    probe_impl(destination, host, method, path, timeout, crate::tls::TlsMode::Insecure).await
 }
 
 /// Shared probe body for the given trust mode.
@@ -78,6 +102,7 @@ async fn probe_impl(
     destination: SocketAddr,
     host: &str,
     method: &str,
+    path: &str,
     timeout: Duration,
     mode: crate::tls::TlsMode<'_>,
 ) -> HttpObservation {
@@ -88,7 +113,7 @@ async fn probe_impl(
     // would be invisible to them.
     let base = HttpObservation {
         protocol: Some("HTTP/3".to_string()),
-        ..HttpObservation::base(destination, host, method)
+        ..HttpObservation::base(destination, host, method, path)
     };
 
     let mut endpoint = match client_endpoint(destination) {
@@ -134,7 +159,7 @@ async fn probe_impl(
         let _ = driver.wait_idle().await;
     });
 
-    let uri = format!("https://{host}/");
+    let uri = format!("https://{host}{path}");
     let request = match hyper::Request::builder()
         .method(method)
         .uri(uri)

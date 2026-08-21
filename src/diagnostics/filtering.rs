@@ -156,6 +156,7 @@ mod tests {
             destination: dest.parse().unwrap(),
             host: "example.com".into(),
             method: "GET".into(),
+            path: "/".into(),
             tls: None,
             protocol: Some(protocol.into()),
             status: failed.then_some(0).or(Some(200)),

@@ -217,9 +217,9 @@ async fn collect_http_probes(
         let host = host_1.clone();
         async move {
             if insecure {
-                ip_http::probe_insecure(d, &host, "GET", timeout).await
+                ip_http::probe_insecure(d, &host, "GET", "/", timeout).await
             } else {
-                ip_http::probe(d, &host, "GET", timeout).await
+                ip_http::probe(d, &host, "GET", "/", timeout).await
             }
         }
     })
@@ -230,9 +230,9 @@ async fn collect_http_probes(
         let host = host_2.clone();
         async move {
             if insecure {
-                ip_http2::probe_insecure(d, &host, "GET", timeout).await
+                ip_http2::probe_insecure(d, &host, "GET", "/", timeout).await
             } else {
-                ip_http2::probe(d, &host, "GET", timeout).await
+                ip_http2::probe(d, &host, "GET", "/", timeout).await
             }
         }
     })
@@ -243,9 +243,9 @@ async fn collect_http_probes(
         let host = host_3.clone();
         async move {
             if insecure {
-                ip_http3::probe_insecure(d, &host, "GET", timeout).await
+                ip_http3::probe_insecure(d, &host, "GET", "/", timeout).await
             } else {
-                ip_http3::probe(d, &host, "GET", timeout).await
+                ip_http3::probe(d, &host, "GET", "/", timeout).await
             }
         }
     })
