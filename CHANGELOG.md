@@ -45,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Tested
 |- Deterministic error-path coverage for the handshake timeouts: HTTP/3 against a silent UDP socket times out (not success); HTTP/3 against a closed UDP port fails; TLS and HTTP/1.1 against a TCP listener that accepts but never speaks TLS hit the wall-clock `Timeout` bound
+|- Two new hung-server behaviors for HTTP/3, via the local fixture: a server that accepts the request but never sends a response (`quiesce.invalid`) and a QUIC endpoint that completes the handshake but never establishes h3 (`stalled_quic_addr`) — both must time out cleanly (never hang, never report success)
 
 ### Changed
 |- Add `tokio`, `hickory-resolver`, `rustls`, `tokio-rustls`, `rustls-native-certs`, `hyper`, `hyper-util`, `h2`, `quinn`, `h3`, `h3-quinn`, `http-body-util`, `x509-parser` and `libc` dependencies

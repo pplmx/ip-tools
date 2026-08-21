@@ -21,6 +21,8 @@ use tokio::task::JoinHandle;
 pub struct FixtureServer {
     tcp_addr: SocketAddr,
     udp_addr: SocketAddr,
+    /// QUIC endpoint that completes the handshake but never drives h3.
+    stalled_quic_addr: SocketAddr,
     /// Root store containing the server's self-signed certificate.
     pub roots: RootCertStore,
     /// Held so the server tasks stay alive for the lifetime of the fixture;
@@ -74,20 +76,29 @@ impl FixtureServer {
         let tcp_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind tcp");
         let tcp_addr = tcp_listener.local_addr().expect("tcp local addr");
 
-        let quic_endpoint = quinn::Endpoint::server(quic_cfg, "127.0.0.1:0".parse().expect("udp bind addr"))
+        let quic_endpoint = quinn::Endpoint::server(quic_cfg.clone(), "127.0.0.1:0".parse().expect("udp bind addr"))
             .expect("bind quic endpoint");
         let udp_addr = quic_endpoint.local_addr().expect("udp local addr");
+
+        // A second QUIC endpoint that completes handshakes but never speaks
+        // h3, for the "server accepted QUIC but the h3 layer is absent"
+        // error-path tests.
+        let stalled_endpoint = quinn::Endpoint::server(quic_cfg, "127.0.0.1:0".parse().expect("stalled udp bind addr"))
+            .expect("bind stalled quic endpoint");
+        let stalled_quic_addr = stalled_endpoint.local_addr().expect("stalled udp local addr");
 
         let tls_acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(tls_server));
 
         let handles = vec![
             tokio::spawn(run_tcp_server(tcp_listener, tls_acceptor)),
             tokio::spawn(run_quic_server(quic_endpoint)),
+            tokio::spawn(run_stalled_quic_server(stalled_endpoint)),
         ];
 
         Self {
             tcp_addr,
             udp_addr,
+            stalled_quic_addr,
             roots,
             handles,
         }
@@ -104,6 +115,13 @@ impl FixtureServer {
     pub const fn udp_addr(&self) -> SocketAddr {
         self.udp_addr
     }
+
+    /// UDP (QUIC) address of a server that completes the handshake but never
+    /// establishes h3, for error-path tests.
+    #[must_use]
+    pub const fn stalled_quic_addr(&self) -> SocketAddr {
+        self.stalled_quic_addr
+    }
 }
 
 use rcgen::CertifiedKey;
@@ -119,6 +137,8 @@ enum FixtureRoute {
     Redirect,
     LargeBody,
     StalledBody,
+    /// Accept the HTTP/3 request but never send a response (a hung server).
+    Quiesce,
 }
 
 /// Size of the oversized body served for [`FixtureRoute::LargeBody`] — larger
@@ -139,6 +159,7 @@ fn route_for(req: &hyper::Request<impl Sized>) -> FixtureRoute {
         "redirect.invalid" => FixtureRoute::Redirect,
         "big.invalid" => FixtureRoute::LargeBody,
         "stall.invalid" => FixtureRoute::StalledBody,
+        "quiesce.invalid" => FixtureRoute::Quiesce,
         _ => FixtureRoute::Normal,
     }
 }
@@ -228,7 +249,10 @@ async fn run_tcp_server(listener: tokio::net::TcpListener, acceptor: tokio_rustl
                     FixtureRoute::LargeBody => Ok::<_, std::convert::Infallible>(hyper::Response::new(
                         http_body_util::Full::new(bytes::Bytes::from(vec![b'x'; LARGE_BODY_BYTES])).boxed(),
                     )),
-                    FixtureRoute::StalledBody => {
+                    // Over TCP the quiescent route behaves like a stalled body
+                    // (headers, then the response never completes); the
+                    // never-respond case itself is only exercised over h3.
+                    FixtureRoute::StalledBody | FixtureRoute::Quiesce => {
                         Ok::<_, std::convert::Infallible>(hyper::Response::new(StalledBody { sent: false }.boxed()))
                     }
                     FixtureRoute::Normal => Ok::<_, std::convert::Infallible>(hyper::Response::new(
@@ -257,6 +281,20 @@ async fn run_quic_server(endpoint: quinn::Endpoint) {
     }
 }
 
+/// A QUIC server that completes handshakes but never opens the h3 layer:
+/// requests sit forever waiting for the server's SETTINGS, so a client
+/// bounding its h3 setup observes a timeout, not a success.
+async fn run_stalled_quic_server(endpoint: quinn::Endpoint) {
+    while let Some(incoming) = endpoint.accept().await {
+        tokio::spawn(async move {
+            let _conn = incoming.await.ok();
+            // Hold the (never-driven) connection open: exactly one handshake
+            // completed, then radio silence on the h3 control stream.
+            std::future::pending::<()>().await;
+        });
+    }
+}
+
 async fn serve_quic_connection(incoming: quinn::Incoming) {
     let Ok(conn) = incoming.await else {
         return;
@@ -272,6 +310,12 @@ async fn serve_quic_connection(incoming: quinn::Incoming) {
             return;
         };
         match route_for(&request) {
+            FixtureRoute::Quiesce => {
+                // Accept the request (proving the QUIC + h3 control path
+                // worked) and then never send a response: the client's
+                // response wait must time out cleanly, not hang or succeed.
+                std::future::pending::<()>().await;
+            }
             FixtureRoute::Redirect => {
                 // A 302 must be *recorded* by the probes (status + `Location`),
                 // never followed.

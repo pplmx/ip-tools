@@ -235,6 +235,49 @@ async fn stalled_body_reports_incomplete_for_all_protocols() {
     );
 }
 
+/// A server that accepts the HTTP/3 request (QUIC + h3 control path works)
+/// but never sends a response — a hung server. The probe's response wait must
+/// hit its wall-clock bound and fail cleanly, never hang or report success.
+#[tokio::test(flavor = "multi_thread")]
+async fn http3_probe_times_out_when_server_never_responds() {
+    let fixture = FixtureServer::start().await;
+    let obs = http3::probe_insecure(fixture.udp_addr(), "quiesce.invalid", "GET", Duration::from_millis(600)).await;
+    assert!(
+        obs.failure.is_some() && obs.status.is_none(),
+        "a hung h3 server must not report success: {obs:?}"
+    );
+    assert_eq!(
+        obs.failure.as_ref().expect("failure").kind,
+        ip_tools::FailureKind::Timeout,
+        "expected a clean Timeout, got {obs:?}"
+    );
+}
+
+/// A QUIC endpoint that completes the handshake but never establishes the h3
+/// layer: the probe's h3 setup must time out cleanly (never hang, never
+/// report success).
+#[tokio::test(flavor = "multi_thread")]
+async fn http3_probe_times_out_when_quic_handshake_never_reaches_h3() {
+    let fixture = FixtureServer::start().await;
+    let obs = http3::probe_with_roots(
+        fixture.stalled_quic_addr(),
+        "localhost",
+        "GET",
+        Duration::from_millis(600),
+        &fixture.roots,
+    )
+    .await;
+    assert!(
+        obs.failure.is_some() && obs.status.is_none(),
+        "an h3-less QUIC server must not report success: {obs:?}"
+    );
+    assert_eq!(
+        obs.failure.as_ref().expect("failure").kind,
+        ip_tools::FailureKind::Timeout,
+        "expected a clean Timeout, got {obs:?}"
+    );
+}
+
 // --- repeated HTTP probing (probe --protocol) ---------------------------------
 
 #[tokio::test(flavor = "multi_thread")]
