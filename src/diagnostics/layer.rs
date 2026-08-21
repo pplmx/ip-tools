@@ -360,6 +360,70 @@ mod tests {
     }
 
     #[test]
+    fn http_layer_counts_request_timeouts_for_tls_but_not_quic() {
+        // The layer boundary is per-transport: an HTTP/1.1+2 row whose request
+        // timed out after TLS is the server not answering HTTP (a genuine
+        // HTTP-layer signal, e.g. a port that accepts TLS but never serves
+        // HTTP) — it fires. An HTTP/3 row whose *QUIC handshake* timed out is
+        // the QUIC path (quic_rules' verdict) and must not fire (cc58b2d).
+        let tcp_ok = [TcpObservation {
+            destination: "1.1.1.1:443".parse().unwrap(),
+            success: true,
+            latency_ms: Some(5),
+            failure: None,
+        }];
+        let obs = |protocol: &str| HttpObservation {
+            destination: "1.1.1.1:443".parse().unwrap(),
+            host: "example.com".into(),
+            method: "GET".into(),
+            tls: None,
+            protocol: Some(protocol.into()),
+            status: None,
+            location: None,
+            body_bytes: None,
+            latency_ms: None,
+            failure: Some(ProbeError {
+                kind: FailureKind::Timeout,
+                message: "request timed out".into(),
+            }),
+        };
+        for protocol in ["HTTP/1.1", "HTTP/2"] {
+            let mut out = Vec::new();
+            http_layer_rules(
+                &DiagnosticInput {
+                    hostname: "example.com",
+                    dns: &[],
+                    tcp: &tcp_ok,
+                    tls: &[],
+                    http: &[obs(protocol)],
+                    probes: &[],
+                },
+                &mut out,
+            );
+            assert!(
+                out.iter().any(|d| d.category == DiagnosticCategory::Http),
+                "{protocol} request timeout must count as an HTTP-layer error"
+            );
+        }
+        let mut out = Vec::new();
+        http_layer_rules(
+            &DiagnosticInput {
+                hostname: "example.com",
+                dns: &[],
+                tcp: &tcp_ok,
+                tls: &[],
+                http: &[obs("HTTP/3")],
+                probes: &[],
+            },
+            &mut out,
+        );
+        assert!(
+            !out.iter().any(|d| d.category == DiagnosticCategory::Http),
+            "an HTTP/3 timeout is the QUIC path, not an HTTP-layer error: {out:?}"
+        );
+    }
+
+    #[test]
     fn http_layer_ignores_failure_inherited_from_tcp() {
         // Where TCP could not connect at all, the HTTP observation merely
         // inherits that failure (no request was attempted): it is a
