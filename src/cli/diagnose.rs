@@ -40,11 +40,26 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
         }
     };
 
+    // A `--sni` override presents a chosen hostname as SNI (and HTTP `Host`)
+    // while the probe pipeline still connects to the target's resolved
+    // addresses — scoping the whole diagnosis to "how does this address
+    // behave *as* that hostname" (its certificate, virtual-hosted response,
+    // etc.). Resolution is unaffected; only the presented name changes.
+    let presented = sub_m
+        .try_get_one::<String>("sni")
+        .ok()
+        .flatten()
+        .cloned()
+        .unwrap_or_else(|| target.host.clone());
+
     // --- Measure (probe layer) ---
     // Resolve once: the DNS observations and the probed addresses come from
     // the same lookups (previously the hostname was resolved twice). Custom
     // `--server` resolvers are included so the engine can see resolver
-    // disagreement, not just the system resolver's answer.
+    // disagreement, not just the system resolver's answer. An IP-literal
+    // target short-circuits resolution (used directly), which is what makes
+    // `--sni` on `diagnose` well-defined: the address set comes from the
+    // target, the presented name comes from `--sni`.
     let custom_servers = match super::parse_custom_servers(sub_m) {
         Ok(v) => v,
         Err(e) => {
@@ -104,7 +119,7 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
     })
     .await;
 
-    let sni = target.host.clone();
+    let sni = presented.clone();
     let tls_obs: Vec<TlsObservation> = parallel_map(destinations.clone(), concurrency, move |d| {
         let sni = sni.clone();
         async move {
@@ -117,7 +132,7 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
     })
     .await;
 
-    let http_obs = collect_http_probes(destinations.clone(), &target.host, concurrency, timeout, insecure).await;
+    let http_obs = collect_http_probes(destinations.clone(), &presented, concurrency, timeout, insecure).await;
 
     let probe_obs: Vec<ProbeResult> = parallel_map(destinations.clone(), concurrency, move |d| async move {
         ip_probe::tcp_repeat(d, 3, timeout).await

@@ -564,3 +564,38 @@ fn route_strict_exits_nonzero_only_on_lost_hops() {
         );
     }
 }
+
+#[test]
+fn diagnose_cli_sni_presents_chosen_hostname_against_listener() {
+    // `diagnose <ip> --sni host` must accept the flag and present the chosen
+    // name as SNI (and HTTP Host) while still targeting the literal address —
+    // the whole diagnosis is scoped to "how does this address behave as that
+    // hostname". Against a plain TCP listener the TLS/HTTP phases fail, but
+    // the failure rows must name the overridden SNI/host, not the literal.
+    // (The full-name-to-wire proof lives in the fixture-gated
+    // `http_cli_sni_override_reaches_the_http_host_header` test.)
+    let addr = local_tcp_listener();
+    let out = stdout(
+        &cmd()
+            .args([
+                "diagnose",
+                &addr.to_string(),
+                "--sni",
+                "host.example",
+                "--timeout",
+                "400",
+            ])
+            .assert()
+            .success(),
+    );
+    assert!(
+        out.contains("host.example"),
+        "diagnose --sni should surface the presented name in output: {out}"
+    );
+    assert!(out.contains("Diagnosis"), "diagnoses missing: {out}");
+    // The literal address should still be the destination being probed.
+    assert!(
+        out.contains(&addr.ip().to_string()),
+        "the targeted literal address must remain the destination: {out}"
+    );
+}

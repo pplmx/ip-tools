@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-21T17:58:27+00:00",
+  "updated_at": "2026-08-21T19:04:46+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -192,10 +192,10 @@
     "TASK-sni-override": {
       "id": "TASK-sni-override",
       "type": "task",
-      "status": "active",
-      "version": 1,
+      "status": "resolved",
+      "version": 2,
       "created_at": "2026-08-21T17:57:26+00:00",
-      "updated_at": "2026-08-21T17:57:26+00:00",
+      "updated_at": "2026-08-21T19:04:46+00:00",
       "touched_round": 0,
       "category": "core-feature",
       "severity": 0.9,
@@ -229,6 +229,17 @@
       "touched_round": 0,
       "summary": "The CLI exposes no way to override SNI/Host: probing an IP literal (e.g. a CDN edge or --server result) always presents the literal as SNI, and --insecure is required even when the target IP belongs to a known hostname; the library (tls::probe(dest, sni, ...)) already separates destination from sni, so the gap is CLI-only",
       "severity": "medium"
+    },
+    "CHG-sni-override": {
+      "id": "CHG-sni-override",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-21T19:04:46+00:00",
+      "updated_at": "2026-08-21T19:04:46+00:00",
+      "touched_round": 0,
+      "commit": "798b73581f7712f1f7c3216029838ce7867ff88c",
+      "summary": "--sni <name> on tls/http/http2/http3/probe presents the chosen hostname as SNI (+ HTTP Host) while probing the target addresses; human reports now surface the presented name when it differs from the destination literal; 3 fixture-gated integration tests"
     }
   },
   "edges": [
@@ -261,6 +272,18 @@
       "to": "ISS-sni-not-exposed",
       "type": "addresses",
       "created_at": "2026-08-21T17:58:27+00:00"
+    },
+    {
+      "from": "CHG-sni-override",
+      "to": "TASK-sni-override",
+      "type": "implements",
+      "created_at": "2026-08-21T19:04:46+00:00"
+    },
+    {
+      "from": "CHG-sni-override",
+      "to": "ISS-sni-not-exposed",
+      "type": "resolves",
+      "created_at": "2026-08-21T19:04:46+00:00"
     }
   ]
 }

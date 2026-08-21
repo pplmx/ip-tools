@@ -192,6 +192,16 @@ name presented on the wire changes. Without `--sni`, an IP-literal target
 would present the literal as SNI and the hostname's certificate would not
 match (requiring `--insecure`).
 
+`diagnose --sni <name>` scopes the entire diagnosis the same way: the full
+probe pipeline (DNS → TCP → TLS → HTTP/1.1+2+3 → repeated) connects to the
+target's addresses while presenting the chosen name, so a conclusion about
+"why is this address failing as that hostname" is evaluated under the name
+users actually connect with:
+
+```shell
+ip-tools diagnose 104.20.23.154:443 --sni example.com
+```
+
 ### HTTPS / HTTP/1.1
 
 Issue a single request over TLS to each address (redirects not followed):
