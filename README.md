@@ -161,12 +161,36 @@ Example output:
 ```
 TLS handshake
   104.20.23.154:443
+    SNI: example.com
     TLS: TLSv1.3
     cipher: TLS_AES_256_GCM_SHA384
     ALPN: h2
     cert : CN=example.com issued by C=US, O=SSL Corporation, CN=Cloudflare TLS Issuing ECC CA 3 (valid 2026-07-29T22:10:08..2026-10-27T22:17:21)
     latency: 447 ms
 ```
+
+The report names the SNI presented per address when it differs from the
+destination literal — explicit when `--sni` overrides an IP literal (below).
+
+### SNI / Host override
+
+Probe one address while presenting a different hostname as SNI (and, for the
+HTTP protocols, the `Host` header). This is the "connect to this IP as if it
+were that hostname" pattern — it lets you probe a specific CDN edge, a
+`--server` result, or any IP literal as if it were a real hostname, and have
+the hostname's certificate validate:
+
+```shell
+ip-tools tls 104.20.23.154:443 --sni example.com
+ip-tools http 104.20.23.154:443 --sni example.com
+ip-tools http2 104.20.23.154:443 --sni example.com --method HEAD
+ip-tools probe 104.20.23.154:443 --protocol http --sni example.com --count 20
+```
+
+Resolution still uses the target (an IP literal is used directly); only the
+name presented on the wire changes. Without `--sni`, an IP-literal target
+would present the literal as SNI and the hostname's certificate would not
+match (requiring `--insecure`).
 
 ### HTTPS / HTTP/1.1
 
@@ -182,6 +206,7 @@ Example output:
 ```
 HTTPS
   104.20.23.154:443
+    host: example.com
     HTTP/1.1 200
     TLS: TLSv1.3
     ALPN: http/1.1
@@ -203,6 +228,7 @@ Example output:
 ```
 HTTPS
   104.20.23.154:443
+    host: example.com
     HTTP/2 200
     TLS: TLSv1.3
     ALPN: h2
@@ -228,6 +254,7 @@ Example output:
 ```
 HTTPS
   104.16.132.229:443
+    host: cloudflare.com
     HTTP/3 301
     redirect: https://www.cloudflare.com/
     TLS: TLSv1.3

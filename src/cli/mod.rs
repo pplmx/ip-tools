@@ -71,27 +71,34 @@ fn parser() -> ArgMatches {
         .subcommand(probe_command(
             "tls",
             "perform TLS handshake to a host:port across its addresses",
-            &[insecure_arg(), strict_arg()],
+            &[insecure_arg(), strict_arg(), sni_arg()],
         ))
         .subcommand(probe_command(
             "http",
             "perform an HTTPS/HTTP1.1 request to a host:port across its addresses",
-            &[method_arg(), insecure_arg(), strict_arg()],
+            &[method_arg(), insecure_arg(), strict_arg(), sni_arg()],
         ))
         .subcommand(probe_command(
             "probe",
             "repeatedly probe connectivity and report latency statistics",
-            &[count_arg(), strict_arg(), protocol_arg(), method_arg(), insecure_arg()],
+            &[
+                count_arg(),
+                strict_arg(),
+                protocol_arg(),
+                method_arg(),
+                insecure_arg(),
+                sni_arg(),
+            ],
         ))
         .subcommand(probe_command(
             "http2",
             "perform an HTTPS/HTTP2 request to a host:port across its addresses",
-            &[method_arg(), insecure_arg(), strict_arg()],
+            &[method_arg(), insecure_arg(), strict_arg(), sni_arg()],
         ))
         .subcommand(probe_command(
             "http3",
             "perform an HTTPS/HTTP3 (QUIC) request to a host:port across its addresses",
-            &[method_arg(), insecure_arg(), strict_arg()],
+            &[method_arg(), insecure_arg(), strict_arg(), sni_arg()],
         ))
         .subcommand(
             Command::new("route")
@@ -205,6 +212,21 @@ fn method_arg() -> Arg {
         .value_name("METHOD")
         .default_value("GET")
         .help("HTTP method to use (GET or HEAD)")
+}
+
+/// `--sni` argument: present a chosen hostname as SNI (and HTTP `Host`
+/// header) instead of the target host, while still connecting to the target's
+/// resolved addresses.
+///
+/// This is the "connect to this IP as if it were that hostname" pattern — for
+/// example, probing a specific CDN edge or `--server` result with the real
+/// hostname, so the certificate for the hostname validates even though the
+/// destination is an IP literal.
+fn sni_arg() -> Arg {
+    Arg::new("sni")
+        .long("sni")
+        .value_name("NAME")
+        .help("present this hostname as SNI (and HTTP Host) instead of the target host")
 }
 
 /// Shared `--insecure` argument (skip TLS/QUIC certificate validation).
@@ -330,7 +352,19 @@ where
         .into_iter()
         .map(|ip| SocketAddr::new(ip, target.port))
         .collect();
-    let host = target.host.clone();
+
+    // A `--sni` override presents a chosen hostname as SNI (and HTTP `Host`)
+    // instead of the target host, while the probe still connects to the
+    // target's resolved addresses — so an IP literal can be probed "as if it
+    // were" a hostname whose certificate then validates. `tcp` (no SNI) does
+    // not define the flag, so `try_get_one` (rather than `get_one`) keeps the
+    // shared flow working for every probe subcommand.
+    let host = sub_m
+        .try_get_one::<String>("sni")
+        .ok()
+        .flatten()
+        .cloned()
+        .unwrap_or_else(|| target.host.clone());
     let mut results: Vec<O> = parallel_map(destinations, concurrency, move |dest| {
         let host = host.clone();
         probe(host, dest, timeout)

@@ -14,6 +14,19 @@ use crate::model::{
 };
 use crate::RouteHop;
 
+/// Whether the presented host/SNI differs from the destination's literal
+/// address host — i.e. the probe connected to an address but presented a
+/// different name (the `--sni` pattern), which the human report should make
+/// explicit. An IP-literal presentation equal to the destination is the
+/// ordinary case and is not shown.
+fn presented_name_differs(presented: &str, destination: std::net::SocketAddr) -> bool {
+    let trimmed = presented.trim_start_matches('[').trim_end_matches(']');
+    trimmed
+        .parse::<std::net::IpAddr>()
+        .is_ok_and(|ip| ip != destination.ip())
+        || (trimmed.parse::<std::net::IpAddr>().is_err() && !trimmed.is_empty())
+}
+
 /// Render DNS observations for `host` as human text.
 #[must_use]
 pub fn render_dns(host: &str, observations: &[DnsObservation]) -> String {
@@ -99,6 +112,13 @@ pub fn render_tls(observations: &[TlsObservation]) -> String {
     let mut out = String::from("TLS handshake\n");
     for obs in observations {
         out.push_str(&format!("  {}\n", obs.destination));
+        // Show the name actually presented as SNI when it is not the literal
+        // destination address (e.g. `--sni` overrode an IP-literal target:
+        // `tls 1.2.3.4 --sni example.com` still connects to 1.2.3.4 but
+        // handshakes as example.com).
+        if presented_name_differs(&obs.sni, obs.destination) {
+            out.push_str(&format!("    SNI: {}\n", obs.sni));
+        }
         if !obs.success {
             let err = obs
                 .failure
@@ -142,6 +162,11 @@ pub fn render_http(observations: &[HttpObservation]) -> String {
     let mut out = String::from("HTTPS\n");
     for obs in observations {
         out.push_str(&format!("  {}\n", obs.destination));
+        // Show the hostname presented as SNI/Host when it is not the literal
+        // destination address (see `--sni`).
+        if presented_name_differs(&obs.host, obs.destination) {
+            out.push_str(&format!("    host: {}\n", obs.host));
+        }
         if let Some(failure) = &obs.failure {
             // Name the protocol so the HTTP/1.1, HTTP/2 and HTTP/3 rows of a
             // failing host are distinguishable (a success row already shows

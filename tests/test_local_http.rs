@@ -598,3 +598,136 @@ fn http_cli_insecure_probes_self_signed_fixture() {
         "without --insecure the self-signed cert must be rejected: {stdout}"
     );
 }
+
+#[test]
+fn http_cli_sni_override_reaches_the_http_host_header() {
+    // `--sni` must present the chosen name as the HTTP `Host` header while
+    // still connecting to the target's resolved addresses. The fixture routes
+    // by request host (`redirect.invalid` -> 302 with a Location), so probing
+    // the fixture's *IP literal* with `--sni redirect.invalid --insecure`
+    // must hit the redirect route: proof the override changed what actually
+    // went out on the wire, not just a reported label.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let addr = fixture.tcp_addr();
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "http",
+            &addr.to_string(), // an IP literal target
+            "--sni",
+            "redirect.invalid",
+            "--insecure",
+            "--timeout",
+            "2000",
+        ])
+        .output()
+        .expect("run http --sni");
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "http --sni should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.contains("302"),
+        "the fixture's redirect.invalid route (keyed on the Host header) must fire: {stdout}"
+    );
+    assert!(
+        stdout.contains("redirect.invalid"),
+        "output should show the presented SNI/host: {stdout}"
+    );
+}
+
+#[test]
+fn tls_cli_sni_override_presents_chosen_name_and_validates() {
+    // `tls <ip> --sni localhost` connects to the literal IP but handshakes
+    // with SNI=localhost. The fixture's self-signed certificate covers
+    // `localhost` and `127.0.0.1`, so with `--insecure` the handshake must
+    // complete and the JSON must surface the *overridden* SNI — not the
+    // literal destination. This is the "probe this IP as if it were that
+    // hostname" pattern the `--sni` flag implements.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let addr = fixture.tcp_addr();
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "tls",
+            &addr.to_string(),
+            "--sni",
+            "localhost",
+            "--insecure",
+            "--json",
+            "--timeout",
+            "2000",
+        ])
+        .output()
+        .expect("run tls --sni");
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "tls --sni should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.contains("\"sni\": \"localhost\""),
+        "observation must record the overridden SNI: {stdout}"
+    );
+    assert!(
+        stdout.contains("\"success\": true"),
+        "the handshake to the fixture IP presenting localhost must succeed: {stdout}"
+    );
+}
+
+#[test]
+fn probe_cli_sni_override_aggregates_under_presented_host() {
+    // `probe --protocol http --sni redirect.invalid` against the fixture's IP
+    // literal must repeat against the redirect route (Host-header keyed) and
+    // report successes — the override carries through the repeated protocol.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let addr = fixture.tcp_addr();
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "probe",
+            &addr.to_string(),
+            "--protocol",
+            "http",
+            "--sni",
+            "redirect.invalid",
+            "--count",
+            "3",
+            "--insecure",
+            "--timeout",
+            "2000",
+        ])
+        .output()
+        .expect("run probe --protocol http --sni");
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "probe http --sni should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.contains("success:  3"),
+        "all repeated probes under the presented host should succeed: {stdout}"
+    );
+}

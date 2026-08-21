@@ -1,0 +1,266 @@
+{
+  "ril_version": 1,
+  "round": 0,
+  "created_at": "2026-08-21T17:23:39+00:00",
+  "updated_at": "2026-08-21T17:58:27+00:00",
+  "nodes": {
+    "COMP-dns": {
+      "id": "COMP-dns",
+      "type": "component",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-21T17:36:45+00:00",
+      "updated_at": "2026-08-21T17:36:45+00:00",
+      "touched_round": 0,
+      "desc": "DNS probes: system resolver, --server custom, --doh RFC8484 (hand-rolled wire), literal short-circuit, RCODE surfacing"
+    },
+    "COMP-tcp": {
+      "id": "COMP-tcp",
+      "type": "component",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-21T17:36:45+00:00",
+      "updated_at": "2026-08-21T17:36:45+00:00",
+      "touched_round": 0,
+      "desc": "TCP connect probes with classified failure modes (timeout/refused/reset/unreachable) and latency"
+    },
+    "COMP-tls": {
+      "id": "COMP-tls",
+      "type": "component",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-21T17:36:46+00:00",
+      "updated_at": "2026-08-21T17:36:46+00:00",
+      "touched_round": 0,
+      "desc": "TLS handshake with SNI, ALPN, cipher, cert subject/issuer/validity; --insecure mode"
+    },
+    "COMP-http": {
+      "id": "COMP-http",
+      "type": "component",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-21T17:36:46+00:00",
+      "updated_at": "2026-08-21T17:36:46+00:00",
+      "touched_round": 0,
+      "desc": "HTTPS/HTTP1.1 single request per address over TLS, status/redirect/body-size"
+    },
+    "COMP-http2": {
+      "id": "COMP-http2",
+      "type": "component",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-21T17:36:46+00:00",
+      "updated_at": "2026-08-21T17:36:46+00:00",
+      "touched_round": 0,
+      "desc": "HTTP/2 single request over ALPN h2 connection, protocol identity preserved on failure"
+    },
+    "COMP-http3": {
+      "id": "COMP-http3",
+      "type": "component",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-21T17:36:46+00:00",
+      "updated_at": "2026-08-21T17:36:46+00:00",
+      "touched_round": 0,
+      "desc": "HTTP/3 QUIC probe over UDP path, distinct from TCP path"
+    },
+    "COMP-probe": {
+      "id": "COMP-probe",
+      "type": "component",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-21T17:36:46+00:00",
+      "updated_at": "2026-08-21T17:36:46+00:00",
+      "touched_round": 0,
+      "desc": "Repeated probing with latency stats (min/p50/p90/p95/p99/max/jitter/failure-dist) for tcp/tls/http/http2/http3"
+    },
+    "COMP-route": {
+      "id": "COMP-route",
+      "type": "component",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-21T17:36:46+00:00",
+      "updated_at": "2026-08-21T17:36:46+00:00",
+      "touched_round": 0,
+      "desc": "Linux UDP/ICMP traceroute, root/CAP_NET_RAW gated, IPv4-only"
+    },
+    "COMP-diagnose": {
+      "id": "COMP-diagnose",
+      "type": "component",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-21T17:36:46+00:00",
+      "updated_at": "2026-08-21T17:36:46+00:00",
+      "touched_round": 0,
+      "desc": "Deterministic evidence-based diagnostic engine (layer.rs/connectivity.rs/filtering.rs/dns.rs), no network I/O"
+    },
+    "COMP-cli": {
+      "id": "COMP-cli",
+      "type": "component",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-21T17:36:46+00:00",
+      "updated_at": "2026-08-21T17:36:46+00:00",
+      "touched_round": 0,
+      "desc": "clap arg tree + dispatch; --strict/--json/--timeout/--concurrency/--server/--insecure/--method/--count flags"
+    },
+    "COMP-model": {
+      "id": "COMP-model",
+      "type": "component",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-21T17:36:46+00:00",
+      "updated_at": "2026-08-21T17:36:46+00:00",
+      "touched_round": 0,
+      "desc": "typed observation model: DNS/TCP/TLS/HTTP/latency/probe/diagnosis; serde Serialize"
+    },
+    "COMP-report": {
+      "id": "COMP-report",
+      "type": "component",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-21T17:36:46+00:00",
+      "updated_at": "2026-08-21T17:36:46+00:00",
+      "touched_round": 0,
+      "desc": "human + --json rendering of all observation types"
+    },
+    "COMP-lib": {
+      "id": "COMP-lib",
+      "type": "component",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-21T17:36:46+00:00",
+      "updated_at": "2026-08-21T17:36:46+00:00",
+      "touched_round": 0,
+      "desc": "public library API: async probe functions with explicit timeouts, bounded concurrency (parallel_map)"
+    },
+    "DEC-001": {
+      "id": "DEC-001",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-21T17:37:36+00:00",
+      "updated_at": "2026-08-21T17:37:36+00:00",
+      "touched_round": 0,
+      "rationale": "User explicitly prefers 功能性开发为主 (functional-first): ship features + fix bugs + tighten correctness over architecture/docs refactor churn until backlog is drained",
+      "alternatives_rejected": "architecture polish, extensive doc rewrites, test-only rounds"
+    },
+    "DEC-002": {
+      "id": "DEC-002",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-21T17:37:36+00:00",
+      "updated_at": "2026-08-21T17:37:36+00:00",
+      "touched_round": 0,
+      "rationale": "Maintain zero-new-dependency pattern: hand-rolled protocol code (DoH wire parser, etc.) reuses in-tree rustls/hyper/hickory/quinn rather than adding deps",
+      "alternatives_rejected": "new third-party crates for DNS-over-HTTPS/SNI/etc."
+    },
+    "DEC-003": {
+      "id": "DEC-003",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-21T17:37:36+00:00",
+      "updated_at": "2026-08-21T17:37:36+00:00",
+      "touched_round": 0,
+      "rationale": "--follow redirects deliberately NOT implemented: a redirect is an observation, the tool does not chase it (README documents this)",
+      "alternatives_rejected": "auto-following HTTP redirects"
+    },
+    "DEC-004": {
+      "id": "DEC-004",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-21T17:37:36+00:00",
+      "updated_at": "2026-08-21T17:37:36+00:00",
+      "touched_round": 0,
+      "rationale": "Coverage gate is whole-crate >=80 (currently 93.37%); per-module gaps (http3 ~74%) deferred — diminishing returns, bespoke misbehaving-QUIC fixtures",
+      "alternatives_rejected": "chasing 100% coverage"
+    },
+    "DEC-005": {
+      "id": "DEC-005",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-21T17:37:36+00:00",
+      "updated_at": "2026-08-21T17:37:36+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-22): user invoked graph-engineering to start a new milestone. Quality convergence already reached (93.37% cov, all CI gates green); enter FEATURE EVOLUTION mode to deliver user-visible new capabilities.",
+      "alternatives_rejected": "more quality-convergence rounds on an already-plateaued repo; idle/QUEIESCE"
+    },
+    "TASK-sni-override": {
+      "id": "TASK-sni-override",
+      "type": "task",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-21T17:57:26+00:00",
+      "updated_at": "2026-08-21T17:57:26+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.9,
+      "confidence": 1.0,
+      "effort": 0.6,
+      "unlock_factor": 1.5,
+      "summary": "CLI --sni <name> override on tls/http/http2/http3/probe: present a chosen hostname as SNI (+HTTP Host) while probing the resolved target addresses; validates certs for that name even when connecting to an IP literal; library already separates destination from sni"
+    },
+    "TASK-sni-diagnose": {
+      "id": "TASK-sni-diagnose",
+      "type": "task",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-21T17:57:26+00:00",
+      "updated_at": "2026-08-21T17:57:26+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.8,
+      "confidence": 1.0,
+      "effort": 0.6,
+      "unlock_factor": 1.2,
+      "summary": "diagnose --sni <name>: run the full probe pipeline presenting a chosen hostname (SNI/Host) instead of the target, so a full diagnosis can be scoped to how a given IP behaves for a given domain"
+    },
+    "ISS-sni-not-exposed": {
+      "id": "ISS-sni-not-exposed",
+      "type": "issue",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-21T17:57:26+00:00",
+      "updated_at": "2026-08-21T17:57:26+00:00",
+      "touched_round": 0,
+      "summary": "The CLI exposes no way to override SNI/Host: probing an IP literal (e.g. a CDN edge or --server result) always presents the literal as SNI, and --insecure is required even when the target IP belongs to a known hostname; the library (tls::probe(dest, sni, ...)) already separates destination from sni, so the gap is CLI-only",
+      "severity": "medium"
+    }
+  },
+  "edges": [
+    {
+      "from": "DEC-005",
+      "to": "TASK-sni-override",
+      "type": "governs",
+      "created_at": "2026-08-21T17:57:26+00:00"
+    },
+    {
+      "from": "TASK-sni-diagnose",
+      "to": "TASK-sni-override",
+      "type": "depends_on",
+      "created_at": "2026-08-21T17:57:26+00:00"
+    },
+    {
+      "from": "ISS-sni-not-exposed",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-21T17:57:26+00:00"
+    },
+    {
+      "from": "TASK-sni-override",
+      "to": "ISS-sni-not-exposed",
+      "type": "addresses",
+      "created_at": "2026-08-21T17:57:26+00:00"
+    },
+    {
+      "from": "TASK-sni-diagnose",
+      "to": "ISS-sni-not-exposed",
+      "type": "addresses",
+      "created_at": "2026-08-21T17:58:27+00:00"
+    }
+  ]
+}
