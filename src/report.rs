@@ -164,6 +164,10 @@ pub fn render_http(observations: &[HttpObservation]) -> String {
         }
         if let Some(bytes) = obs.body_bytes {
             out.push_str(&format!("    body: {bytes} bytes\n"));
+        } else if obs.status.is_some() {
+            // Headers were received but the body never completed within the
+            // probe bound: the response is visibly truncated/stalled.
+            out.push_str("    body: incomplete (timed out)\n");
         }
         out.push_str(&format!("    latency: {} ms\n", obs.latency_ms.unwrap_or(0)));
     }
@@ -472,7 +476,9 @@ mod tests {
             latency_ms: Some(1),
             failure: None,
         };
-        let default_protocol = HttpObservation {
+        // Headers received but no body ever completed: rendered as visibly
+        // incomplete, and without an explicit protocol HTTP/1.1 is assumed.
+        let truncated = HttpObservation {
             destination: "4.4.4.4:443".parse().unwrap(),
             host: "example.com".into(),
             method: "GET".into(),
@@ -484,7 +490,7 @@ mod tests {
             latency_ms: None,
             failure: None,
         };
-        let out = render_http(&[ok, err, no_status, default_protocol]);
+        let out = render_http(&[ok, err, no_status, truncated]);
         assert!(out.contains("example.com"));
         assert!(out.contains("HTTP/2"));
         assert!(out.contains("200"));
@@ -495,6 +501,7 @@ mod tests {
         // Without an explicit protocol, HTTP/1.1 is assumed.
         assert!(out.contains("HTTP/1.1"));
         assert!(out.contains("301"));
+        assert!(out.contains("body: incomplete"), "stalled body must be visible: {out}");
     }
 
     #[test]

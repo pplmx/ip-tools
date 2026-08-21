@@ -69,6 +69,38 @@ pub(super) fn http_layer_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosis>
     }
 }
 
+/// HTTP responses whose headers arrived but whose body never completed.
+///
+/// With the probes' body-completion semantics, `status` present + no
+/// `body_bytes` means the response head was received and then the body read
+/// stalled until the probe bound: a truncated/streaming response, not a
+/// clean exchange.
+pub(super) fn truncated_body_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosis>) {
+    let truncated: Vec<String> = input
+        .http
+        .iter()
+        .filter(|h| h.failure.is_none() && h.status.is_some() && h.body_bytes.is_none())
+        .map(|h| h.destination.to_string())
+        .collect();
+    if !truncated.is_empty() {
+        out.push(Diagnosis {
+            severity: Severity::Low,
+            category: DiagnosticCategory::Http,
+            confidence: Confidence::Low,
+            summary: format!("HTTP response body did not complete for {}", input.hostname),
+            evidence: vec![Evidence {
+                detail: format!("headers received, body stalled ({})", truncated.join(", ")),
+            }],
+            possible_causes: vec![
+                "response truncated by a proxy / load balancer".into(),
+                "server keep-alive without content-length or chunked coding".into(),
+                "connection reset or packet loss mid-transfer".into(),
+                "streaming endpoint that never finishes".into(),
+            ],
+        });
+    }
+}
+
 /// QUIC/HTTP3 failing while the TCP path succeeds.
 pub(super) fn quic_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosis>) {
     let tcp_http_ok = input
@@ -299,6 +331,33 @@ mod tests {
         let mut out = Vec::new();
         http_layer_rules(&input(&[], &obs, &[]), &mut out);
         assert!(out.is_empty());
+    }
+
+    #[test]
+    fn truncated_body_rule_fires_when_headers_arrive_but_body_stalls() {
+        let truncated = HttpObservation {
+            destination: "1.1.1.1:443".parse().unwrap(),
+            host: "example.com".into(),
+            method: "GET".into(),
+            tls: None,
+            protocol: Some("HTTP/1.1".into()),
+            status: Some(200),
+            location: None,
+            body_bytes: None, // headers received, body never completed
+            latency_ms: Some(30),
+            failure: None,
+        };
+        let mut out = Vec::new();
+        truncated_body_rules(&input(&[], &[truncated], &[]), &mut out);
+        let d = out.iter().find(|d| d.category == DiagnosticCategory::Http);
+        assert!(d.is_some(), "truncated body must be diagnosed: {out:?}");
+        assert!(out[0].evidence[0].detail.contains("stalled"));
+
+        // A completed body (or a failure) must not trigger the rule.
+        let completed = http("1.1.1.1:443", "HTTP/1.1", Some(200), None);
+        let mut out = Vec::new();
+        truncated_body_rules(&input(&[], &[completed], &[]), &mut out);
+        assert!(out.is_empty(), "completed body must not be truncated: {out:?}");
     }
 
     #[test]

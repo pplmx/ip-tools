@@ -49,6 +49,7 @@ pub fn diagnose(input: &DiagnosticInput) -> Vec<Diagnosis> {
     connectivity::family_rules(input, &mut out);
     layer::tls_layer_rules(input, &mut out);
     layer::http_layer_rules(input, &mut out);
+    layer::truncated_body_rules(input, &mut out);
     layer::quic_rules(input, &mut out);
     layer::intermittent_rules(input, &mut out);
     filtering::filtering_rules(input, dns_signal, &mut out);
@@ -181,6 +182,30 @@ mod tests {
         }];
         let out = diagnose(&input(&[], &tcp, &tls, &[], &[]));
         assert!(categories(&out).contains(&DiagnosticCategory::Tls));
+    }
+
+    #[test]
+    fn truncated_http_body_is_diagnosed() {
+        let dns = [dns_ok("example.com", DnsRecordType::A, "1.1.1.1")];
+        let tcp = [tp("1.1.1.1:443", true)];
+        let http = [HttpObservation {
+            destination: "1.1.1.1:443".parse().unwrap(),
+            host: "example.com".into(),
+            method: "GET".into(),
+            tls: None,
+            protocol: Some("HTTP/1.1".into()),
+            status: Some(200),
+            location: None,
+            body_bytes: None, // headers received, body stalled
+            latency_ms: Some(30),
+            failure: None,
+        }];
+        let out = diagnose(&input(&dns, &tcp, &[], &http, &[]));
+        let truncated = out.iter().find(|d| d.category == DiagnosticCategory::Http);
+        assert!(
+            truncated.is_some_and(|d| d.severity == Severity::Low),
+            "truncated body must be a Low diagnosis: {out:?}"
+        );
     }
 
     #[test]
