@@ -106,6 +106,92 @@ async fn http_probes_work_insecure_against_self_signed_fixture() {
     assert_eq!(h3.protocol.as_deref(), Some("HTTP/3"));
 }
 
+// --- redirect recording and the response-body cap -----------------------------
+//
+// The fixture routes by request host: `redirect.invalid` answers 302 with a
+// `Location`, `big.invalid` streams `2 * 1 MiB` in 64 KiB chunks. The probes
+// must *record* the redirect (never chase it) and *cap* the body at 1 MiB.
+// `host` changes every round because the self-signed fixture certificate only
+// covers `localhost`, so these paths exercise the `--insecure` variant.
+
+const MAX_BODY_BYTES: u64 = 1024 * 1024;
+
+#[tokio::test(flavor = "multi_thread")]
+async fn http_probes_record_302_location_instead_of_following() {
+    let fixture = FixtureServer::start().await;
+
+    let h1 = http::probe_insecure(fixture.tcp_addr(), "redirect.invalid", "GET", timeout()).await;
+    assert!(h1.failure.is_none(), "http1 redirect probe: {h1:?}");
+    assert_eq!(h1.status, Some(302), "http1 must record the 302: {h1:?}");
+    assert_eq!(
+        h1.location.as_deref(),
+        Some("https://redirect.invalid/landed"),
+        "http1 must record the Location, not chase it: {h1:?}"
+    );
+
+    let h2 = http2::probe_insecure(fixture.tcp_addr(), "redirect.invalid", "GET", timeout()).await;
+    assert!(h2.failure.is_none(), "http2 redirect probe: {h2:?}");
+    assert_eq!(h2.status, Some(302), "http2 must record the 302: {h2:?}");
+    assert_eq!(
+        h2.location.as_deref(),
+        Some("https://redirect.invalid/landed"),
+        "http2 must record the Location, not chase it: {h2:?}"
+    );
+
+    let h3 = http3::probe_insecure(fixture.udp_addr(), "redirect.invalid", "GET", timeout()).await;
+    assert!(h3.failure.is_none(), "http3 redirect probe: {h3:?}");
+    assert_eq!(h3.status, Some(302), "http3 must record the 302: {h3:?}");
+    assert_eq!(
+        h3.location.as_deref(),
+        Some("https://redirect.invalid/landed"),
+        "http3 must record the Location, not chase it: {h3:?}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn http_probes_cap_oversized_response_bodies() {
+    let fixture = FixtureServer::start().await;
+
+    // Each probe must stop at the 1 MiB cap instead of buffering the whole
+    // 2 MiB body.
+    let h1 = http::probe_insecure(fixture.tcp_addr(), "big.invalid", "GET", timeout()).await;
+    assert!(h1.failure.is_none(), "http1 big-body probe: {h1:?}");
+    assert_eq!(h1.status, Some(200), "http1 big-body probe: {h1:?}");
+    assert!(
+        h1.body_bytes.is_some_and(|b| b < 2 * MAX_BODY_BYTES),
+        "http1 must cap the body at {MAX_BODY_BYTES} bytes, got {h1:?}"
+    );
+
+    let h2 = http2::probe_insecure(fixture.tcp_addr(), "big.invalid", "GET", timeout()).await;
+    assert!(h2.failure.is_none(), "http2 big-body probe: {h2:?}");
+    assert_eq!(h2.status, Some(200), "http2 big-body probe: {h2:?}");
+    assert!(
+        h2.body_bytes.is_some_and(|b| b < 2 * MAX_BODY_BYTES),
+        "http2 must cap the body at {MAX_BODY_BYTES} bytes, got {h2:?}"
+    );
+
+    let h3 = http3::probe_insecure(fixture.udp_addr(), "big.invalid", "GET", timeout()).await;
+    assert!(h3.failure.is_none(), "http3 big-body probe: {h3:?}");
+    assert_eq!(h3.status, Some(200), "http3 big-body probe: {h3:?}");
+    assert!(
+        h3.body_bytes.is_some_and(|b| b < 2 * MAX_BODY_BYTES),
+        "http3 must cap the body at {MAX_BODY_BYTES} bytes, got {h3:?}"
+    );
+}
+
+/// The body must still be observable (non-zero) when a real body is served —
+/// guards against the cap truncating everything or the fixture being bypassed.
+#[tokio::test(flavor = "multi_thread")]
+async fn http3_capped_body_is_still_sized() {
+    let fixture = FixtureServer::start().await;
+    let h3 = http3::probe_insecure(fixture.udp_addr(), "big.invalid", "GET", timeout()).await;
+    let bytes = h3.body_bytes.expect("http3 body bytes present");
+    assert!(
+        bytes > MAX_BODY_BYTES - 128 * 1024,
+        "http3 should read at least ~1 MiB before stopping, got {bytes}"
+    );
+}
+
 // --- repeated HTTP probing (probe --protocol) ---------------------------------
 
 #[tokio::test(flavor = "multi_thread")]

@@ -108,6 +108,39 @@ impl FixtureServer {
 
 use rcgen::CertifiedKey;
 
+/// How the fixture answers a request, chosen by the request's host (URI
+/// authority or `Host` header). Ordinary probes use `localhost`; the special
+/// hosts let tests exercise documented behaviors that `200 ok` cannot show:
+/// redirect-recording (the probes record a redirect, they do not chase it) and
+/// the `MAX_BODY_BYTES` response-body cap.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FixtureRoute {
+    Normal,
+    Redirect,
+    LargeBody,
+}
+
+/// Size of the oversized body served for [`FixtureRoute::LargeBody`] — larger
+/// than the probes' `MAX_BODY_BYTES` (1 MiB) so the cap must truncate it.
+/// `bytes::Bytes` needs a runtime buffer, so this is built per request.
+const LARGE_BODY_BYTES: usize = 2 * 1024 * 1024;
+
+/// Classify a request by its host (URI authority first, then `Host` header,
+/// which covers HTTP/2/3's `:authority` and HTTP/1.1's `Host` alike).
+fn route_for(req: &hyper::Request<impl Sized>) -> FixtureRoute {
+    let host = req
+        .uri()
+        .authority()
+        .map(hyper::http::uri::Authority::host)
+        .or_else(|| req.headers().get("host").and_then(|v| v.to_str().ok()))
+        .unwrap_or("");
+    match host {
+        "redirect.invalid" => FixtureRoute::Redirect,
+        "big.invalid" => FixtureRoute::LargeBody,
+        _ => FixtureRoute::Normal,
+    }
+}
+
 /// Canned `DNS`-over-HTTPS response served by the fixture at `/dns-query`:
 /// `host.example` `IN A` (`192.0.2.77`) and `IN AAAA` (`2001:db8::77`), both
 /// using a compression pointer (`0xC00C`) to the question name.
@@ -150,9 +183,24 @@ async fn run_tcp_server(listener: tokio::net::TcpListener, acceptor: tokio_rustl
                         .expect("static doh response");
                     return Ok::<_, std::convert::Infallible>(resp);
                 }
-                Ok::<_, std::convert::Infallible>(hyper::Response::new(http_body_util::Full::new(
-                    bytes::Bytes::from_static(b"ok"),
-                )))
+                match route_for(&req) {
+                    FixtureRoute::Redirect => {
+                        // A 302 must be *recorded* by the probes (status +
+                        // `Location`), never followed.
+                        let resp = hyper::Response::builder()
+                            .status(302)
+                            .header("location", "https://redirect.invalid/landed")
+                            .body(http_body_util::Full::new(bytes::Bytes::from_static(b"")))
+                            .expect("static redirect response");
+                        Ok::<_, std::convert::Infallible>(resp)
+                    }
+                    FixtureRoute::LargeBody => Ok::<_, std::convert::Infallible>(hyper::Response::new(
+                        http_body_util::Full::new(bytes::Bytes::from(vec![b'x'; LARGE_BODY_BYTES])),
+                    )),
+                    FixtureRoute::Normal => Ok::<_, std::convert::Infallible>(hyper::Response::new(
+                        http_body_util::Full::new(bytes::Bytes::from_static(b"ok")),
+                    )),
+                }
             });
             let result = if negotiated_h2 {
                 hyper::server::conn::http2::Builder::new(hyper_util::rt::TokioExecutor::new())
@@ -186,16 +234,48 @@ async fn serve_quic_connection(incoming: quinn::Incoming) {
         let Ok(Some(resolver)) = h3_conn.accept().await else {
             return;
         };
-        let Ok((_request, mut stream)) = resolver.resolve_request().await else {
+        let Ok((request, mut stream)) = resolver.resolve_request().await else {
             return;
         };
-        let response = hyper::Response::builder().status(200).body(()).expect("status 200");
-        if stream.send_response(response).await.is_err() {
-            return;
+        match route_for(&request) {
+            FixtureRoute::Redirect => {
+                // A 302 must be *recorded* by the probes (status + `Location`),
+                // never followed.
+                let response = hyper::Response::builder()
+                    .status(302)
+                    .header("location", "https://redirect.invalid/landed")
+                    .body(())
+                    .expect("status 302");
+                if stream.send_response(response).await.is_err() {
+                    return;
+                }
+                let _ = stream.finish().await;
+            }
+            FixtureRoute::LargeBody => {
+                // Send `LARGE_BODY_BYTES` in 64 KiB chunks so the client's
+                // read loop sees many DATA frames and stops at its body cap.
+                let response = hyper::Response::builder().status(200).body(()).expect("status 200");
+                if stream.send_response(response).await.is_err() {
+                    return;
+                }
+                let chunk = bytes::Bytes::from(vec![b'x'; 64 * 1024]);
+                for _ in 0..(LARGE_BODY_BYTES / (64 * 1024)) {
+                    if stream.send_data(chunk.clone()).await.is_err() {
+                        return;
+                    }
+                }
+                let _ = stream.finish().await;
+            }
+            FixtureRoute::Normal => {
+                let response = hyper::Response::builder().status(200).body(()).expect("status 200");
+                if stream.send_response(response).await.is_err() {
+                    return;
+                }
+                if stream.send_data(bytes::Bytes::from_static(b"ok")).await.is_err() {
+                    return;
+                }
+                let _ = stream.finish().await;
+            }
         }
-        if stream.send_data(bytes::Bytes::from_static(b"ok")).await.is_err() {
-            return;
-        }
-        let _ = stream.finish().await;
     }
 }
