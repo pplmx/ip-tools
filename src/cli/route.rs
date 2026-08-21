@@ -76,10 +76,24 @@ pub(super) async fn run_route(sub_m: &ArgMatches) -> ExitCode {
         }
     }
 
+    // `--strict`: a lost hop is an observation (routers routinely filter
+    // TTL-expired replies), but scripting/CI often wants a non-zero exit when
+    // any hop was lost. Output above is still rendered in full either way.
+    let lost = if sub_m.get_flag("strict") {
+        hops.iter().filter(|h| h.lost).count()
+    } else {
+        0
+    };
+
     if json {
         println!("{}", to_json(&hops));
     } else {
         print!("{}", render_route(&hops));
     }
-    ExitCode::SUCCESS
+    if lost > 0 {
+        eprintln!("Error: {lost} route hop(s) lost (--strict)");
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    }
 }

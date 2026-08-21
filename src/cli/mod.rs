@@ -60,6 +60,7 @@ fn parser() -> ArgMatches {
                 .arg(doh_arg())
                 .arg(insecure_arg())
                 .arg(record_type_arg())
+                .arg(strict_arg())
                 .arg(timeout_arg()),
         )
         .subcommand(probe_command(
@@ -112,12 +113,13 @@ fn parser() -> ArgMatches {
                         .default_value("3")
                         .help("probes per hop"),
                 )
+                .arg(strict_arg())
                 .arg(timeout_arg()),
         )
         .subcommand(probe_command(
             "diagnose",
             "run the full probe pipeline and produce evidence-based diagnoses",
-            &[insecure_arg(), doh_arg()],
+            &[insecure_arg(), doh_arg(), strict_arg()],
         ))
         .get_matches()
 }
@@ -213,12 +215,16 @@ fn insecure_arg() -> Arg {
         .help("skip TLS/QUIC certificate validation (e.g. for self-signed or private-PKI endpoints)")
 }
 
-/// `--strict` argument (exit non-zero when any probe could not complete).
+/// `--strict` argument (exit non-zero when the run found failures).
+///
+/// Per subcommand's meaning: a failed address probe, a failed DNS lookup,
+/// a lost route hop, or any non-`Healthy` diagnosis. Observations are still
+/// rendered in full; only the exit status becomes non-zero.
 fn strict_arg() -> Arg {
     Arg::new("strict")
         .long("strict")
         .action(ArgAction::SetTrue)
-        .help("exit non-zero if any address probe failed to complete (for scripting/CI)")
+        .help("exit non-zero when the run found failures (probes, lookups, lost hops, diagnoses); for scripting/CI")
 }
 
 /// Select which DNS record types to query (`--ipv6` only, else both).

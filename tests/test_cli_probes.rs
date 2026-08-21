@@ -439,3 +439,80 @@ fn strict_exits_nonzero_only_when_probe_fails() {
         .assert()
         .success();
 }
+
+#[test]
+fn dns_strict_exits_nonzero_only_when_a_lookup_fails() {
+    // A failed DNS lookup is an observation: without --strict the CLI exits 0
+    // even when the (custom) resolver cannot answer. `host.example` never
+    // resolves, so the custom server failure is guaranteed regardless of the
+    // environment's system resolver.
+    let closed = {
+        let s = UdpSocket::bind("127.0.0.1:0").expect("bind closed udp port");
+        s.local_addr().expect("closed udp addr")
+    };
+    let base = [
+        "dns",
+        "host.example",
+        "--server",
+        &closed.to_string(),
+        "--timeout",
+        "400",
+    ];
+    cmd().args(base.iter().copied()).assert().success();
+
+    // ...but `--strict` turns any failed lookup into a non-zero exit.
+    let err = stderr(&cmd().args(base.iter().copied().chain(["--strict"])).assert().failure());
+    assert!(err.contains("failed"), "dns --strict should report failures: {err}");
+}
+
+#[test]
+fn diagnose_strict_exits_nonzero_only_when_anomaly_diagnosed() {
+    // A closed loopback port is a deterministic local anomaly: diagnose raises
+    // a loss diagnosis but (without --strict) the CLI still exits 0...
+    let closed = closed_loopback_port();
+    cmd()
+        .args(["diagnose", &closed.to_string(), "--timeout", "400"])
+        .assert()
+        .success();
+
+    // ...while `--strict` makes any non-`Healthy` diagnosis a non-zero exit.
+    let err = stderr(
+        &cmd()
+            .args(["diagnose", &closed.to_string(), "--timeout", "400", "--strict"])
+            .assert()
+            .failure(),
+    );
+    assert!(err.contains("anomaly diagnosis"), "diagnose --strict: {err}");
+}
+
+#[test]
+fn route_strict_exits_nonzero_only_on_lost_hops() {
+    // Privileged: loopback traceroute completes with no lost hops, so
+    // --strict exits 0. Unprivileged (or non-Linux): the traceroute fails
+    // cleanly with the ICMP/root/linux explanation, which is also a non-zero
+    // exit. Either way the process must not panic.
+    let assert = cmd()
+        .args([
+            "route",
+            "127.0.0.1",
+            "--max-hops",
+            "1",
+            "--probes-per-hop",
+            "1",
+            "--timeout",
+            "300",
+            "--strict",
+        ])
+        .assert();
+    let code = assert.get_output().status.code().unwrap_or(-999);
+    let text = format!("{}\n{}", stdout(&assert), stderr(&assert));
+    let lower = text.to_lowercase();
+    if code == 0 {
+        assert!(text.contains("Traceroute"), "expected traceroute output: {text}");
+    } else {
+        assert!(
+            lower.contains("icmp") || lower.contains("root") || lower.contains("linux"),
+            "route must explain it needs ICMP/root (linux) or is unsupported: {text}"
+        );
+    }
+}

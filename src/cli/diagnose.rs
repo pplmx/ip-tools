@@ -8,7 +8,8 @@ use ip_tools::http as ip_http;
 use ip_tools::http2 as ip_http2;
 use ip_tools::http3 as ip_http3;
 use ip_tools::model::{
-    Diagnosis, DnsObservation, DnsRecordType, HttpObservation, ProbeResult, TcpObservation, TlsObservation,
+    Diagnosis, DiagnosticCategory, DnsObservation, DnsRecordType, HttpObservation, ProbeResult, TcpObservation,
+    TlsObservation,
 };
 use ip_tools::probe as ip_probe;
 use ip_tools::report::{render_diagnoses, render_dns, render_http, render_probe, render_tcp, render_tls, to_json};
@@ -134,6 +135,19 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
     };
     let diagnoses = diagnose(&input);
 
+    // `--strict`: a diagnosis (other than Healthy) is an interpretation, but
+    // scripting/CI often wants a non-zero exit once any anomaly was raised.
+    // Computed before the JSON branch moves `diagnoses`; output is rendered
+    // in full either way.
+    let anomalies = if sub_m.get_flag("strict") {
+        diagnoses
+            .iter()
+            .filter(|d| d.category != DiagnosticCategory::Healthy)
+            .count()
+    } else {
+        0
+    };
+
     if json {
         let report = DiagnoseReport {
             target: target.host.clone(),
@@ -155,7 +169,12 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
         print!("{}", render_probe(&probe_obs));
         print!("{}", render_diagnoses(&diagnoses));
     }
-    ExitCode::SUCCESS
+    if anomalies > 0 {
+        eprintln!("Error: {anomalies} anomaly diagnosis(es) raised (--strict)");
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    }
 }
 
 /// Aggregated JSON report: full raw observations (evidence) plus diagnoses.

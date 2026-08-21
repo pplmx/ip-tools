@@ -54,10 +54,24 @@ pub(super) async fn run_dns(sub_m: &ArgMatches) -> ExitCode {
         }
     }
 
+    // `--strict`: a failed lookup is an observation, but scripting/CI often
+    // wants a non-zero exit when any resolver could not answer. Output above
+    // is still rendered in full either way.
+    let failed = if sub_m.get_flag("strict") {
+        observations.iter().filter(|o| o.error.is_some()).count()
+    } else {
+        0
+    };
+
     if json {
         println!("{}", to_json(&observations));
     } else {
         print!("{}", render_dns(&target.host, &observations));
     }
-    ExitCode::SUCCESS
+    if failed > 0 {
+        eprintln!("Error: {failed}/{} DNS lookups failed (--strict)", observations.len());
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    }
 }

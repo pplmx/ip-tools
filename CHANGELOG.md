@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+|- `--strict` now also covers `dns` (exit non-zero when any resolver/lookup returned an error), `diagnose` (exit non-zero when any non-`Healthy` diagnosis was raised) and `route` (exit non-zero when any hop is lost) — the flag previously existed only on the per-address probe commands (`tcp`/`tls`/`http`/`http2`/`http3`/`probe`), so automation could not gate on these commands' observation-level failures. Observations are still rendered in full; only the exit status becomes non-zero
 |- `diagnose` and the human `http`/`diagnose` output now surface a *truncated* HTTP response: when headers arrive but the body never completes within the probe bound, the text report shows `body: incomplete (timed out)` and the diagnostic engine raises a Low "HTTP response body did not complete" clue (proxy truncation, keep-alive without content-length/chunked, packet loss mid-transfer, never-finishing streams). The underlying evidence has existed since the body-completion fix; it was previously invisible to both renderings
 |- Deterministic integration tests (`test_local_http.rs`) exercising the full probe pipeline against the local fixture — TCP, TLS (TLSv1.3), HTTP/1.1 200, HTTP/2 200 (ALPN h2) and HTTP/3 200 (QUIC) — with no external network
 |- `*_with_roots` probe variants on `tls`, `http`, `http2` and `http3` to verify in-process fixtures with self-signed certificates
