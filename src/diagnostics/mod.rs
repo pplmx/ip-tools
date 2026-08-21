@@ -164,6 +164,68 @@ mod tests {
     }
 
     #[test]
+    fn address_family_fires_in_both_orientations() {
+        // The reverse asymmetry (IPv4 fails while IPv6 works — an IPv6-only
+        // host) must be diagnosed with the *failing* family named in the
+        // evidence, not just the IPv6-fails/IPv4-works direction.
+        let tcp = [
+            TcpObservation {
+                destination: "192.0.2.1:443".parse().unwrap(),
+                success: false,
+                latency_ms: None,
+                failure: Some(ProbeError {
+                    kind: FailureKind::Timeout,
+                    message: "timeout".into(),
+                }),
+            },
+            tp("[2001:db8::1]:443", true),
+        ];
+        let out = diagnose(&input(&[], &tcp, &[], &[], &[]));
+        let af = out
+            .iter()
+            .find(|d| d.category == DiagnosticCategory::AddressFamily)
+            .expect("address-family diagnosis");
+        let evidence: String = af
+            .evidence
+            .iter()
+            .map(|e| e.detail.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(
+            evidence.contains("IPv4: unreachable"),
+            "failing family must be named: {evidence:?}"
+        );
+        assert!(evidence.contains("IPv6: reachable"));
+        assert_eq!(af.severity, Severity::Low);
+    }
+
+    #[test]
+    fn ipv4_locally_unreachable_reports_family_asymmetry_only() {
+        // Reverse of `partial_connectivity_not_raised_*`: an IPv6-only host
+        // whose IPv4 fails with NetworkUnreachable (a local no-route verdict,
+        // not path evidence) must NOT be read as destination partial
+        // connectivity; the address-family rule names the asymmetry instead.
+        let tcp = [
+            TcpObservation {
+                destination: "192.0.2.1:443".parse().unwrap(),
+                success: false,
+                latency_ms: None,
+                failure: Some(ProbeError {
+                    kind: FailureKind::NetworkUnreachable,
+                    message: "network unreachable".into(),
+                }),
+            },
+            tp("[2001:db8::1]:443", true),
+        ];
+        let out = diagnose(&input(&[], &tcp, &[], &[], &[]));
+        assert!(
+            !categories(&out).contains(&DiagnosticCategory::PartialConnectivity),
+            "locally-unroutable IPv4 must not be partial connectivity: {out:?}"
+        );
+        assert!(categories(&out).contains(&DiagnosticCategory::AddressFamily));
+    }
+
+    #[test]
     fn partial_connectivity_not_raised_when_all_failures_are_local_unreachability() {
         // A healthy dual-stack host whose IPv6 has no route (this machine's
         // exact condition): the IPv6 TCP observations fail with

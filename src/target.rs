@@ -24,6 +24,7 @@ impl Target {
         // Bracket form: "[addr]:port" or "[addr]"
         if let Some(rest) = input.strip_prefix('[') {
             return match rest.split_once(']') {
+                Some(("", "")) => Err(invalid(input, "empty address in brackets")),
                 Some((addr, "")) => Ok(Self {
                     host: format!("[{addr}]"),
                     port: default_port,
@@ -140,5 +141,17 @@ mod tests {
         assert!(Target::parse("example.com:notaport", 443).is_err());
         assert!(Target::parse("example.com:99999", 443).is_err());
         assert!(Target::parse("", 443).is_err());
+    }
+
+    #[test]
+    fn rejects_unterminated_or_empty_brackets() {
+        // A stray '[' with no closing bracket is malformed.
+        assert!(Target::parse("[", 443).is_err());
+        assert!(Target::parse("[::1", 443).is_err());
+        // "[]" claims to be a literal but names no address: accept it and the
+        // failure would surface later as a confusing "did not resolve" for an
+        // empty hostname, so reject it up front.
+        let err = Target::parse("[]", 443).unwrap_err().to_string();
+        assert!(err.contains("[]"), "empty-bracket error should name the input: {err}");
     }
 }
