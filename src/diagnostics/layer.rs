@@ -45,12 +45,23 @@ pub(super) fn http_layer_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosis>
         // Failures owned by another layer's rule must not be re-reported
         // here: a QUIC transport failure is the `quic_rules` verdict and a
         // TLS handshake / certificate failure is `tls_layer_rules`' — the
-        // same cause must not be double-counted as an HTTP-layer error.
+        // same cause must not be double-counted as an HTTP-layer error. This
+        // reaches beyond the failure *kind*: an HTTP/3 probe runs over QUIC,
+        // so a wall-clock QUIC handshake timeout surfaces as `Timeout` (not
+        // `Quic`) yet is still the QUIC path failing — only a genuine
+        // HTTP/3-protocol error (`Http`/`Protocol`; or a non-2xx status
+        // below) is an HTTP-layer error for the h3 row. HTTP/1.1+/2-over-TLS
+        // keep the kind-based exclusion (a request timeout there is the
+        // server not answering HTTP, which belongs here).
         let own_failure = h.failure.as_ref().is_some_and(|e| {
-            !matches!(
-                e.kind,
-                FailureKind::Quic | FailureKind::TlsHandshake | FailureKind::Certificate
-            )
+            if h.protocol.as_deref() == Some("HTTP/3") {
+                matches!(e.kind, FailureKind::Http | FailureKind::Protocol)
+            } else {
+                !matches!(
+                    e.kind,
+                    FailureKind::Quic | FailureKind::TlsHandshake | FailureKind::Certificate
+                )
+            }
         });
         let layer_failed = (own_failure && !inherited_tcp) || h.status.is_some_and(|s| s >= 400);
         if layer_failed {
@@ -284,9 +295,12 @@ mod tests {
 
     #[test]
     fn http_layer_ignores_failures_owned_by_other_layers() {
-        // A QUIC transport failure and a TLS handshake/certificate failure
-        // each belong to their own layer rule; on a TCP-connected address
-        // they must not be re-raised as an HTTP-layer error too.
+        // A QUIC transport failure, a wall-clock QUIC handshake timeout, and
+        // a TLS handshake/certificate failure each belong to their own layer
+        // rule; on a TCP-connected address they must not be re-raised as an
+        // HTTP-layer error too. (The HTTP/3 *timeout* matters: a silent-UDP
+        // or stalled QUIC peer surfaces as `Timeout`, not `Quic`, and must
+        // not be double-counted as an HTTP-layer error.)
         let with_kind = |kind| HttpObservation {
             destination: "1.1.1.1:443".parse().unwrap(),
             host: "example.com".into(),
@@ -308,7 +322,12 @@ mod tests {
             latency_ms: Some(5),
             failure: None,
         }];
-        for kind in [FailureKind::Quic, FailureKind::TlsHandshake, FailureKind::Certificate] {
+        for kind in [
+            FailureKind::Quic,
+            FailureKind::TlsHandshake,
+            FailureKind::Certificate,
+            FailureKind::Timeout,
+        ] {
             let mut out = Vec::new();
             http_layer_rules(
                 &DiagnosticInput {

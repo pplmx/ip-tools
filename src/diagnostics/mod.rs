@@ -327,6 +327,54 @@ mod tests {
     }
 
     #[test]
+    fn http3_quic_path_failure_is_not_an_http_layer_error() {
+        // An HTTP/3 probe whose QUIC handshake times out (e.g. a silent UDP
+        // peer) is the QUIC path failing — `quic_rules`' verdict — not an
+        // HTTP-layer error. It must not be double-counted as an Http
+        // diagnosis while the healthy TCP+HTTPS path succeeds.
+        let dns = [dns_ok("example.com", DnsRecordType::A, "1.1.1.1")];
+        let tcp = [tp("1.1.1.1:443", true)];
+        let http = [
+            HttpObservation {
+                destination: "1.1.1.1:443".parse().unwrap(),
+                host: "example.com".into(),
+                method: "GET".into(),
+                tls: None,
+                protocol: Some("HTTP/1.1".into()),
+                status: Some(200),
+                location: None,
+                body_bytes: Some(100),
+                latency_ms: Some(30),
+                failure: None,
+            },
+            HttpObservation {
+                destination: "1.1.1.1:443".parse().unwrap(),
+                host: "example.com".into(),
+                method: "GET".into(),
+                tls: None,
+                protocol: Some("HTTP/3".into()),
+                status: None,
+                location: None,
+                body_bytes: None,
+                latency_ms: None,
+                failure: Some(ProbeError {
+                    kind: FailureKind::Timeout,
+                    message: "quic handshake to 1.1.1.1:443 timed out".into(),
+                }),
+            },
+        ];
+        let out = diagnose(&input(&dns, &tcp, &[], &http, &[]));
+        assert!(
+            !categories(&out).contains(&DiagnosticCategory::Http),
+            "an h3 QUIC timeout must not be an HTTP-layer error: {out:?}"
+        );
+        assert!(
+            categories(&out).contains(&DiagnosticCategory::Quic),
+            "the QUIC path failure is quic_rules' verdict: {out:?}"
+        );
+    }
+
+    #[test]
     fn truncated_http_body_is_diagnosed() {
         let dns = [dns_ok("example.com", DnsRecordType::A, "1.1.1.1")];
         let tcp = [tp("1.1.1.1:443", true)];
