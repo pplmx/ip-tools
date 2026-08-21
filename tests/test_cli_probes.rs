@@ -7,6 +7,7 @@
 //! engine itself cannot test in-process.
 
 use assert_cmd::Command;
+use predicates::str::contains;
 use std::net::{IpAddr, SocketAddr, TcpListener, UdpSocket};
 use std::thread;
 
@@ -164,6 +165,20 @@ fn probe_cli_repeats_and_aggregates() {
     );
     assert!(out.contains("Repeated probes"), "probe heading missing: {out}");
     assert!(out.contains("success:  3"), "expected 3 successes: {out}");
+}
+
+#[test]
+fn probe_cli_rejects_zero_count() {
+    // `--count 0` would probe nothing yet render a vacuous "0 attempts, 0.0%
+    // success" report and exit 0; a count of zero is a caller mistake and must
+    // fail with a clear error instead (matching how `route` never runs zero
+    // probes per hop).
+    let addr = local_tcp_listener();
+    cmd()
+        .args(["probe", &addr.to_string(), "--count", "0", "--timeout", "800"])
+        .assert()
+        .failure()
+        .stderr(contains("--count"));
 }
 
 #[test]
