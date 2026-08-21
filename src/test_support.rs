@@ -118,6 +118,7 @@ enum FixtureRoute {
     Normal,
     Redirect,
     LargeBody,
+    StalledBody,
 }
 
 /// Size of the oversized body served for [`FixtureRoute::LargeBody`] — larger
@@ -137,7 +138,34 @@ fn route_for(req: &hyper::Request<impl Sized>) -> FixtureRoute {
     match host {
         "redirect.invalid" => FixtureRoute::Redirect,
         "big.invalid" => FixtureRoute::LargeBody,
+        "stall.invalid" => FixtureRoute::StalledBody,
         _ => FixtureRoute::Normal,
+    }
+}
+
+/// A response body that yields one partial chunk and then never completes:
+/// the server sends headers + a little data and stalls. A client that bounds
+/// its body read observes a timeout mid-body, not a clean end-of-stream.
+struct StalledBody {
+    sent: bool,
+}
+
+impl hyper::body::Body for StalledBody {
+    type Data = bytes::Bytes;
+    type Error = std::convert::Infallible;
+
+    fn poll_frame(
+        mut self: std::pin::Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Result<hyper::body::Frame<Self::Data>, Self::Error>>> {
+        if !self.sent {
+            self.sent = true;
+            return std::task::Poll::Ready(Some(Ok(hyper::body::Frame::data(bytes::Bytes::from_static(
+                b"partial",
+            )))));
+        }
+        // Never become ready again: the read hangs until the client times out.
+        std::task::Poll::Pending
     }
 }
 
@@ -171,6 +199,9 @@ async fn run_tcp_server(listener: tokio::net::TcpListener, acceptor: tokio_rustl
             let negotiated_h2 = tls.get_ref().1.alpn_protocol().is_some_and(|a| a == b"h2");
             let io = hyper_util::rt::TokioIo::new(tls);
             let service = hyper::service::service_fn(|req: hyper::Request<hyper::body::Incoming>| async move {
+                // Every branch boxes its body so one concrete type serves all
+                // routes (the custom `StalledBody` included).
+                use http_body_util::BodyExt as _;
                 if req.uri().path().starts_with("/dns-query") {
                     // Serve a canned DNS-over-HTTPS response (RFC 8484): one
                     // question echoed (host.example IN A) plus two answers
@@ -179,7 +210,7 @@ async fn run_tcp_server(listener: tokio::net::TcpListener, acceptor: tokio_rustl
                     let resp = hyper::Response::builder()
                         .status(200)
                         .header("content-type", "application/dns-message")
-                        .body(http_body_util::Full::new(bytes::Bytes::from_static(DOH_RESPONSE)))
+                        .body(http_body_util::Full::new(bytes::Bytes::from_static(DOH_RESPONSE)).boxed())
                         .expect("static doh response");
                     return Ok::<_, std::convert::Infallible>(resp);
                 }
@@ -190,15 +221,18 @@ async fn run_tcp_server(listener: tokio::net::TcpListener, acceptor: tokio_rustl
                         let resp = hyper::Response::builder()
                             .status(302)
                             .header("location", "https://redirect.invalid/landed")
-                            .body(http_body_util::Full::new(bytes::Bytes::from_static(b"")))
+                            .body(http_body_util::Full::new(bytes::Bytes::from_static(b"")).boxed())
                             .expect("static redirect response");
                         Ok::<_, std::convert::Infallible>(resp)
                     }
                     FixtureRoute::LargeBody => Ok::<_, std::convert::Infallible>(hyper::Response::new(
-                        http_body_util::Full::new(bytes::Bytes::from(vec![b'x'; LARGE_BODY_BYTES])),
+                        http_body_util::Full::new(bytes::Bytes::from(vec![b'x'; LARGE_BODY_BYTES])).boxed(),
                     )),
+                    FixtureRoute::StalledBody => {
+                        Ok::<_, std::convert::Infallible>(hyper::Response::new(StalledBody { sent: false }.boxed()))
+                    }
                     FixtureRoute::Normal => Ok::<_, std::convert::Infallible>(hyper::Response::new(
-                        http_body_util::Full::new(bytes::Bytes::from_static(b"ok")),
+                        http_body_util::Full::new(bytes::Bytes::from_static(b"ok")).boxed(),
                     )),
                 }
             });
@@ -265,6 +299,17 @@ async fn serve_quic_connection(incoming: quinn::Incoming) {
                     }
                 }
                 let _ = stream.finish().await;
+            }
+            FixtureRoute::StalledBody => {
+                // Headers + one partial chunk, then hold the stream open
+                // forever: the client's bounded body read times out mid-body
+                // instead of seeing an end-of-stream.
+                let response = hyper::Response::builder().status(200).body(()).expect("status 200");
+                if stream.send_response(response).await.is_err() {
+                    return;
+                }
+                let _ = stream.send_data(bytes::Bytes::from_static(b"partial")).await;
+                std::future::pending::<()>().await;
             }
             FixtureRoute::Normal => {
                 let response = hyper::Response::builder().status(200).body(()).expect("status 200");

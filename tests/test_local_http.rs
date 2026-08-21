@@ -192,6 +192,49 @@ async fn http3_capped_body_is_still_sized() {
     );
 }
 
+/// A server that sends headers + a partial body and then stalls must surface
+/// as an *incomplete* response (`body_bytes: None`, but headers received) on
+/// every protocol — not as a clean partial-body success. All three readers
+/// agree on the body-completion semantics.
+#[tokio::test(flavor = "multi_thread")]
+async fn stalled_body_reports_incomplete_for_all_protocols() {
+    let fixture = FixtureServer::start().await;
+    let stall = Duration::from_secs(2);
+
+    let h1 = http::probe_insecure(fixture.tcp_addr(), "stall.invalid", "GET", stall).await;
+    assert_eq!(h1.status, Some(200), "http1 headers received: {h1:?}");
+    assert!(
+        h1.failure.is_none(),
+        "headers received is not a transport failure: {h1:?}"
+    );
+    assert_eq!(
+        h1.body_bytes, None,
+        "http1 must report a stalled body as incomplete: {h1:?}"
+    );
+
+    let h2 = http2::probe_insecure(fixture.tcp_addr(), "stall.invalid", "GET", stall).await;
+    assert_eq!(h2.status, Some(200), "http2 headers received: {h2:?}");
+    assert!(
+        h2.failure.is_none(),
+        "headers received is not a transport failure: {h2:?}"
+    );
+    assert_eq!(
+        h2.body_bytes, None,
+        "http2 must report a stalled body as incomplete: {h2:?}"
+    );
+
+    let h3 = http3::probe_insecure(fixture.udp_addr(), "stall.invalid", "GET", stall).await;
+    assert_eq!(h3.status, Some(200), "http3 headers received: {h3:?}");
+    assert!(
+        h3.failure.is_none(),
+        "headers received is not a transport failure: {h3:?}"
+    );
+    assert_eq!(
+        h3.body_bytes, None,
+        "http3 must report a stalled body as incomplete: {h3:?}"
+    );
+}
+
 // --- repeated HTTP probing (probe --protocol) ---------------------------------
 
 #[tokio::test(flavor = "multi_thread")]

@@ -116,18 +116,28 @@ async fn probe_impl(
         .and_then(|v| v.to_str().ok())
         .map(str::to_string);
 
-    // Drain the response body (bounded).
+    // Drain the response body (bounded). `ended` distinguishes a body that
+    // completed (end-of-stream reached, or the cap) from one that stalled:
+    // a read that times out mid-body must leave the response visibly
+    // incomplete (`None`) rather than appearing as a full reply. A transport
+    // error mid-body is a failed observation, already returned above.
     let mut body = response.into_body();
     let mut bytes_read: u64 = 0;
+    let mut ended = false;
     loop {
         let chunk = match tokio::time::timeout(timeout, body.data()).await {
             Ok(Some(Ok(chunk))) => chunk,
             Ok(Some(Err(e))) => return base.with_failure(http_error("http/2 body", &e)),
-            Ok(None) | Err(_) => break,
+            Ok(None) => {
+                ended = true;
+                break;
+            }
+            Err(_) => break, // body read timed out before completion
         };
         bytes_read = bytes_read.saturating_add(chunk.len() as u64);
         let _ = body.flow_control().release_capacity(chunk.len());
         if bytes_read >= MAX_BODY_BYTES {
+            ended = true;
             break;
         }
     }
@@ -137,7 +147,7 @@ async fn probe_impl(
         status: Some(status),
         protocol: Some("HTTP/2".to_string()),
         location,
-        body_bytes: Some(bytes_read),
+        body_bytes: ended.then_some(bytes_read),
         latency_ms: Some(start.elapsed().as_millis() as u64),
         ..base
     }

@@ -27,7 +27,9 @@ pub struct HttpObservation {
     pub status: Option<u16>,
     /// `Location` header (redirect target), when present.
     pub location: Option<String>,
-    /// Response body bytes read (capped).
+    /// Response body bytes read, capped at [`MAX_BODY_BYTES`]. `None` when
+    /// headers were received but the body did not complete within the probe
+    /// timeout (a stalled or truncated response), for every protocol.
     pub body_bytes: Option<u64>,
     /// Overall latency (TLS + HTTP) in milliseconds on success.
     pub latency_ms: Option<u64>,

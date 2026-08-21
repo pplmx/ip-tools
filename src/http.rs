@@ -8,7 +8,7 @@
 use crate::http_common::{build_tls_observation, http_error, MAX_BODY_BYTES};
 use crate::model::http::HttpObservation;
 use crate::model::{FailureKind, ProbeError};
-use http_body_util::{BodyExt, Empty, Limited};
+use http_body_util::{BodyExt, Empty};
 use hyper_util::rt::TokioIo;
 use std::net::SocketAddr;
 use std::time::{Duration, Instant};
@@ -110,7 +110,11 @@ async fn probe_impl(
         }
     };
 
-    // 4. Read a bounded amount of the response body.
+    // 4. Read a bounded amount of the response body. `ended` distinguishes a
+    // body that completed (end-of-stream reached, or the cap) from one that
+    // stalled: a read that times out mid-body must leave the response visibly
+    // incomplete (`None`) rather than appearing as a full reply, and a
+    // transport error mid-body is a failed observation, not a capped success.
     let status = response.status().as_u16();
     let protocol = Some(format!("{:?}", response.version()));
     let location = response
@@ -118,13 +122,28 @@ async fn probe_impl(
         .get(hyper::header::LOCATION)
         .and_then(|v| v.to_str().ok())
         .map(str::to_string);
-    let body = response.into_body();
-    let limited = Limited::new(body, MAX_BODY_BYTES as usize);
-    let body_bytes = match tokio::time::timeout(timeout, limited.collect()).await {
-        Ok(Ok(collected)) => Some(collected.to_bytes().len() as u64),
-        Ok(Err(_e)) => Some(MAX_BODY_BYTES), // truncated at the cap
-        Err(_) => None,
-    };
+    let mut body = response.into_body();
+    let mut bytes_read: u64 = 0;
+    let mut ended = false;
+    loop {
+        let frame = match tokio::time::timeout(timeout, body.frame()).await {
+            Ok(Some(Ok(frame))) => frame,
+            Ok(Some(Err(e))) => return base.with_failure(http_error("HTTP/1.1 body", &e)),
+            Ok(None) => {
+                ended = true;
+                break;
+            }
+            Err(_) => break, // body read timed out before completion
+        };
+        if let Ok(data) = frame.into_data() {
+            bytes_read = bytes_read.saturating_add(data.len() as u64);
+        }
+        if bytes_read >= MAX_BODY_BYTES {
+            ended = true;
+            break;
+        }
+    }
+    let body_bytes = ended.then_some(bytes_read);
 
     HttpObservation {
         tls: Some(tls_obs),
