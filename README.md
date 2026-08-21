@@ -101,8 +101,11 @@ ip-tools dns example.com --doh https://dns.google/dns-query --doh https://mozill
 Each `--doh` endpoint is queried for both A and AAAA (subject to `--ipv6`)
 and reported alongside the system and `--server` results, so disagreement
 between the local path and an encrypted, tamper-resistant path is visible
-side by side. `--insecure` is only needed for IP-literal endpoints whose
-TLS certificate is issued to the hostname (e.g. `1.1.1.1`).
+side by side. `--insecure` is for IP-literal endpoints whose TLS certificate
+does not cover that address: certificates are usually issued to a hostname,
+so `https://1.1.1.1/dns-query` typically needs it — but some providers
+publish a matching IP subject-alt-name (Cloudflare's `1.1.1.1` does), in
+which case the certificate validates either way.
 
 ### Custom DNS resolvers
 
@@ -248,7 +251,8 @@ ip-tools diagnose example.com
 ip-tools diagnose example.com --json
 ```
 
-Example output:
+Example output (on a host whose IPv6 has no route — the IPv4 path works, the
+IPv6 and QUIC paths fail locally):
 
 ```
 DNS example.com
@@ -258,18 +262,28 @@ TCP connect
   104.20.23.154:443        PASS      203 ms
   [2606:4700:10::ac42:93f3]:443 network unreachable
 Diagnosis
-[LOW] Dns (Low confidence)
-    Resolvers disagree on example.com's addresses
+[LOW] AddressFamily (Medium confidence)
+    IPv6 connectivity fails while the other family works
     Evidence:
-      - 2 distinct address sets returned
+      - IPv4: reachable
+      - IPv6: unreachable
     Possible causes:
-      - GeoDNS
-      - CDN / load-balanced DNS
-      - ...
-[MEDIUM] PartialConnectivity (High confidence)
-    Only some addresses of example.com are reachable
+      - broken or missing IPv6
+      - destination has no working IPv6
+      - firewall / ISP IPv6 filtering
+      - routing problem for one family
+[LOW] Quic (Medium confidence)
+    QUIC/HTTP3 fails while TCP+HTTPS succeeds for example.com
     ...
 ```
+
+Because the failures above are the *local* address family being unroutable —
+not the destination's addresses being partially down — the engine reports the
+honest address-family and QUIC verdicts and does **not** raise a
+destination-side partial-connectivity or filtering alarm. A resolver
+*disagreement* diagnosis requires comparing resolvers (`--server` and/or
+`--doh`); a single system-resolver run answers A+AAAA normally and is not
+"disagreeing with itself".
 
 The engine separates measurement from diagnosis: each diagnosis carries a
 severity, a category, a confidence, the evidence that supports it, and the
