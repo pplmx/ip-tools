@@ -4,7 +4,7 @@
 //! confidence.
 
 use super::DiagnosticInput;
-use crate::model::{Confidence, Diagnosis, DiagnosticCategory, Evidence, FailureKind, Severity};
+use crate::model::{Confidence, Diagnosis, DiagnosticCategory, Evidence, FailureKind, Severity, TcpObservation};
 
 /// Evaluate independent filtering signals; raise a low/medium confidence
 /// diagnosis when several align.
@@ -18,7 +18,18 @@ pub(super) fn filtering_rules(input: &DiagnosticInput, dns_disagreement: bool, o
             detail: "resolvers returned different address sets".into(),
         });
     }
-    let has_address_specific = input.tcp.iter().any(|o| o.failure.is_some()) && input.tcp.iter().any(|o| o.success);
+    // "Address-specific" means some addresses genuinely fail *on the path*
+    // while others pass. A failure classified unreachable (ENETUNREACH /
+    // EHOSTUNREACH) is reported by the local stack when no route exists to
+    // the destination (e.g. a family with no global route): no packet ever
+    // leaves the host, so it is a local routing condition, not evidence of
+    // destination-specific filtering, and must not count as a signal.
+    let path_failure = |o: &TcpObservation| {
+        o.failure
+            .as_ref()
+            .is_some_and(|e| !matches!(e.kind, FailureKind::NetworkUnreachable | FailureKind::HostUnreachable))
+    };
+    let has_address_specific = input.tcp.iter().any(path_failure) && input.tcp.iter().any(|o| o.success);
     if has_address_specific {
         signals += 1;
         evidence.push(Evidence {
@@ -314,6 +325,46 @@ mod tests {
         // address-specific (1) + repeats-all-fail (not counted) = one signal:
         // below the bar, so filtering must not fire.
         assert_eq!(lows.len(), 0, "unreachable repeats must not add a signal");
+    }
+
+    #[test]
+    fn local_unreachability_is_not_an_address_specific_path_signal() {
+        // Every failing address fails with a LOCAL no-route error (IPv6 with
+        // no global route): the local stack reports ENETUNREACH/EHOSTUNREACH
+        // before any packet is sent, so this is a routing condition, not
+        // evidence of destination-specific filtering. It must not count as
+        // the "address-specific reachability" signal; combined with genuine
+        // repeated intermittency on the reachable family (both signals old
+        // code would have seen) it stays below the two-signal bar.
+        let tcp = [
+            tcp("1.1.1.1:443", true, FailureKind::Timeout),
+            tcp("[2001:db8::1]:443", false, FailureKind::NetworkUnreachable),
+            tcp("[2001:db8::2]:443", false, FailureKind::HostUnreachable),
+        ];
+        let probes = [probe(1)]; // genuine intermittency: 2/3 success
+        let lows = filtering(false, &tcp, &[], &[], &probes);
+        assert_eq!(
+            lows.len(),
+            0,
+            "local unreachability must not be read as a destination-filtering signal"
+        );
+    }
+
+    #[test]
+    fn unreachable_plus_reset_still_fires_on_the_real_signals() {
+        // When a genuine reset signal exists alongside an unreachable
+        // address, filtering still fires (Low): the reset is a real
+        // independent signal, and address-specific here is driven by the
+        // reachable-vs-unreachable split across genuinely probed paths.
+        let tcp = [
+            tcp("1.1.1.1:443", true, FailureKind::Timeout),
+            tcp("2.2.2.2:443", false, FailureKind::ConnectionReset),
+            tcp("[2001:db8::1]:443", false, FailureKind::NetworkUnreachable),
+        ];
+        let lows = filtering(false, &tcp, &[], &[], &[]);
+        // reset + address-specific (IPv4 ok vs IPv4 reset) = 2 signals.
+        assert_eq!(lows.len(), 1);
+        assert_eq!(lows[0], Confidence::Low);
     }
 
     #[test]
