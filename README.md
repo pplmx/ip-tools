@@ -332,16 +332,21 @@ Repeated probes
 
 A failed probe is an observation, not an error, so by default the CLI exits
 `0` as long as the run completed. For scripting and CI, pass `--strict`
-(on `tcp`, `tls`, `http`, `http2`, `http3` and `probe`) to exit non-zero
-whenever any address probe failed to complete:
+on any of `dns`, `tcp`, `tls`, `http`, `http2`, `http3`, `probe`, `route`
+or `diagnose` to exit non-zero when the run found failures:
 
 ```shell
 ip-tools tcp example.com --strict && echo "all addresses reachable"
 ip-tools probe example.com --count 20 --strict || echo "packet loss detected"
+ip-tools diagnose example.com --strict || echo "anomaly diagnosed"
+ip-tools dns example.com --strict || echo "a resolver failed"
+ip-tools route example.com --strict || echo "a hop was lost"
 ```
 
-Output is still rendered in full; only the exit code changes. For `probe`,
-any failed attempt makes `--strict` exit non-zero.
+`--strict` is per-command: a failed/address probe (each address), any failed
+attempt (repeated `probe`), any failed DNS lookup (`dns`), any non-`Healthy`
+diagnosis (`diagnose`) or any lost hop (`route`). Output is still rendered in
+full; only the exit code changes.
 
 ### Local IP helpers
 
