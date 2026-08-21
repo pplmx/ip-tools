@@ -71,7 +71,7 @@ pub fn diagnose(input: &DiagnosticInput) -> Vec<Diagnosis> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{DnsRecordType, FailureKind, LatencyStats, ProbeError, ResolverKind};
+    use crate::model::{DnsRecordType, FailureCount, FailureKind, LatencyStats, ProbeError, ResolverKind};
 
     fn tp(addr: &str, ok: bool) -> TcpObservation {
         TcpObservation {
@@ -199,6 +199,80 @@ mod tests {
         };
         let out = diagnose(&input(&[], &[], &[], &[], &[probe]));
         assert!(categories(&out).contains(&DiagnosticCategory::Intermittent));
+    }
+
+    #[test]
+    fn single_resolver_a_and_aaaa_do_not_count_as_disagreement() {
+        // A single resolver returning both A and AAAA is answering normally,
+        // not disagreeing with itself. Before this was fixed, the IPv4 set and
+        // the IPv6 set were compared as separate "resolvers", flagging every
+        // dual-stack hostname as disagreement and feeding a false filtering
+        // signal.
+        let dns = [
+            dns_ok("example.com", DnsRecordType::A, "1.1.1.1"),
+            dns_ok("example.com", DnsRecordType::Aaaa, "2001:db8::1"),
+        ];
+        let out = diagnose(&input(&dns, &[], &[], &[], &[]));
+        assert!(
+            !categories(&out).contains(&DiagnosticCategory::Dns),
+            "A+AAAA from one resolver must not be a disagreement: {out:?}"
+        );
+    }
+
+    #[test]
+    fn ipv6_locally_unreachable_does_not_raise_filtering() {
+        // A healthy dual-stack host whose IPv6 has no route (this machine's
+        // exact condition): all IPv4 layers pass, IPv6 fails with
+        // NetworkUnreachable at TCP/TLS/repeat. The single mundane cause must
+        // not be read as "multiple independent filtering signals".
+        let dns = [
+            dns_ok("example.com", DnsRecordType::A, "1.1.1.1"),
+            dns_ok("example.com", DnsRecordType::Aaaa, "2001:db8::1"),
+        ];
+        let tcp = [
+            tp("1.1.1.1:443", true),
+            TcpObservation {
+                destination: "[2001:db8::1]:443".parse().unwrap(),
+                success: false,
+                latency_ms: None,
+                failure: Some(ProbeError {
+                    kind: FailureKind::NetworkUnreachable,
+                    message: "network unreachable".into(),
+                }),
+            },
+        ];
+        let tls = [TlsObservation {
+            destination: "[2001:db8::1]:443".parse().unwrap(),
+            sni: "example.com".into(),
+            success: false,
+            version: None,
+            cipher: None,
+            alpn: None,
+            certificate: None,
+            latency_ms: None,
+            failure: Some(ProbeError {
+                kind: FailureKind::NetworkUnreachable,
+                message: "network unreachable".into(),
+            }),
+        }];
+        let stats = LatencyStats::default();
+        let probes = [ProbeResult {
+            destination: "[2001:db8::1]:443".parse().unwrap(),
+            attempts: 3,
+            successes: 0,
+            failures: 3,
+            success_rate: 0.0,
+            latency: stats.summarize(),
+            failure_counts: vec![FailureCount {
+                kind: FailureKind::NetworkUnreachable,
+                count: 3,
+            }],
+        }];
+        let out = diagnose(&input(&dns, &tcp, &tls, &[], &probes));
+        assert!(
+            !categories(&out).contains(&DiagnosticCategory::PossibleNetworkFiltering),
+            "local IPv6 unreachability must not be read as filtering: {out:?}"
+        );
     }
 
     #[test]

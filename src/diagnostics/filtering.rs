@@ -36,7 +36,14 @@ pub(super) fn filtering_rules(input: &DiagnosticInput, dns_disagreement: bool, o
             detail: "TCP resets observed".into(),
         });
     }
-    let has_tls_fail = input.tls.iter().any(|o| !o.success);
+    // A TLS failure only counts when TCP actually connected on that address:
+    // where TCP could not connect at all, the TLS observation merely inherits
+    // the TCP failure (no handshake was attempted), so it is not an
+    // independent signal. This mirrors `tls_layer_rules`.
+    let has_tls_fail = input
+        .tls
+        .iter()
+        .any(|o| !o.success && input.tcp.iter().any(|t| t.destination == o.destination && t.success));
     if has_tls_fail {
         signals += 1;
         evidence.push(Evidence {
@@ -57,7 +64,11 @@ pub(super) fn filtering_rules(input: &DiagnosticInput, dns_disagreement: bool, o
             detail: "protocol-selective failure (QUIC only)".into(),
         });
     }
-    let has_repeat_fail = input.probes.iter().any(|p| p.failures > 0);
+    // Genuine *intermittency*: both successes and failures on the same
+    // address. Where every attempt of a repeated probe fails on an address
+    // that TCP could never reach, the result is not an independent signal —
+    // it is the same reachability cause already covered above.
+    let has_repeat_fail = input.probes.iter().any(|p| p.successes > 0 && p.failures > 0);
     if has_repeat_fail {
         signals += 1;
         evidence.push(Evidence {
@@ -217,11 +228,14 @@ mod tests {
     #[test]
     fn four_signals_raise_medium_confidence() {
         // disagreement + address-specific + reset + tls-fail = 4 signals.
+        // The TLS failure must sit on an address where TCP connected (3.3.3.3)
+        // to be an independent TLS-layer signal.
         let tcp = [
             tcp("1.1.1.1:443", true, FailureKind::Timeout),
             tcp("2.2.2.2:443", false, FailureKind::ConnectionReset),
+            tcp("3.3.3.3:443", true, FailureKind::Timeout),
         ];
-        let tls = [tls_fail("2.2.2.2:443")];
+        let tls = [tls_fail("3.3.3.3:443")];
         let meds = filtering(true, &tcp, &tls, &[], &[]);
         assert_eq!(meds.len(), 1);
         assert_eq!(meds[0], Confidence::Medium);
@@ -239,6 +253,67 @@ mod tests {
         let lows = filtering(false, &tcp, &[], &http, &[]);
         assert_eq!(lows.len(), 1);
         assert_eq!(lows[0], Confidence::Low);
+    }
+
+    #[test]
+    fn tls_failure_inherited_from_tcp_failure_is_not_a_signal() {
+        // A healthy dual-stack host whose IPv6 is locally unreachable: TCP
+        // fails with NetworkUnreachable on the IPv6 address, and the TLS
+        // observation merely inherits that TCP failure (no handshake was
+        // attempted). That TLS "failure" must not be counted as an
+        // independent filtering signal.
+        let tcp = [
+            tcp("1.1.1.1:443", true, FailureKind::Timeout),
+            tcp("[2001:db8::1]:443", false, FailureKind::NetworkUnreachable),
+        ];
+        // address-specific is real, but the inherited TLS failure must not
+        // add a second signal.
+        let tls = [TlsObservation {
+            destination: "[2001:db8::1]:443".parse().unwrap(),
+            sni: "example.com".into(),
+            success: false,
+            version: None,
+            cipher: None,
+            alpn: None,
+            certificate: None,
+            latency_ms: None,
+            failure: Some(ProbeError {
+                kind: FailureKind::NetworkUnreachable,
+                message: "network unreachable".into(),
+            }),
+        }];
+        let lows = filtering(false, &tcp, &tls, &[], &[]);
+        // Address-specific alone is only one signal, below the two-signal bar:
+        // filtering must not fire.
+        assert_eq!(lows.len(), 0, "inherited TLS failure must not add a signal");
+    }
+
+    #[test]
+    fn all_failing_repeats_on_an_unreachable_address_are_not_a_signal() {
+        // Repeat probes that fail because the address itself is unreachable
+        // (IPv6 locally down) are the same cause as the TCP failure, not an
+        // independent signal. Only genuine intermittency (mixed successes and
+        // failures) counts.
+        let tcp = [
+            tcp("1.1.1.1:443", true, FailureKind::Timeout),
+            tcp("[2001:db8::1]:443", false, FailureKind::NetworkUnreachable),
+        ];
+        let probes = [ProbeResult {
+            destination: "[2001:db8::1]:443".parse().unwrap(),
+            attempts: 3,
+            successes: 0,
+            failures: 3,
+            success_rate: 0.0,
+            latency: LatencyStats::default().summarize(),
+            failure_counts: vec![crate::model::FailureCount {
+                kind: FailureKind::NetworkUnreachable,
+                count: 3,
+            }],
+        }];
+        let lows = filtering(false, &tcp, &[], &[], &probes);
+        // address-specific (1) + repeats-all-fail (not counted) = one signal:
+        // below the bar, so filtering must not fire.
+        assert_eq!(lows.len(), 0, "unreachable repeats must not add a signal");
     }
 
     #[test]

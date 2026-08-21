@@ -36,7 +36,13 @@ pub(super) fn tls_layer_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosis>)
 pub(super) fn http_layer_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosis>) {
     let mut failing: Vec<String> = Vec::new();
     for h in input.http {
-        let layer_failed = h.failure.is_some() || h.status.is_some_and(|s| s >= 400);
+        // Where TCP could not connect at all, the HTTP observation merely
+        // inherits the TCP failure (no request was attempted): that is a
+        // reachability issue reported at the TCP layer, not an HTTP-layer
+        // error. Only count it here when TCP actually connected.
+        let inherited_tcp =
+            h.failure.is_some() && input.tcp.iter().any(|t| t.destination == h.destination && !t.success);
+        let layer_failed = (h.failure.is_some() && !inherited_tcp) || h.status.is_some_and(|s| s >= 400);
         if layer_failed {
             failing.push(format!(
                 "{} -> {}",
@@ -231,6 +237,59 @@ mod tests {
         let obs = [http("2.2.2.2:443", "HTTP/1.1", None, Some("request failed"))];
         let mut out = Vec::new();
         http_layer_rules(&input(&[], &obs, &[]), &mut out);
+        assert!(out.iter().any(|d| d.category == DiagnosticCategory::Http));
+    }
+
+    #[test]
+    fn http_layer_ignores_failure_inherited_from_tcp() {
+        // Where TCP could not connect at all, the HTTP observation merely
+        // inherits that failure (no request was attempted): it is a
+        // reachability issue reported at the TCP layer, not an HTTP-layer
+        // error, and must not raise an HTTP diagnosis.
+        let obs = [http("2.2.2.2:443", "HTTP/1.1", None, Some("connect failed"))];
+        let tcp_fail = [TcpObservation {
+            destination: "2.2.2.2:443".parse().unwrap(),
+            success: false,
+            latency_ms: None,
+            failure: Some(ProbeError {
+                kind: FailureKind::Timeout,
+                message: "timeout".into(),
+            }),
+        }];
+        let mut out = Vec::new();
+        http_layer_rules(
+            &DiagnosticInput {
+                hostname: "example.com",
+                dns: &[],
+                tcp: &tcp_fail,
+                tls: &[],
+                http: &obs,
+                probes: &[],
+            },
+            &mut out,
+        );
+        assert!(out.is_empty(), "inherited TCP failure must not raise HTTP diagnosis");
+
+        // Where TCP actually connected, the same transport failure IS an
+        // HTTP-layer signal.
+        let tcp_ok = [TcpObservation {
+            destination: "2.2.2.2:443".parse().unwrap(),
+            success: true,
+            latency_ms: Some(5),
+            failure: None,
+        }];
+        let mut out = Vec::new();
+        http_layer_rules(
+            &DiagnosticInput {
+                hostname: "example.com",
+                dns: &[],
+                tcp: &tcp_ok,
+                tls: &[],
+                http: &obs,
+                probes: &[],
+            },
+            &mut out,
+        );
         assert!(out.iter().any(|d| d.category == DiagnosticCategory::Http));
     }
 

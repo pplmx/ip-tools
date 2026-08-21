@@ -2,7 +2,7 @@
 
 use super::DiagnosticInput;
 use crate::model::{Confidence, Diagnosis, DiagnosticCategory, DnsObservation, Evidence, Severity};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::net::IpAddr;
 
 /// DNS rules. Returns whether resolver disagreement was observed (also feeds
@@ -14,7 +14,12 @@ pub(super) fn dns_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosis>) -> bo
     let mut any_success = false;
     let mut any_failure = false;
     let mut failed: Vec<&DnsObservation> = Vec::new();
-    let mut all_sets: Vec<(String, BTreeSet<IpAddr>)> = Vec::new();
+    // Per *resolver* combined address sets (A + AAAA together). Disagreement
+    // is meaningful only across different resolvers: a single resolver that
+    // returns both an A and an AAAA set is answering normally, not disagreeing
+    // with itself — comparing those as separate sets would flag every
+    // dual-stack hostname as "resolvers disagree".
+    let mut per_resolver: BTreeMap<String, BTreeSet<IpAddr>> = BTreeMap::new();
 
     for obs in input.dns {
         if obs.error.is_some() {
@@ -23,17 +28,17 @@ pub(super) fn dns_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosis>) -> bo
         } else {
             any_success = true;
             if !obs.records.is_empty() {
-                all_sets.push((
-                    format!("{:?} {:?}", obs.resolver, obs.record_type),
-                    obs.records.iter().copied().collect(),
-                ));
+                per_resolver
+                    .entry(format!("{:?}", obs.resolver))
+                    .or_default()
+                    .extend(obs.records.iter().copied());
             }
         }
     }
 
-    // Disagreement: distinct address sets from different resolvers.
+    // Disagreement: distinct combined address sets across different resolvers.
     let mut distinct: Vec<BTreeSet<IpAddr>> = Vec::new();
-    for (_, set) in &all_sets {
+    for set in per_resolver.values() {
         if !distinct.contains(set) {
             distinct.push(set.clone());
         }
