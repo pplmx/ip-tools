@@ -246,6 +246,80 @@ fn dns_cli_resolves_via_custom_local_server() {
 }
 
 #[test]
+fn dns_cli_record_type_selects_a_single_record_type() {
+    let server = local_dns_server(&["192.0.2.77"], &["2001:db8::77"]);
+
+    // `--record-type A` restricts the query to A (no AAAA row).
+    let out = stdout(
+        &cmd()
+            .args([
+                "dns",
+                "host.example",
+                "--server",
+                &server.to_string(),
+                "--record-type",
+                "A",
+                "--timeout",
+                "1200",
+            ])
+            .assert()
+            .success(),
+    );
+    assert!(out.contains("192.0.2.77"), "A (via --record-type) missing: {out}");
+    assert!(
+        !out.contains("2001:db8::77"),
+        "--record-type A must exclude AAAA: {out}"
+    );
+
+    // `--record-type CNAME` queries a new type; the A-only responder yields
+    // no CNAME answers but the run succeeds (query plumbed without error).
+    let out = stdout(
+        &cmd()
+            .args([
+                "dns",
+                "host.example",
+                "--server",
+                &server.to_string(),
+                "--record-type",
+                "CNAME",
+                "--timeout",
+                "1200",
+            ])
+            .assert()
+            .success(),
+    );
+    assert!(
+        !out.contains("192.0.2.77"),
+        "--record-type CNAME must not show A: {out}"
+    );
+
+    // Unknown and conflicting values are rejected.
+    cmd()
+        .args([
+            "dns",
+            "host.example",
+            "--server",
+            &server.to_string(),
+            "--record-type",
+            "BOGUS",
+        ])
+        .assert()
+        .failure();
+    cmd()
+        .args([
+            "dns",
+            "host.example",
+            "--server",
+            &server.to_string(),
+            "--record-type",
+            "A",
+            "--ipv6",
+        ])
+        .assert()
+        .failure();
+}
+
+#[test]
 fn dns_cli_count_repeats_and_aggregates_latency_stats() {
     let server = local_dns_server(&["192.0.2.77"], &[]);
     let out = stdout(

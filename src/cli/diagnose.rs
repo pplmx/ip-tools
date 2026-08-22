@@ -8,8 +8,8 @@ use ip_tools::http as ip_http;
 use ip_tools::http2 as ip_http2;
 use ip_tools::http3 as ip_http3;
 use ip_tools::model::{
-    Diagnosis, DiagnosticCategory, DnsObservation, DnsRecordType, HttpObservation, ProbeResult, TcpObservation,
-    TlsObservation,
+    Diagnosis, DiagnosticCategory, DnsObservation, DnsRecord, DnsRecordType, HttpObservation, ProbeResult,
+    TcpObservation, TlsObservation,
 };
 use ip_tools::probe as ip_probe;
 use ip_tools::report::{render_diagnoses, render_dns, render_http, render_probe, render_tcp, render_tls, to_json};
@@ -187,21 +187,21 @@ async fn diagnose_one(
             let obs = dns_client.resolve(&target.host, rt).await;
             for o in &obs {
                 if o.error.is_none() {
-                    addresses.extend(o.records.iter().copied());
+                    addresses.extend(o.records.iter().filter_map(DnsRecord::address));
                 }
             }
             dns_obs.extend(obs);
             for endpoint in doh_endpoints {
                 let o = ip_tools::dns::doh_query(endpoint, &target.host, rt, timeout, insecure).await;
                 if o.error.is_none() {
-                    addresses.extend(o.records.iter().copied());
+                    addresses.extend(o.records.iter().filter_map(DnsRecord::address));
                 }
                 dns_obs.push(o);
             }
             for endpoint in dot_eps {
                 let o = ip_tools::dns::dot_query(endpoint, &target.host, rt, timeout, insecure).await;
                 if o.error.is_none() {
-                    addresses.extend(o.records.iter().copied());
+                    addresses.extend(o.records.iter().filter_map(DnsRecord::address));
                 }
                 dns_obs.push(o);
             }

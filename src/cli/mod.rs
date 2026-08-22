@@ -16,7 +16,7 @@ mod tls;
 
 use clap::{command, crate_authors, Arg, ArgAction, ArgMatches, Command};
 use ip_tools::dns::DnsClient;
-use ip_tools::model::DnsRecordType;
+use ip_tools::model::{DnsRecord, DnsRecordType};
 use ip_tools::report::to_json;
 use ip_tools::target::Target;
 use ip_tools::{get_local_ip, list_net_ifs};
@@ -61,6 +61,7 @@ fn parser() -> ArgMatches {
                 .arg(dot_arg())
                 .arg(insecure_arg())
                 .arg(record_type_arg())
+                .arg(dns_record_type_arg())
                 .arg(dns_count_arg())
                 .arg(strict_arg())
                 .arg(timeout_arg())
@@ -383,6 +384,15 @@ fn record_type_arg() -> Arg {
         .help("query AAAA records only (default: both A and AAAA)")
 }
 
+/// `--record-type` argument for `dns`: query a single specific record type.
+fn dns_record_type_arg() -> Arg {
+    Arg::new("record-type")
+        .long("record-type")
+        .value_name("TYPE")
+        .conflicts_with("ipv6")
+        .help("query a single record type (A, AAAA, CNAME, MX, TXT, NS, SOA); default both A and AAAA")
+}
+
 fn positional_target(help: &'static str) -> Arg {
     Arg::new("target").required(true).value_name("TARGET").help(help)
 }
@@ -691,7 +701,7 @@ pub async fn resolve_for_tcp_servers(
     for rt in [DnsRecordType::A, DnsRecordType::Aaaa] {
         for obs in client.resolve(host, rt).await {
             if obs.error.is_none() {
-                addrs.extend(obs.records);
+                addrs.extend(obs.records.iter().filter_map(DnsRecord::address));
             }
         }
     }

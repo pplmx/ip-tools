@@ -72,7 +72,15 @@ pub fn diagnose(input: &DiagnosticInput) -> Vec<Diagnosis> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{DnsRecordType, FailureCount, FailureKind, LatencyStats, ProbeError, ResolverKind};
+    use crate::model::{DnsRecord, DnsRecordType, FailureCount, FailureKind, LatencyStats, ProbeError, ResolverKind};
+
+    /// Wrap an IP string as an address record (A/AAAA).
+    fn addr_rec(ip: &str) -> DnsRecord {
+        match ip.parse::<std::net::IpAddr>().unwrap() {
+            std::net::IpAddr::V4(v) => DnsRecord::A(v),
+            std::net::IpAddr::V6(v) => DnsRecord::Aaaa(v),
+        }
+    }
 
     fn tp(addr: &str, ok: bool) -> TcpObservation {
         TcpObservation {
@@ -91,7 +99,7 @@ mod tests {
             hostname: host.into(),
             resolver: ResolverKind::System,
             record_type: kind,
-            records: vec![ip.parse().unwrap()],
+            records: vec![addr_rec(ip)],
             latency_ms: Some(5),
             error: None,
         }
@@ -537,7 +545,7 @@ mod tests {
                 hostname: "example.com".into(),
                 resolver: ResolverKind::Custom("9.9.9.9:53".parse().unwrap()),
                 record_type: DnsRecordType::A,
-                records: vec!["12.12.12.12".parse().unwrap()],
+                records: vec![addr_rec("12.12.12.12")],
                 latency_ms: Some(5),
                 error: None,
             },

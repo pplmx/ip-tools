@@ -1,6 +1,6 @@
 //! DNS observation types.
 
-use std::net::{IpAddr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
 use super::latency::LatencySummary;
 use super::probe::FailureCount;
@@ -26,6 +26,16 @@ pub enum DnsRecordType {
     A,
     /// IPv6 address record.
     Aaaa,
+    /// Canonical name (alias) record.
+    Cname,
+    /// Mail exchange record.
+    Mx,
+    /// Text record (SPF, DKIM, etc.).
+    Txt,
+    /// Authoritative name-server record.
+    Ns,
+    /// Start-of-authority record.
+    Soa,
 }
 
 impl std::fmt::Display for DnsRecordType {
@@ -33,7 +43,66 @@ impl std::fmt::Display for DnsRecordType {
         f.write_str(match self {
             Self::A => "A",
             Self::Aaaa => "AAAA",
+            Self::Cname => "CNAME",
+            Self::Mx => "MX",
+            Self::Txt => "TXT",
+            Self::Ns => "NS",
+            Self::Soa => "SOA",
         })
+    }
+}
+
+/// A typed DNS record value returned for a queried record type.
+///
+/// Serializes to its human-readable form (e.g. `1.1.1.1`, `10 mail.example`)
+/// so JSON output stays a plain array of strings; the variant keeps the
+/// structured data (e.g. an MX preference) available to callers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DnsRecord {
+    /// IPv4 address (A).
+    A(Ipv4Addr),
+    /// IPv6 address (AAAA).
+    Aaaa(Ipv6Addr),
+    /// Canonical-name target (CNAME).
+    Cname(String),
+    /// Mail exchange: priority plus the exchange hostname (MX).
+    Mx { preference: u16, exchange: String },
+    /// Text blob (TXT); a single TXT record's character-strings are joined.
+    Txt(String),
+    /// Authoritative name server (NS).
+    Ns(String),
+    /// Start-of-authority fields, space-joined (SOA).
+    Soa(String),
+}
+
+impl DnsRecord {
+    /// The resolved address for A/AAAA records.
+    #[must_use]
+    pub const fn address(&self) -> Option<IpAddr> {
+        match self {
+            Self::A(ip) => Some(IpAddr::V4(*ip)),
+            Self::Aaaa(ip) => Some(IpAddr::V6(*ip)),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for DnsRecord {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::A(ip) => write!(f, "{ip}"),
+            Self::Aaaa(ip) => write!(f, "{ip}"),
+            Self::Cname(name) | Self::Ns(name) => write!(f, "{name}"),
+            Self::Mx { preference, exchange } => write!(f, "{preference} {exchange}"),
+            Self::Txt(text) => write!(f, "{text:?}"),
+            Self::Soa(s) => write!(f, "{s}"),
+        }
+    }
+}
+
+impl serde::Serialize for DnsRecord {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
     }
 }
 
@@ -49,8 +118,8 @@ pub struct DnsObservation {
     pub resolver: ResolverKind,
     /// Record type queried.
     pub record_type: DnsRecordType,
-    /// Addresses returned (empty on failure).
-    pub records: Vec<IpAddr>,
+    /// Records returned (empty on failure).
+    pub records: Vec<DnsRecord>,
     /// Query latency in milliseconds, when the query succeeded.
     pub latency_ms: Option<u64>,
     /// Failure detail, when the query failed.

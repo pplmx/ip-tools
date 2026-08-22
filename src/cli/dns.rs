@@ -3,7 +3,7 @@
 use super::{parse_custom_servers, DEFAULT_PORT};
 use clap::ArgMatches;
 use ip_tools::dns::{aggregate_repeat, DnsClient};
-use ip_tools::model::{DnsObservation, DnsRecordType, DnsRepeatResult, ResolverKind};
+use ip_tools::model::{DnsObservation, DnsRecord, DnsRecordType, DnsRepeatResult, ResolverKind};
 use ip_tools::report::{render_dns, render_dns_repeat, to_json};
 use ip_tools::target::Target;
 use std::net::{IpAddr, SocketAddr};
@@ -54,12 +54,22 @@ pub(super) async fn run_dns(sub_m: &ArgMatches) -> ExitCode {
         .get_many::<String>("dot")
         .map(|vals| vals.cloned().collect())
         .unwrap_or_default();
-    let record_types = if only_v6 {
+    let count = *sub_m.get_one::<usize>("count").expect("count has default");
+
+    // `--record-type` requests one specific type; else `--ipv6` restricts to
+    // AAAA; else both A and AAAA (the historical default).
+    let record_types = if let Some(rt) = sub_m.get_one::<String>("record-type") {
+        if let Some(rt) = parse_record_type(rt) {
+            vec![rt]
+        } else {
+            eprintln!("Error: unsupported record type {rt:?} (try A, AAAA, CNAME, MX, TXT, NS or SOA)");
+            return ExitCode::FAILURE;
+        }
+    } else if only_v6 {
         vec![DnsRecordType::Aaaa]
     } else {
         vec![DnsRecordType::A, DnsRecordType::Aaaa]
     };
-    let count = *sub_m.get_one::<usize>("count").expect("count has default");
 
     let mut outputs: Vec<TargetDns> = Vec::with_capacity(targets.len());
     for target in targets {
@@ -352,8 +362,8 @@ fn literal_observations(host: &str, literal: IpAddr, record_types: &[DnsRecordTy
             resolver: ResolverKind::System,
             record_type: rt,
             records: match (rt, literal) {
-                (DnsRecordType::A, IpAddr::V4(v4)) => vec![IpAddr::V4(v4)],
-                (DnsRecordType::Aaaa, IpAddr::V6(v6)) => vec![IpAddr::V6(v6)],
+                (DnsRecordType::A, IpAddr::V4(v4)) => vec![DnsRecord::A(v4)],
+                (DnsRecordType::Aaaa, IpAddr::V6(v6)) => vec![DnsRecord::Aaaa(v6)],
                 _ => Vec::new(),
             },
             latency_ms: Some(0),
@@ -362,9 +372,31 @@ fn literal_observations(host: &str, literal: IpAddr, record_types: &[DnsRecordTy
         .collect()
 }
 
+/// Parse a `--record-type` argument into a [`DnsRecordType`].
+fn parse_record_type(s: &str) -> Option<DnsRecordType> {
+    match s.to_ascii_uppercase().as_str() {
+        "A" => Some(DnsRecordType::A),
+        "AAAA" => Some(DnsRecordType::Aaaa),
+        "CNAME" => Some(DnsRecordType::Cname),
+        "MX" => Some(DnsRecordType::Mx),
+        "TXT" => Some(DnsRecordType::Txt),
+        "NS" => Some(DnsRecordType::Ns),
+        "SOA" => Some(DnsRecordType::Soa),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Wrap an already-parsed IP literal as an address record (A/AAAA).
+    fn rec_from_ip(ip: IpAddr) -> DnsRecord {
+        match ip {
+            IpAddr::V4(v) => DnsRecord::A(v),
+            IpAddr::V6(v) => DnsRecord::Aaaa(v),
+        }
+    }
 
     #[test]
     fn literal_observations_report_the_address_for_its_records() {
@@ -375,7 +407,7 @@ mod tests {
             .iter()
             .find(|o| o.record_type == DnsRecordType::A)
             .expect("A observation");
-        assert_eq!(a.records, vec![v4]);
+        assert_eq!(a.records, vec![rec_from_ip(v4)]);
         assert_eq!(a.latency_ms, Some(0));
         assert!(a.error.is_none(), "a literal is never a lookup failure");
         let aaaa = obs
@@ -392,7 +424,7 @@ mod tests {
             .iter()
             .find(|o| o.record_type == DnsRecordType::Aaaa)
             .expect("AAAA observation");
-        assert_eq!(aaaa6.records, vec![v6]);
+        assert_eq!(aaaa6.records, vec![rec_from_ip(v6)]);
         let a6 = obs6
             .iter()
             .find(|o| o.record_type == DnsRecordType::A)

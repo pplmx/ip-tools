@@ -43,15 +43,16 @@ pub fn render_dns(host: &str, observations: &[DnsObservation]) -> String {
     }
     for resolver in seen_resolvers {
         out.push_str(&format!("  {}\n", resolver_label(&resolver)));
-        for rt in [DnsRecordType::A, DnsRecordType::Aaaa] {
-            if let Some(obs) = observations
+        for rt in ALL_DNS_RECORD_TYPES {
+            let Some(obs) = observations
                 .iter()
                 .find(|o| o.resolver == resolver && o.record_type == rt)
-            {
-                out.push_str(&format!("    {:4}: ", rt_label(rt)));
-                out.push_str(&render_dns_one(obs));
-                out.push('\n');
-            }
+            else {
+                continue;
+            };
+            out.push_str(&format!("    {:4}: ", rt_label(rt)));
+            out.push_str(&render_dns_one(obs));
+            out.push('\n');
         }
     }
     out
@@ -85,8 +86,24 @@ const fn rt_label(rt: DnsRecordType) -> &'static str {
     match rt {
         DnsRecordType::A => "A",
         DnsRecordType::Aaaa => "AAAA",
+        DnsRecordType::Cname => "CNAME",
+        DnsRecordType::Mx => "MX",
+        DnsRecordType::Txt => "TXT",
+        DnsRecordType::Ns => "NS",
+        DnsRecordType::Soa => "SOA",
     }
 }
+
+/// Canonical order in which DNS record types are rendered.
+const ALL_DNS_RECORD_TYPES: [DnsRecordType; 7] = [
+    DnsRecordType::A,
+    DnsRecordType::Aaaa,
+    DnsRecordType::Cname,
+    DnsRecordType::Mx,
+    DnsRecordType::Txt,
+    DnsRecordType::Ns,
+    DnsRecordType::Soa,
+];
 
 /// Render TCP observations as human text.
 #[must_use]
@@ -442,8 +459,8 @@ pub fn render_diagnoses(diagnoses: &[Diagnosis]) -> String {
 mod tests {
     use super::*;
     use crate::model::{
-        Confidence, DiagnosticCategory, Evidence, FailureCount, FailureKind, LatencyStats, ProbeError, ResolverKind,
-        Severity,
+        Confidence, DiagnosticCategory, DnsRecord, DnsRecordType, Evidence, FailureCount, FailureKind, LatencyStats,
+        ProbeError, ResolverKind, Severity,
     };
 
     fn dns_obs(
@@ -457,7 +474,13 @@ mod tests {
             hostname: "example.com".into(),
             resolver,
             record_type: rt,
-            records: addrs.iter().map(|a| a.parse().unwrap()).collect(),
+            records: addrs
+                .iter()
+                .map(|a| match a.parse::<std::net::IpAddr>().unwrap() {
+                    std::net::IpAddr::V4(v) => DnsRecord::A(v),
+                    std::net::IpAddr::V6(v) => DnsRecord::Aaaa(v),
+                })
+                .collect(),
             latency_ms: ms,
             error: error.map(|m| ProbeError {
                 kind: FailureKind::Dns,
@@ -526,6 +549,37 @@ mod tests {
         let obs = [dns_obs(ResolverKind::System, DnsRecordType::A, &[], None, None)];
         assert!(render_dns("example.com", &obs).contains("no records"));
         assert!(render_dns("example.com", &[]).contains("DNS example.com"));
+    }
+
+    #[test]
+    fn render_dns_shows_non_address_record_types() {
+        let mx = DnsObservation {
+            hostname: "example.com".into(),
+            resolver: ResolverKind::System,
+            record_type: DnsRecordType::Mx,
+            records: vec![DnsRecord::Mx {
+                preference: 10,
+                exchange: "mail.example.com".into(),
+            }],
+            latency_ms: Some(4),
+            error: None,
+        };
+        let txt = DnsObservation {
+            hostname: "example.com".into(),
+            resolver: ResolverKind::System,
+            record_type: DnsRecordType::Txt,
+            records: vec![DnsRecord::Txt("v=spf1 include:spf.example ~all".into())],
+            latency_ms: Some(4),
+            error: None,
+        };
+        let out = render_dns("example.com", &[mx, txt]);
+        assert!(out.contains("MX"), "MX row missing: {out}");
+        assert!(out.contains("10 mail.example.com"), "MX record missing: {out}");
+        assert!(out.contains("TXT"), "TXT row missing: {out}");
+        assert!(
+            out.contains("\"v=spf1 include:spf.example ~all\""),
+            "TXT record missing: {out}"
+        );
     }
 
     #[test]

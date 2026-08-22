@@ -1,7 +1,7 @@
 //! DNS-resolution diagnostic rules.
 
 use super::DiagnosticInput;
-use crate::model::{Confidence, Diagnosis, DiagnosticCategory, DnsObservation, Evidence, Severity};
+use crate::model::{Confidence, Diagnosis, DiagnosticCategory, DnsObservation, DnsRecord, Evidence, Severity};
 use std::collections::{BTreeMap, BTreeSet};
 use std::net::IpAddr;
 
@@ -31,7 +31,7 @@ pub(super) fn dns_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosis>) -> bo
                 per_resolver
                     .entry(format!("{:?}", obs.resolver))
                     .or_default()
-                    .extend(obs.records.iter().copied());
+                    .extend(obs.records.iter().filter_map(DnsRecord::address));
             }
         }
     }

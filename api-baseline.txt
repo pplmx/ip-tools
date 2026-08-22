@@ -82,9 +82,30 @@ pub ip_tools::model::diagnosis::Diagnosis::summary: alloc::string::String
 pub struct ip_tools::model::diagnosis::Evidence
 pub ip_tools::model::diagnosis::Evidence::detail: alloc::string::String
 pub mod ip_tools::model::dns
+pub enum ip_tools::model::dns::DnsRecord
+pub ip_tools::model::dns::DnsRecord::A(core::net::ip_addr::Ipv4Addr)
+pub ip_tools::model::dns::DnsRecord::Aaaa(core::net::ip_addr::Ipv6Addr)
+pub ip_tools::model::dns::DnsRecord::Cname(alloc::string::String)
+pub ip_tools::model::dns::DnsRecord::Mx
+pub ip_tools::model::dns::DnsRecord::Mx::exchange: alloc::string::String
+pub ip_tools::model::dns::DnsRecord::Mx::preference: u16
+pub ip_tools::model::dns::DnsRecord::Ns(alloc::string::String)
+pub ip_tools::model::dns::DnsRecord::Soa(alloc::string::String)
+pub ip_tools::model::dns::DnsRecord::Txt(alloc::string::String)
+impl ip_tools::model::dns::DnsRecord
+pub const fn ip_tools::model::dns::DnsRecord::address(&self) -> core::option::Option<core::net::ip_addr::IpAddr>
+impl core::fmt::Display for ip_tools::model::dns::DnsRecord
+pub fn ip_tools::model::dns::DnsRecord::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl serde_core::ser::Serialize for ip_tools::model::dns::DnsRecord
+pub fn ip_tools::model::dns::DnsRecord::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
 pub enum ip_tools::model::dns::DnsRecordType
 pub ip_tools::model::dns::DnsRecordType::A
 pub ip_tools::model::dns::DnsRecordType::Aaaa
+pub ip_tools::model::dns::DnsRecordType::Cname
+pub ip_tools::model::dns::DnsRecordType::Mx
+pub ip_tools::model::dns::DnsRecordType::Ns
+pub ip_tools::model::dns::DnsRecordType::Soa
+pub ip_tools::model::dns::DnsRecordType::Txt
 impl core::fmt::Display for ip_tools::model::dns::DnsRecordType
 pub fn ip_tools::model::dns::DnsRecordType::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum ip_tools::model::dns::ResolverKind
@@ -97,7 +118,7 @@ pub ip_tools::model::dns::DnsObservation::error: core::option::Option<ip_tools::
 pub ip_tools::model::dns::DnsObservation::hostname: alloc::string::String
 pub ip_tools::model::dns::DnsObservation::latency_ms: core::option::Option<u64>
 pub ip_tools::model::dns::DnsObservation::record_type: ip_tools::model::dns::DnsRecordType
-pub ip_tools::model::dns::DnsObservation::records: alloc::vec::Vec<core::net::ip_addr::IpAddr>
+pub ip_tools::model::dns::DnsObservation::records: alloc::vec::Vec<ip_tools::model::dns::DnsRecord>
 pub ip_tools::model::dns::DnsObservation::resolver: ip_tools::model::dns::ResolverKind
 pub struct ip_tools::model::dns::DnsRepeatResult
 pub ip_tools::model::dns::DnsRepeatResult::attempts: usize
@@ -198,9 +219,30 @@ pub ip_tools::model::DiagnosticCategory::Tcp
 pub ip_tools::model::DiagnosticCategory::Tls
 pub ip_tools::model::DiagnosticCategory::TotalConnectivityLoss
 pub ip_tools::model::DiagnosticCategory::Unknown
+pub enum ip_tools::model::DnsRecord
+pub ip_tools::model::DnsRecord::A(core::net::ip_addr::Ipv4Addr)
+pub ip_tools::model::DnsRecord::Aaaa(core::net::ip_addr::Ipv6Addr)
+pub ip_tools::model::DnsRecord::Cname(alloc::string::String)
+pub ip_tools::model::DnsRecord::Mx
+pub ip_tools::model::DnsRecord::Mx::exchange: alloc::string::String
+pub ip_tools::model::DnsRecord::Mx::preference: u16
+pub ip_tools::model::DnsRecord::Ns(alloc::string::String)
+pub ip_tools::model::DnsRecord::Soa(alloc::string::String)
+pub ip_tools::model::DnsRecord::Txt(alloc::string::String)
+impl ip_tools::model::dns::DnsRecord
+pub const fn ip_tools::model::dns::DnsRecord::address(&self) -> core::option::Option<core::net::ip_addr::IpAddr>
+impl core::fmt::Display for ip_tools::model::dns::DnsRecord
+pub fn ip_tools::model::dns::DnsRecord::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl serde_core::ser::Serialize for ip_tools::model::dns::DnsRecord
+pub fn ip_tools::model::dns::DnsRecord::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
 pub enum ip_tools::model::DnsRecordType
 pub ip_tools::model::DnsRecordType::A
 pub ip_tools::model::DnsRecordType::Aaaa
+pub ip_tools::model::DnsRecordType::Cname
+pub ip_tools::model::DnsRecordType::Mx
+pub ip_tools::model::DnsRecordType::Ns
+pub ip_tools::model::DnsRecordType::Soa
+pub ip_tools::model::DnsRecordType::Txt
 impl core::fmt::Display for ip_tools::model::dns::DnsRecordType
 pub fn ip_tools::model::dns::DnsRecordType::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum ip_tools::model::FailureKind
@@ -249,7 +291,7 @@ pub ip_tools::model::DnsObservation::error: core::option::Option<ip_tools::model
 pub ip_tools::model::DnsObservation::hostname: alloc::string::String
 pub ip_tools::model::DnsObservation::latency_ms: core::option::Option<u64>
 pub ip_tools::model::DnsObservation::record_type: ip_tools::model::dns::DnsRecordType
-pub ip_tools::model::DnsObservation::records: alloc::vec::Vec<core::net::ip_addr::IpAddr>
+pub ip_tools::model::DnsObservation::records: alloc::vec::Vec<ip_tools::model::dns::DnsRecord>
 pub ip_tools::model::DnsObservation::resolver: ip_tools::model::dns::ResolverKind
 pub struct ip_tools::model::DnsRepeatResult
 pub ip_tools::model::DnsRepeatResult::attempts: usize
@@ -390,9 +432,30 @@ pub ip_tools::DiagnosticCategory::Tcp
 pub ip_tools::DiagnosticCategory::Tls
 pub ip_tools::DiagnosticCategory::TotalConnectivityLoss
 pub ip_tools::DiagnosticCategory::Unknown
+pub enum ip_tools::DnsRecord
+pub ip_tools::DnsRecord::A(core::net::ip_addr::Ipv4Addr)
+pub ip_tools::DnsRecord::Aaaa(core::net::ip_addr::Ipv6Addr)
+pub ip_tools::DnsRecord::Cname(alloc::string::String)
+pub ip_tools::DnsRecord::Mx
+pub ip_tools::DnsRecord::Mx::exchange: alloc::string::String
+pub ip_tools::DnsRecord::Mx::preference: u16
+pub ip_tools::DnsRecord::Ns(alloc::string::String)
+pub ip_tools::DnsRecord::Soa(alloc::string::String)
+pub ip_tools::DnsRecord::Txt(alloc::string::String)
+impl ip_tools::model::dns::DnsRecord
+pub const fn ip_tools::model::dns::DnsRecord::address(&self) -> core::option::Option<core::net::ip_addr::IpAddr>
+impl core::fmt::Display for ip_tools::model::dns::DnsRecord
+pub fn ip_tools::model::dns::DnsRecord::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl serde_core::ser::Serialize for ip_tools::model::dns::DnsRecord
+pub fn ip_tools::model::dns::DnsRecord::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
 pub enum ip_tools::DnsRecordType
 pub ip_tools::DnsRecordType::A
 pub ip_tools::DnsRecordType::Aaaa
+pub ip_tools::DnsRecordType::Cname
+pub ip_tools::DnsRecordType::Mx
+pub ip_tools::DnsRecordType::Ns
+pub ip_tools::DnsRecordType::Soa
+pub ip_tools::DnsRecordType::Txt
 impl core::fmt::Display for ip_tools::model::dns::DnsRecordType
 pub fn ip_tools::model::dns::DnsRecordType::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum ip_tools::FailureKind
@@ -451,7 +514,7 @@ pub ip_tools::DnsObservation::error: core::option::Option<ip_tools::model::Probe
 pub ip_tools::DnsObservation::hostname: alloc::string::String
 pub ip_tools::DnsObservation::latency_ms: core::option::Option<u64>
 pub ip_tools::DnsObservation::record_type: ip_tools::model::dns::DnsRecordType
-pub ip_tools::DnsObservation::records: alloc::vec::Vec<core::net::ip_addr::IpAddr>
+pub ip_tools::DnsObservation::records: alloc::vec::Vec<ip_tools::model::dns::DnsRecord>
 pub ip_tools::DnsObservation::resolver: ip_tools::model::dns::ResolverKind
 pub struct ip_tools::Evidence
 pub ip_tools::Evidence::detail: alloc::string::String

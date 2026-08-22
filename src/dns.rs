@@ -6,10 +6,10 @@
 //! *reported*, never automatically classified as poisoning — the diagnostic
 //! engine decides and considers GeoDNS/CDN/ECS/etc. as alternatives.
 
-use crate::model::{DnsObservation, DnsRecordType, DnsRepeatResult, FailureKind, ProbeError, ResolverKind};
+use crate::model::{DnsObservation, DnsRecord, DnsRecordType, DnsRepeatResult, FailureKind, ProbeError, ResolverKind};
 use hickory_resolver::config::{ConnectionConfig, NameServerConfig, ProtocolConfig, ResolverConfig, ResolverOpts};
 use hickory_resolver::net::runtime::TokioRuntimeProvider;
-use hickory_resolver::proto::rr::RData;
+use hickory_resolver::proto::rr::{RData, RecordType};
 use hickory_resolver::TokioResolver;
 use http_body_util::{BodyExt, Empty, Limited};
 use hyper_util::rt::TokioIo;
@@ -208,7 +208,7 @@ async fn query(
     record_type: DnsRecordType,
 ) -> DnsObservation {
     let start = Instant::now();
-    let outcome = tokio::time::timeout(timeout, resolver_ip_lookup(&resolver, &host, record_type)).await;
+    let outcome = tokio::time::timeout(timeout, resolver_lookup(&resolver, &host, record_type)).await;
 
     let (latency_ms, records, error) = match outcome {
         Ok(Ok(records)) => (Some(start.elapsed().as_millis() as u64), records, None),
@@ -240,26 +240,57 @@ async fn query(
     }
 }
 
-/// Perform the record-type-specific hickory IP lookup, yielding the resolved
-/// addresses (independent of record type).
-async fn resolver_ip_lookup(
+/// Perform the record-type-specific hickory lookup, yielding the requested
+/// record type's entries (addresses for A/AAAA, names/strings for the rest).
+async fn resolver_lookup(
     resolver: &TokioResolver,
     host: &str,
     record_type: DnsRecordType,
-) -> Result<Vec<IpAddr>, hickory_resolver::net::NetError> {
-    let lookup = match record_type {
-        DnsRecordType::A => resolver.ipv4_lookup(host).await?,
-        DnsRecordType::Aaaa => resolver.ipv6_lookup(host).await?,
+) -> Result<Vec<DnsRecord>, hickory_resolver::net::NetError> {
+    let rt = match record_type {
+        DnsRecordType::A => RecordType::A,
+        DnsRecordType::Aaaa => RecordType::AAAA,
+        DnsRecordType::Cname => RecordType::CNAME,
+        DnsRecordType::Mx => RecordType::MX,
+        DnsRecordType::Txt => RecordType::TXT,
+        DnsRecordType::Ns => RecordType::NS,
+        DnsRecordType::Soa => RecordType::SOA,
     };
+    let lookup = resolver.lookup(host, rt).await?;
     Ok(lookup
         .answers()
         .iter()
-        .filter_map(|rec| match rec.data {
-            RData::A(ip) => Some(IpAddr::from(*ip)),
-            RData::AAAA(ip) => Some(IpAddr::from(*ip)),
-            _ => None,
-        })
+        .filter_map(|rec| record_from_rdata(record_type, &rec.data))
         .collect())
+}
+
+/// Convert a raw hickory `RData` answer into the requested record type's
+/// [`DnsRecord`]; entries of other types (e.g. an A answer in a CNAME-chain
+/// lookup) are ignored to keep each observation type-consistent.
+fn record_from_rdata(record_type: DnsRecordType, rdata: &RData) -> Option<DnsRecord> {
+    match (record_type, rdata) {
+        (DnsRecordType::A, RData::A(ip)) => Some(DnsRecord::A(**ip)),
+        (DnsRecordType::Aaaa, RData::AAAA(ip)) => Some(DnsRecord::Aaaa(**ip)),
+        (DnsRecordType::Cname, RData::CNAME(name)) => Some(DnsRecord::Cname(name.to_string())),
+        (DnsRecordType::Mx, RData::MX(mx)) => Some(DnsRecord::Mx {
+            preference: mx.preference,
+            exchange: mx.exchange.to_string(),
+        }),
+        (DnsRecordType::Txt, RData::TXT(txt)) => {
+            let joined = txt
+                .txt_data
+                .iter()
+                .map(|b| String::from_utf8_lossy(b).into_owned())
+                .collect::<String>();
+            Some(DnsRecord::Txt(joined))
+        }
+        (DnsRecordType::Ns, RData::NS(name)) => Some(DnsRecord::Ns(name.to_string())),
+        (DnsRecordType::Soa, RData::SOA(soa)) => Some(DnsRecord::Soa(format!(
+            "{} {} serial {} refresh {} retry {} expire {} minimum {}",
+            soa.mname, soa.rname, soa.serial, soa.refresh, soa.retry, soa.expire, soa.minimum
+        ))),
+        _ => None,
+    }
 }
 
 // --- DNS-over-HTTPS (RFC 8484) ------------------------------------------------
@@ -775,6 +806,11 @@ fn build_query(host: &str, record_type: DnsRecordType) -> Result<Vec<u8>, String
     let qtype: u16 = match record_type {
         DnsRecordType::A => 1,
         DnsRecordType::Aaaa => 28,
+        DnsRecordType::Cname => 5,
+        DnsRecordType::Mx => 15,
+        DnsRecordType::Txt => 16,
+        DnsRecordType::Ns => 2,
+        DnsRecordType::Soa => 6,
     };
     out.extend_from_slice(&qtype.to_be_bytes());
     out.extend_from_slice(&1u16.to_be_bytes()); // CLASS IN
@@ -788,8 +824,8 @@ struct ParsedDnsResponse {
     /// `0` means `NOERROR`; 1-5 are `FORMERR`..`REFUSED`; anything else is an
     /// extension code.
     rcode: u8,
-    /// Addresses of the wanted record type found in the answers.
-    records: Vec<IpAddr>,
+    /// Records of the wanted record type found in the answers.
+    records: Vec<DnsRecord>,
 }
 
 /// Parse a DNS response message (RFC 1035 §4.1.3, with name compression
@@ -807,7 +843,7 @@ fn parse_dns_response(bytes: &[u8], want: DnsRecordType) -> Result<ParsedDnsResp
         pos = skip_name(bytes, pos)?; // question name
         pos += 4; // qtype + qclass
     }
-    let mut addrs = Vec::new();
+    let mut recs = Vec::new();
     for _ in 0..ancount {
         pos = skip_name(bytes, pos)?; // answer name (possibly a pointer)
         if pos + 10 > bytes.len() {
@@ -817,25 +853,124 @@ fn parse_dns_response(bytes: &[u8], want: DnsRecordType) -> Result<ParsedDnsResp
         // skip class (2) + ttl (4)
         let rdlen = u16::from_be_bytes([bytes[pos + 8], bytes[pos + 9]]) as usize;
         pos += 10;
+        let rdata_start = pos;
         let end = pos + rdlen;
         if end > bytes.len() {
             return Err("truncated rdata".to_string());
         }
         let rdata = &bytes[pos..end];
         pos = end;
-        match (rtype, want) {
-            (1, DnsRecordType::A) if rdlen == 4 => {
-                addrs.push(IpAddr::V4(Ipv4Addr::new(rdata[0], rdata[1], rdata[2], rdata[3])));
+        let rec = match rtype {
+            1 if want == DnsRecordType::A && rdlen == 4 => {
+                Some(DnsRecord::A(Ipv4Addr::new(rdata[0], rdata[1], rdata[2], rdata[3])))
             }
-            (28, DnsRecordType::Aaaa) if rdlen == 16 => {
-                addrs.push(IpAddr::V6(Ipv6Addr::from(
-                    <[u8; 16]>::try_from(rdata).expect("rdlen checked above"),
-                )));
+            28 if want == DnsRecordType::Aaaa && rdlen == 16 => Some(DnsRecord::Aaaa(Ipv6Addr::from(
+                <[u8; 16]>::try_from(rdata).expect("rdlen checked above"),
+            ))),
+            5 if want == DnsRecordType::Cname => Some(DnsRecord::Cname(read_name(bytes, rdata_start)?.0)),
+            2 if want == DnsRecordType::Ns => Some(DnsRecord::Ns(read_name(bytes, rdata_start)?.0)),
+            15 if want == DnsRecordType::Mx && rdlen >= 3 => {
+                let preference = u16::from_be_bytes([rdata[0], rdata[1]]);
+                let (exchange, _) = read_name(bytes, rdata_start + 2)?;
+                Some(DnsRecord::Mx { preference, exchange })
             }
-            _ => {} // other record types are ignored
+            16 if want == DnsRecordType::Txt => Some(DnsRecord::Txt(read_txt(rdata)?)),
+            6 if want == DnsRecordType::Soa => {
+                let (mname, p1) = read_name(bytes, rdata_start)?;
+                let (rname, p2) = read_name(bytes, p1)?;
+                if p2 + 20 > bytes.len() {
+                    return Err("truncated soa rdata".to_string());
+                }
+                let field = |i: usize| {
+                    u32::from_be_bytes(bytes[p2 + i * 4..p2 + i * 4 + 4].try_into().expect("bounds checked"))
+                };
+                Some(DnsRecord::Soa(format!(
+                    "{mname} {rname} serial {} refresh {} retry {} expire {} minimum {}",
+                    field(0),
+                    field(1),
+                    field(2),
+                    field(3),
+                    field(4)
+                )))
+            }
+            _ => None, // other record types / mismatched queries are ignored
+        };
+        if let Some(rec) = rec {
+            recs.push(rec);
         }
     }
-    Ok(ParsedDnsResponse { rcode, records: addrs })
+    Ok(ParsedDnsResponse { rcode, records: recs })
+}
+
+/// Decode a TXT rdata blob: a sequence of length-prefixed character-strings
+/// (RFC 1035 §3.3.14), joined.
+fn read_txt(rdata: &[u8]) -> Result<String, String> {
+    let mut out = String::new();
+    let mut off = 0;
+    while off < rdata.len() {
+        let len = usize::from(rdata[off]);
+        off += 1;
+        if off + len > rdata.len() {
+            return Err("truncated txt rdata".to_string());
+        }
+        out.push_str(&String::from_utf8_lossy(&rdata[off..off + len]));
+        off += len;
+    }
+    Ok(out)
+}
+
+/// Decode a domain name at `start` (RFC 1035 §4.1.4: plain labels with an
+/// optional trailing compression pointer), returning the dotted name and the
+/// position just past the name in the wire stream (after the pointer, not the
+/// pointed-to location).
+fn read_name(bytes: &[u8], start: usize) -> Result<(String, usize), String> {
+    let mut labels: Vec<String> = Vec::new();
+    let mut pos = start;
+    let mut end = None;
+    let mut hops = 0;
+    loop {
+        if hops > 8 {
+            return Err("too many compression-pointer hops".to_string());
+        }
+        let b = *bytes
+            .get(pos)
+            .ok_or_else(|| format!("name overruns message at {pos}"))?;
+        if b == 0 {
+            if end.is_none() {
+                end = Some(pos + 1);
+            }
+            break;
+        }
+        if b & 0xC0 == 0xC0 {
+            let target = (u16::from(b & 0x3F) << 8) | u16::from(*bytes.get(pos + 1).ok_or("truncated pointer")?);
+            let target = usize::from(target);
+            if target >= bytes.len() {
+                return Err("compression pointer out of range".to_string());
+            }
+            if end.is_none() {
+                end = Some(pos + 2);
+            }
+            pos = target;
+            hops += 1;
+            continue;
+        }
+        let len = usize::from(b);
+        if len == 0 || len > 63 {
+            return Err("bad label length".to_string());
+        }
+        let label_end = pos + 1 + len;
+        if label_end > bytes.len() {
+            return Err("name overruns message".to_string());
+        }
+        labels.push(String::from_utf8_lossy(&bytes[pos + 1..label_end]).into_owned());
+        pos = label_end;
+    }
+    let name = if labels.is_empty() {
+        ".".to_string()
+    } else {
+        labels.join(".")
+    };
+    Ok((name, end.unwrap_or(pos)))
 }
 
 /// Return the byte position just past the name at `start`. Handles plain
@@ -928,6 +1063,14 @@ mod tests {
     use super::*;
     use std::net::UdpSocket;
     use std::sync::Arc;
+
+    /// Wrap an IP string as an address record (A/AAAA).
+    fn addr_rec(ip: &str) -> DnsRecord {
+        match ip.parse::<IpAddr>().unwrap() {
+            IpAddr::V4(v) => DnsRecord::A(v),
+            IpAddr::V6(v) => DnsRecord::Aaaa(v),
+        }
+    }
 
     /// A minimal in-process DNS server that answers A / AAAA queries from the
     /// given address sets. Deterministic: no external network involved.
@@ -1028,7 +1171,7 @@ mod tests {
             .find(|o| o.resolver == ResolverKind::Custom(fake.addr()))
             .expect("custom resolver observation");
         assert!(o.error.is_none(), "unexpected error: {:?}", o.error);
-        let expected: Vec<IpAddr> = vec!["192.0.2.1".parse().unwrap(), "192.0.2.2".parse().unwrap()];
+        let expected: Vec<DnsRecord> = vec![addr_rec("192.0.2.1"), addr_rec("192.0.2.2")];
         assert_eq!(o.records, expected);
         assert!(o.latency_ms.is_some());
         assert_eq!(o.record_type, DnsRecordType::A);
@@ -1044,7 +1187,7 @@ mod tests {
             .find(|o| o.resolver == ResolverKind::Custom(fake.addr()))
             .expect("custom resolver observation");
         assert!(o.error.is_none(), "unexpected error: {:?}", o.error);
-        assert_eq!(o.records, vec!["2001:db8::1".parse::<IpAddr>().unwrap()]);
+        assert_eq!(o.records, vec![addr_rec("2001:db8::1")]);
         assert_eq!(o.record_type, DnsRecordType::Aaaa);
     }
 
@@ -1082,7 +1225,7 @@ mod tests {
                 hostname: "host.example".into(),
                 resolver: ResolverKind::Custom(addr),
                 record_type: DnsRecordType::A,
-                records: vec!["192.0.2.1".parse().unwrap()],
+                records: vec![addr_rec("192.0.2.1")],
                 latency_ms: Some(3),
                 error: None,
             },
@@ -1214,10 +1357,10 @@ mod tests {
 
         let a = parse_dns_response(&bytes, DnsRecordType::A).unwrap();
         assert_eq!(a.rcode, 0, "NOERROR expected");
-        assert_eq!(a.records, vec!["192.0.2.77".parse::<IpAddr>().unwrap()]);
+        assert_eq!(a.records, vec![addr_rec("192.0.2.77")]);
         let aaaa = parse_dns_response(&bytes, DnsRecordType::Aaaa).unwrap();
         assert_eq!(aaaa.rcode, 0);
-        assert_eq!(aaaa.records, vec!["2001:db8::77".parse::<IpAddr>().unwrap()]);
+        assert_eq!(aaaa.records, vec![addr_rec("2001:db8::77")]);
 
         // A response code (e.g. NXDOMAIN=3) is surfaced, not read as success.
         let mut nxdomain = bytes.clone();
@@ -1244,6 +1387,100 @@ mod tests {
         assert_eq!(rcode_name(3), "NXDomain");
         assert_eq!(rcode_name(5), "Refused");
         assert_eq!(rcode_name(77), "UnknownError");
+    }
+
+    /// Build a one-question DNS message for `host.example` with the given
+    /// answer (rtype, rdata) pairs.
+    fn response_with(answers: &[(u16, Vec<u8>)]) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        let ancount = answers.len() as u16;
+        bytes.extend_from_slice(&[
+            0x12,
+            0x34,
+            0x81,
+            0x80,
+            0,
+            1,
+            (ancount >> 8) as u8,
+            (ancount as u8),
+            0,
+            0,
+            0,
+            0,
+        ]);
+        bytes.extend_from_slice(&[
+            4, b'h', b'o', b's', b't', 7, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 0,
+        ]);
+        bytes.extend_from_slice(&[0, 1, 0, 1]); // qtype A, qclass IN
+        for (rtype, rdata) in answers {
+            bytes.extend_from_slice(&[0xC0, 0x0C]); // owner name ptr -> question
+            bytes.extend_from_slice(&rtype.to_be_bytes());
+            bytes.extend_from_slice(&[0, 1]); // class IN
+            bytes.extend_from_slice(&60u32.to_be_bytes()); // TTL
+            bytes.extend_from_slice(&(rdata.len() as u16).to_be_bytes());
+            bytes.extend_from_slice(rdata);
+        }
+        bytes
+    }
+
+    #[test]
+    fn parse_dns_response_decodes_wider_record_types() {
+        let name_ptr = vec![0xC0, 0x0C]; // compression pointer to "host.example"
+
+        // CNAME and NS carry a single (possibly compressed) name.
+        let parsed = parse_dns_response(&response_with(&[(5, name_ptr.clone())]), DnsRecordType::Cname).unwrap();
+        assert_eq!(parsed.records, vec![DnsRecord::Cname("host.example".into())]);
+        let parsed = parse_dns_response(&response_with(&[(2, name_ptr)]), DnsRecordType::Ns).unwrap();
+        assert_eq!(parsed.records, vec![DnsRecord::Ns("host.example".into())]);
+
+        // MX is a 2-byte preference followed by a name.
+        let mx = vec![0, 10, 0xC0, 0x0C];
+        let parsed = parse_dns_response(&response_with(&[(15, mx)]), DnsRecordType::Mx).unwrap();
+        assert_eq!(
+            parsed.records,
+            vec![DnsRecord::Mx {
+                preference: 10,
+                exchange: "host.example".into()
+            }]
+        );
+
+        // TXT is a sequence of length-prefixed character-strings.
+        let txt = vec![6, b'v', b'=', b's', b'p', b'f', b'1'];
+        let parsed = parse_dns_response(&response_with(&[(16, txt)]), DnsRecordType::Txt).unwrap();
+        assert_eq!(parsed.records, vec![DnsRecord::Txt("v=spf1".into())]);
+
+        // SOA is two names plus five 32-bit fields.
+        let mut soa = vec![0xC0, 0x0C, 0xC0, 0x0C];
+        soa.extend_from_slice(&2u32.to_be_bytes());
+        soa.extend_from_slice(&3u32.to_be_bytes());
+        soa.extend_from_slice(&4u32.to_be_bytes());
+        soa.extend_from_slice(&5u32.to_be_bytes());
+        soa.extend_from_slice(&6u32.to_be_bytes());
+        let parsed = parse_dns_response(&response_with(&[(6, soa)]), DnsRecordType::Soa).unwrap();
+        assert_eq!(
+            parsed.records,
+            vec![DnsRecord::Soa(
+                "host.example host.example serial 2 refresh 3 retry 4 expire 5 minimum 6".into()
+            )]
+        );
+    }
+
+    #[test]
+    fn record_from_rdata_maps_txt_and_addresses_and_filters_mismatches() {
+        use hickory_resolver::proto::rr::rdata::{A, TXT};
+        let a = RData::A(A(Ipv4Addr::new(192, 0, 2, 1)));
+        assert_eq!(
+            record_from_rdata(DnsRecordType::A, &a),
+            Some(DnsRecord::A(Ipv4Addr::new(192, 0, 2, 1)))
+        );
+        // A non-address type is decoded from a TXT answer.
+        let txt = RData::TXT(TXT::new(vec!["v=spf1".to_string()]));
+        assert_eq!(
+            record_from_rdata(DnsRecordType::Txt, &txt),
+            Some(DnsRecord::Txt("v=spf1".into()))
+        );
+        // A type mismatch (asking for MX but getting TXT) is ignored.
+        assert_eq!(record_from_rdata(DnsRecordType::Mx, &txt), None);
     }
 
     #[test]

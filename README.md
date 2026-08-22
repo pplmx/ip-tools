@@ -69,6 +69,8 @@ Resolve a hostname via the system resolver and any custom servers:
 ip-tools dns example.com
 ip-tools dns example.com --server 1.1.1.1 --server 8.8.8.8
 ip-tools dns example.com --ipv6        # AAAA only
+ip-tools dns example.com --record-type MX    # mail exchange records
+ip-tools dns example.com --record-type TXT   # SPF / DKIM text
 ip-tools dns example.com --json        # raw observations as JSON
 ip-tools dns example.com --count 30    # repeated resolution, latency stats
 ip-tools dns example.com example.org another.net   # DNS health sweep (multi-target)
@@ -81,6 +83,12 @@ per-target array; `--strict` fails if any resolver on any target failed.
 failures` row per (resolver, record type) — single-shot rows are attempts=1,
 and `--count` repeat rows use the aggregated latency stats — so a DNS sweep
 loads into a spreadsheet.
+
+By default `dns` queries `A` and `AAAA`. `--record-type TYPE` queries a single
+specific type — `A`, `AAAA`, `CNAME`, `MX`, `TXT`, `NS` or `SOA` — so you can
+inspect mail routing (`MX`), `SPF`/`DKIM` (`TXT`), aliasing (`CNAME`), or
+authority (`NS`/`SOA`) the same way you check addresses. `--ipv6` is the
+shorthand for `--record-type AAAA`; the two conflict.
 
 An IP-literal target is shorthand for "this is already an address": `dns
 1.1.1.1` reports the literal as its own `A` record (and a clean NODATA-style

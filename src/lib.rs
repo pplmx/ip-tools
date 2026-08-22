@@ -60,7 +60,7 @@ pub mod tls;
 
 pub use diagnostics::{diagnose, DiagnosticInput};
 pub use model::{
-    CertificateSummary, Confidence, Diagnosis, DiagnosticCategory, DnsObservation, DnsRecordType, Evidence,
+    CertificateSummary, Confidence, Diagnosis, DiagnosticCategory, DnsObservation, DnsRecord, DnsRecordType, Evidence,
     FailureKind, HttpObservation, IpVersion, LatencyStats, ProbeError, ProbeResult, ResolverKind, Severity,
     TcpObservation, TlsObservation,
 };
