@@ -167,7 +167,14 @@ Probe TCP connectivity to a host, across every address it resolves to:
 ip-tools tcp example.com
 ip-tools tcp example.com:443
 ip-tools tcp 127.0.0.1:8080 --timeout 2000 --concurrency 16
+ip-tools tcp a.example b.example c.example   # fleet connectivity sweep (multi-target)
 ```
+
+Every per-address probe subcommand — `tcp`, `tls`, `http`, `http2`, `http3`
+and `probe` — accepts **multiple targets** (a fleet/connectivity sweep): each
+is resolved and probed in turn. Human output labels each host block; `--json`
+emits a per-target array for more than one host; `--strict` aggregates failed
+probes across all targets.
 
 Example output:
 

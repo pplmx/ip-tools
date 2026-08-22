@@ -736,6 +736,63 @@ fn dns_cli_multiple_targets_render_each_and_emit_json_array() {
 }
 
 #[test]
+fn tcp_cli_multiple_targets_produce_per_target_array() {
+    // The per-address probe commands (`tcp`, etc.) accept multiple targets
+    // too: each is resolved and probed, human output labels each host block,
+    // and `--json` emits a per-target array.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let addr1 = fixture.tcp_addr().to_string();
+    let addr2 = "127.0.0.2:443".to_string();
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args(["tcp", &addr1, &addr2, "--timeout", "1000"])
+        .output()
+        .expect("run tcp with two targets");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "multi-target tcp should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.contains("127.0.0.1:") && stdout.contains("127.0.0.2:"),
+        "each target block must be labeled: {stdout}"
+    );
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args(["tcp", &addr1, &addr2, "--json", "--timeout", "1000"])
+        .output()
+        .expect("run multi-target tcp --json");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "multi-target tcp --json should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("tcp --json must parse");
+    let reports = parsed.as_array().expect(">1 target must yield a JSON array");
+    assert_eq!(reports.len(), 2, "expected 2 reports: {stdout}");
+    let targets: Vec<&str> = reports
+        .iter()
+        .filter_map(|r| r.get("target").and_then(serde_json::Value::as_str))
+        .collect();
+    assert!(
+        targets.contains(&"127.0.0.1"),
+        "report for 127.0.0.1 missing: {targets:?}"
+    );
+    assert!(
+        targets.contains(&"127.0.0.2"),
+        "report for 127.0.0.2 missing: {targets:?}"
+    );
+}
+
+#[test]
 fn diagnose_cli_includes_doh_resolver_evidence() {
     // `diagnose --doh` must fold the DoH answers into the DNS observations
     // (visible in the evidence stack) and probe the DoH-resolved address.

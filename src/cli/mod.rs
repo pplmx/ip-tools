@@ -201,13 +201,9 @@ fn dot_arg() -> Arg {
 /// `--timeout`/`--concurrency` flags, and subcommand-specific flags (e.g.
 /// `--method`, `--insecure`) inserted after the target.
 fn probe_command(name: &'static str, about: &'static str, extras: &[Arg]) -> Command {
-    // `diagnose` accepts many targets (a fleet/health sweep) while the raw
-    // probe subcommands take a single host.
-    let positional = if name == "diagnose" {
-        positional_target("host[:port] to probe (default port 443)").num_args(1..)
-    } else {
-        positional_target("host[:port] to probe (default port 443)")
-    };
+    // Every per-address probe subcommand accepts many targets (a fleet/health
+    // sweep): `run_probe_flow` resolves and probes each in turn.
+    let positional = positional_target("host[:port] to probe (repeatable for a sweep)").num_args(1..);
     let mut cmd = Command::new(name).about(about).arg(positional);
     for extra in extras {
         cmd = cmd.arg(extra.clone());
@@ -404,7 +400,7 @@ pub async fn run_probe_flow<O, Fut>(
     render: fn(&[O]) -> String,
     sort_key: fn(&O) -> SocketAddr,
     failed: fn(&O) -> bool,
-    probe: impl Fn(String, SocketAddr, Duration) -> Fut + Send + Sync + 'static,
+    probe: impl Fn(String, SocketAddr, Duration) -> Fut + Send + Sync + Clone + 'static,
 ) -> ExitCode
 where
     O: Sized + serde::Serialize + Send + 'static,
@@ -412,18 +408,9 @@ where
 {
     let json = sub_m.get_flag("json");
     let strict = sub_m.get_flag("strict");
-    let target_str = sub_m.get_one::<String>("target").expect("required target");
     let timeout_ms = *sub_m.get_one::<u64>("timeout").expect("timeout has default");
     let concurrency = *sub_m.get_one::<usize>("concurrency").expect("concurrency has default");
     let timeout = Duration::from_millis(timeout_ms);
-
-    let target = match Target::parse(target_str, DEFAULT_PORT) {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("Error: {e}");
-            return ExitCode::FAILURE;
-        }
-    };
 
     let servers = match parse_custom_servers(sub_m) {
         Ok(v) => v,
@@ -433,51 +420,94 @@ where
         }
     };
 
-    let addresses = match resolve_for_tcp_servers(&target.host, &servers, timeout).await {
-        Ok(addrs) => addrs,
-        Err(err) => {
-            eprintln!("Error: {err}");
-            return ExitCode::FAILURE;
-        }
-    };
-
-    let destinations: Vec<SocketAddr> = addresses
-        .into_iter()
-        .map(|ip| SocketAddr::new(ip, target.port))
-        .collect();
-
     // A `--sni` override presents a chosen hostname as SNI (and HTTP `Host`)
-    // instead of the target host, while the probe still connects to the
-    // target's resolved addresses — so an IP literal can be probed "as if it
-    // were" a hostname whose certificate then validates. `tcp` (no SNI) does
-    // not define the flag, so `try_get_one` (rather than `get_one`) keeps the
-    // shared flow working for every probe subcommand.
-    let host = sub_m
-        .try_get_one::<String>("sni")
-        .ok()
-        .flatten()
-        .cloned()
-        .unwrap_or_else(|| target.host.clone());
-    let mut results: Vec<O> = parallel_map(destinations, concurrency, move |dest| {
-        let host = host.clone();
-        probe(host, dest, timeout)
-    })
-    .await;
-    results.sort_by_key(sort_key);
+    // instead of each target's host, applied to every target in a sweep.
+    let sni = sub_m.try_get_one::<String>("sni").ok().flatten().cloned();
 
-    if json {
-        println!("{}", to_json(&results));
-    } else {
-        print!("{}", render(&results));
+    let raw_targets: Vec<String> = sub_m
+        .get_many::<String>("target")
+        .map(|vals| vals.cloned().collect())
+        .unwrap_or_default();
+    let mut targets = Vec::with_capacity(raw_targets.len());
+    for raw in &raw_targets {
+        match Target::parse(raw, DEFAULT_PORT) {
+            Ok(t) => targets.push(t),
+            Err(e) => {
+                eprintln!("Error: {e}");
+                return ExitCode::FAILURE;
+            }
+        }
+    }
+    let single = targets.len() == 1;
+
+    // Probe each target in turn, collecting per-target results.
+    let mut per_target: Vec<(String, Vec<O>)> = Vec::with_capacity(targets.len());
+    let mut unresolved = 0usize;
+    for target in targets {
+        let addresses = match resolve_for_tcp_servers(&target.host, &servers, timeout).await {
+            Ok(addrs) => addrs,
+            Err(err) => {
+                eprintln!("Error: {err}");
+                unresolved += 1;
+                continue;
+            }
+        };
+        let destinations: Vec<SocketAddr> = addresses
+            .into_iter()
+            .map(|ip| SocketAddr::new(ip, target.port))
+            .collect();
+        let host = sni.clone().unwrap_or_else(|| target.host.clone());
+        let probe = probe.clone();
+        let mut results: Vec<O> = parallel_map(destinations, concurrency, move |dest| {
+            let host = host.clone();
+            let probe = probe.clone();
+            async move { probe(host, dest, timeout).await }
+        })
+        .await;
+        results.sort_by_key(sort_key);
+        per_target.push((target.host.clone(), results));
     }
 
+    if json {
+        if single {
+            if let Some((_, results)) = per_target.first() {
+                println!("{}", to_json(results));
+            }
+        } else {
+            let items: Vec<serde_json::Value> = per_target
+                .iter()
+                .map(|(host, results)| serde_json::json!({ "target": host, "results": results }))
+                .collect();
+            println!("{}", to_json(&items));
+        }
+    } else {
+        let mut text = String::new();
+        for (host, results) in &per_target {
+            // In a sweep, label each target block so per-host results are
+            // unambiguous (the observations themselves only name destinations).
+            if !single {
+                use std::fmt::Write as _;
+                let _ = writeln!(text, "{host}:");
+            }
+            text.push_str(&render(results));
+        }
+        print!("{text}");
+    }
+
+    if unresolved > 0 {
+        eprintln!("Error: {unresolved} target(s) did not resolve to any address");
+        return ExitCode::FAILURE;
+    }
     // `--strict`: a failed probe is an observation, not an error, but for
     // scripting/CI a caller often wants a non-zero exit when any address
     // could not be reached. Output above is still rendered in full either way.
     if strict {
-        let failed_count = results.iter().filter(|o| failed(o)).count();
+        let failed_count: usize = per_target
+            .iter()
+            .flat_map(|(_, results)| results.iter().filter(|o| failed(o)))
+            .count();
         if failed_count > 0 {
-            eprintln!("Error: {failed_count}/{} probes failed to complete", results.len());
+            eprintln!("Error: {failed_count} probe(s) failed to complete (--strict)");
             return ExitCode::FAILURE;
         }
     }
