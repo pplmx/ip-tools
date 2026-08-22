@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-22T15:23:49+00:00",
+  "updated_at": "2026-08-22T15:44:54+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -1217,10 +1217,10 @@
     "TASK-021": {
       "id": "TASK-021",
       "type": "task",
-      "status": "active",
-      "version": 2,
+      "status": "resolved",
+      "version": 3,
       "created_at": "2026-08-22T15:18:00+00:00",
-      "updated_at": "2026-08-22T15:18:17+00:00",
+      "updated_at": "2026-08-22T15:44:54+00:00",
       "touched_round": 0,
       "category": "core-feature",
       "severity": 0.6,
@@ -1232,10 +1232,10 @@
     "ISS-014": {
       "id": "ISS-014",
       "type": "issue",
-      "status": "active",
-      "version": 1,
+      "status": "resolved",
+      "version": 2,
       "created_at": "2026-08-22T15:18:17+00:00",
-      "updated_at": "2026-08-22T15:18:17+00:00",
+      "updated_at": "2026-08-22T15:44:54+00:00",
       "touched_round": 0,
       "severity": "low",
       "summary": "dns only queries A/AAAA; mail routing (MX), SPF/DKIM (TXT), aliasing (CNAME), and authority (NS/SOA) are not inspectable, so a DNS diagnostics tool cannot answer \"where does mail go?\" or \"does this SPF record exist?\"."
@@ -1250,6 +1250,17 @@
       "touched_round": 0,
       "commit": "39b25034607f58f293c8c1885eb65e9591e00776",
       "summary": "--ipv4/--ipv6 (mutually exclusive) on tcp/tls/http/http2/http3/probe filter each targets resolved destinations by family in run_probe_flow (default probes all). diagnose deliberately excluded so its family-asymmetry diagnosis sees both families. No public API change. 1 CLI test (ipv4 reaches v4 loopback, ipv6 filters it out, both is a parse error). 189 tests green, clippy/fmt/doc clean."
+    },
+    "CHG-015": {
+      "id": "CHG-015",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T15:44:54+00:00",
+      "updated_at": "2026-08-22T15:44:54+00:00",
+      "touched_round": 0,
+      "commit": "288f1df767b2a6e1da66bc5f9d037e1f53def026",
+      "summary": "dns --record-type TYPE queries CNAME/MX/TXT/NS/SOA in addition to A/AAAA (default A+AAAA, --ipv6 stays AAAA shorthand; conflict). DnsObservation.records became a typed Vec<DnsRecord> serializing as plain strings; DnsRecordType gains CNAME/MX/TXT/NS/SOA. hickory lookups decode the new types; DoH/DoT wire parser decodes names/compression-pointers, MX pref+name, TXT strings, SOA fields. diagnostics/report/cli updated; api-baseline regenerated (public API change). Pinned: wire-parser unit tests (CNAME/NS/MX/TXT/SOA), record_from_rdata test, MX/TXT render test, CLI test. 193 tests green, clippy/fmt/doc clean."
     }
   },
   "edges": [
@@ -2038,6 +2049,18 @@
       "to": "TASK-020",
       "type": "implements",
       "created_at": "2026-08-22T15:21:50+00:00"
+    },
+    {
+      "from": "CHG-015",
+      "to": "TASK-021",
+      "type": "implements",
+      "created_at": "2026-08-22T15:44:54+00:00"
+    },
+    {
+      "from": "CHG-015",
+      "to": "ISS-014",
+      "type": "resolves",
+      "created_at": "2026-08-22T15:44:54+00:00"
     }
   ]
 }
