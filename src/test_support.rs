@@ -47,7 +47,7 @@ impl FixtureServer {
         // provider, so install it explicitly (idempotent).
         let _ = rustls::crypto::ring::default_provider().install_default();
 
-        let CertifiedKey { cert, key_pair } =
+        let CertifiedKey { cert, signing_key } =
             rcgen::generate_simple_self_signed(vec!["localhost".to_string(), "127.0.0.1".to_string()])
                 .expect("generate self-signed cert");
 
@@ -55,7 +55,7 @@ impl FixtureServer {
         roots.add(cert.der().clone()).expect("add self-signed cert to roots");
 
         let key_der = rustls_pki_types::PrivateKeyDer::Pkcs8(rustls_pki_types::PrivatePkcs8KeyDer::from(
-            key_pair.serialize_der(),
+            signing_key.serialize_der(),
         ));
 
         // TCP/TLS server cert (ALPN h2 + http/1.1).
