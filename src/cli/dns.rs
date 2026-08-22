@@ -10,20 +10,31 @@ use std::net::{IpAddr, SocketAddr};
 use std::process::ExitCode;
 use std::time::Duration;
 
-/// Resolve a hostname and report the DNS observations for each record type.
+/// Resolve one or more hostnames and report the DNS observations for each
+/// record type. `dns` accepts many targets (a DNS health sweep); single-target
+/// output is unchanged, `--json` with >1 target emits an array keyed by target,
+/// and `--strict` aggregates failed lookups across every target.
+#[allow(clippy::too_many_lines)] // orchestration: parse, loop hosts, render
 pub(super) async fn run_dns(sub_m: &ArgMatches) -> ExitCode {
     let json = sub_m.get_flag("json");
-    let target_str = sub_m.get_one::<String>("target").expect("required target");
+    let strict = sub_m.get_flag("strict");
     let timeout_ms = *sub_m.get_one::<u64>("timeout").expect("timeout has default");
     let timeout = Duration::from_millis(timeout_ms);
 
-    let target = match Target::parse(target_str, DEFAULT_PORT) {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("Error: {e}");
-            return ExitCode::FAILURE;
+    let raw_targets: Vec<String> = sub_m
+        .get_many::<String>("target")
+        .map(|vals| vals.cloned().collect())
+        .unwrap_or_default();
+    let mut targets = Vec::with_capacity(raw_targets.len());
+    for raw in &raw_targets {
+        match Target::parse(raw, DEFAULT_PORT) {
+            Ok(t) => targets.push(t),
+            Err(e) => {
+                eprintln!("Error: {e}");
+                return ExitCode::FAILURE;
+            }
         }
-    };
+    }
 
     let custom: Vec<SocketAddr> = match parse_custom_servers(sub_m) {
         Ok(v) => v,
@@ -32,7 +43,6 @@ pub(super) async fn run_dns(sub_m: &ArgMatches) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-
     let only_v6 = sub_m.get_flag("ipv6");
     let insecure = sub_m.get_flag("insecure");
     let doh_endpoints: Vec<String> = sub_m
@@ -43,93 +53,155 @@ pub(super) async fn run_dns(sub_m: &ArgMatches) -> ExitCode {
         .get_many::<String>("dot")
         .map(|vals| vals.cloned().collect())
         .unwrap_or_default();
-
     let record_types = if only_v6 {
         vec![DnsRecordType::Aaaa]
     } else {
         vec![DnsRecordType::A, DnsRecordType::Aaaa]
     };
+    let count = *sub_m.get_one::<usize>("count").expect("count has default");
 
-    // An IP-literal target is already an address: there is nothing to resolve,
-    // and treating it as a name would report a confusing "no records found"
-    // error from the resolvers (and a spurious `--strict` failure). Every other
-    // subcommand already short-circuits literals; `dns` reports the literal as
-    // its own record for the matching family and an empty (no-records,
-    // no-error) answer for the other — like a NODATA reply.
+    let mut outputs: Vec<TargetDns> = Vec::with_capacity(targets.len());
+    for target in targets {
+        outputs.push(
+            dns_compute(
+                &target,
+                &record_types,
+                &custom,
+                &doh_endpoints,
+                &dot_eps,
+                count,
+                timeout,
+                insecure,
+            )
+            .await,
+        );
+    }
+
+    if json {
+        if outputs.len() == 1 {
+            let o = &outputs[0];
+            if o.repeat {
+                println!("{}", to_json(&o.results));
+            } else {
+                println!("{}", to_json(&o.observations));
+            }
+        } else {
+            let items: Vec<serde_json::Value> = outputs
+                .iter()
+                .map(|o| {
+                    if o.repeat {
+                        serde_json::json!({ "target": o.host, "results": o.results })
+                    } else {
+                        serde_json::json!({ "target": o.host, "observations": o.observations })
+                    }
+                })
+                .collect();
+            println!("{}", to_json(&items));
+        }
+    } else {
+        let mut text = String::new();
+        for o in &outputs {
+            if o.repeat {
+                text.push_str(&render_dns_repeat(&o.host, &o.results));
+            } else {
+                text.push_str(&render_dns(&o.host, &o.observations));
+            }
+        }
+        print!("{text}");
+    }
+
+    // `--strict`: a failed lookup / failed repeat row is an observation, but
+    // scripting/CI wants a non-zero exit when any resolver on any target
+    // could not answer. Output is still rendered in full either way.
+    if strict {
+        let failed: usize = outputs
+            .iter()
+            .map(|o| {
+                if o.repeat {
+                    o.results.iter().filter(|r| r.failures > 0).count()
+                } else {
+                    o.observations.iter().filter(|obs| obs.error.is_some()).count()
+                }
+            })
+            .sum();
+        if failed > 0 {
+            eprintln!("Error: {failed} DNS lookup(s) failed (--strict)");
+            return ExitCode::FAILURE;
+        }
+    }
+    ExitCode::SUCCESS
+}
+
+/// The per-target DNS result: whether the target used the repeat view and the
+/// matching observations (`!repeat`) or aggregated results (`repeat`).
+struct TargetDns {
+    host: String,
+    repeat: bool,
+    observations: Vec<DnsObservation>,
+    results: Vec<DnsRepeatResult>,
+}
+
+/// Resolve one target (system + `--server` + `--doh` + `--dot`) for each
+/// record type, either as single-shot observations or (for a non-literal
+/// hostname with `--count N > 1`) as the aggregated repeat view.
+#[allow(clippy::too_many_arguments)] // the shared resolver/request configuration
+async fn dns_compute(
+    target: &Target,
+    record_types: &[DnsRecordType],
+    custom: &[SocketAddr],
+    doh_endpoints: &[String],
+    dot_eps: &[String],
+    count: usize,
+    timeout: Duration,
+    insecure: bool,
+) -> TargetDns {
+    // An IP-literal target is already an address: it is reported as its own
+    // record for the matching family and an empty (no-records, no-error)
+    // answer for the other — like a NODATA reply, never a lookup error.
     let literal = target
         .host
         .trim_start_matches('[')
         .trim_end_matches(']')
         .parse::<IpAddr>()
         .ok();
-    let count = *sub_m.get_one::<usize>("count").expect("count has default");
-    // A DNS repeat is hostname-centric, so it belongs here (the `dns`
-    // subcommand) rather than in the address-sweep `probe` flow: aggregate
-    // per-resolver/per-record-type latency + failure stats over `--count`
-    // resolutions, mirroring `probe`'s per-layer repeat view.
+    // A DNS repeat is hostname-centric (aggregate per-resolver/per-record-type
+    // latency + failure stats over `--count`), so IP-literal targets skip it.
     let repeat = literal.is_none() && count > 1;
-    let observations = if let Some(literal) = literal {
-        literal_observations(&target.host, literal, &record_types)
-    } else {
-        let client = DnsClient::new(&custom, timeout, 1);
-        let mut obs = Vec::new();
-        for &rt in &record_types {
-            obs.extend(client.resolve(&target.host, rt).await);
-            obs.extend(encrypted_dns(&doh_endpoints, &dot_eps, &target.host, rt, timeout, insecure).await);
-        }
-        obs
-    };
 
+    if let Some(literal) = literal {
+        return TargetDns {
+            host: target.host.clone(),
+            repeat: false,
+            observations: literal_observations(&target.host, literal, record_types),
+            results: Vec::new(),
+        };
+    }
+
+    let client = DnsClient::new(custom, timeout, 1);
     if repeat {
-        // Aggregated repeat view (system + `--server` via the DnsClient,
-        // `--doh` endpoints looped per attempt, then bucketed like the
-        // client resolvers). IP-literal targets never reach here.
-        let client = DnsClient::new(&custom, timeout, 1);
         let mut results = Vec::new();
-        for &rt in &record_types {
+        for &rt in record_types {
             results.extend(client.resolve_repeat(&target.host, rt, count).await);
-            results
-                .extend(encrypted_repeat(&doh_endpoints, &dot_eps, &target.host, rt, count, timeout, insecure).await);
+            results.extend(encrypted_repeat(doh_endpoints, dot_eps, &target.host, rt, count, timeout, insecure).await);
         }
-        if json {
-            println!("{}", to_json(&results));
-        } else {
-            print!("{}", render_dns_repeat(&target.host, &results));
+        TargetDns {
+            host: target.host.clone(),
+            repeat: true,
+            observations: Vec::new(),
+            results,
         }
-        // `--strict` for the repeat view: any resolver that failed at least
-        // one lookup (or whose per-attempt failure count exceeds zero).
-        let strict = sub_m.get_flag("strict");
-        let failed = results.iter().filter(|r| r.failures > 0).count();
-        let failed = if strict { failed } else { 0 };
-        if failed > 0 {
-            eprintln!(
-                "Error: {failed}/{} DNS repeat row(s) had failures (--strict)",
-                results.len()
-            );
-            return ExitCode::FAILURE;
+    } else {
+        let mut observations = Vec::new();
+        for &rt in record_types {
+            observations.extend(client.resolve(&target.host, rt).await);
+            observations.extend(encrypted_dns(doh_endpoints, dot_eps, &target.host, rt, timeout, insecure).await);
         }
-        return ExitCode::SUCCESS;
-    }
-
-    // `--strict`: a failed lookup is an observation, but scripting/CI often
-    // wants a non-zero exit when any resolver could not answer. Output above
-    // is still rendered in full either way.
-    let failed = if sub_m.get_flag("strict") {
-        observations.iter().filter(|o| o.error.is_some()).count()
-    } else {
-        0
-    };
-
-    if json {
-        println!("{}", to_json(&observations));
-    } else {
-        print!("{}", render_dns(&target.host, &observations));
-    }
-    if failed > 0 {
-        eprintln!("Error: {failed}/{} DNS lookups failed (--strict)", observations.len());
-        ExitCode::FAILURE
-    } else {
-        ExitCode::SUCCESS
+        TargetDns {
+            host: target.host.clone(),
+            repeat: false,
+            observations,
+            results: Vec::new(),
+        }
     }
 }
 

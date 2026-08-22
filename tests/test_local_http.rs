@@ -693,6 +693,49 @@ fn dns_cli_dot_repeat_aggregates() {
 }
 
 #[test]
+fn dns_cli_multiple_targets_render_each_and_emit_json_array() {
+    // `dns` accepts multiple targets (a DNS health sweep). IP literals
+    // short-circuit resolution deterministically (no network): each renders
+    // its own report, and `--json` with >1 target emits a per-target array.
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args(["dns", "1.1.1.1", "8.8.8.8"])
+        .output()
+        .expect("run dns with two targets");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "multi-target dns should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.contains("DNS 1.1.1.1") && stdout.contains("DNS 8.8.8.8"),
+        "each target's report must render: {stdout}"
+    );
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args(["dns", "1.1.1.1", "8.8.8.8", "--json"])
+        .output()
+        .expect("run multi-target dns --json");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "multi-target dns --json should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("dns --json must parse");
+    let reports = parsed.as_array().expect(">1 target must yield a JSON array");
+    assert_eq!(reports.len(), 2, "expected 2 reports: {stdout}");
+    let targets: Vec<&str> = reports
+        .iter()
+        .filter_map(|r| r.get("target").and_then(serde_json::Value::as_str))
+        .collect();
+    assert!(targets.contains(&"1.1.1.1"), "report for 1.1.1.1 missing: {targets:?}");
+    assert!(targets.contains(&"8.8.8.8"), "report for 8.8.8.8 missing: {targets:?}");
+}
+
+#[test]
 fn diagnose_cli_includes_doh_resolver_evidence() {
     // `diagnose --doh` must fold the DoH answers into the DNS observations
     // (visible in the evidence stack) and probe the DoH-resolved address.

@@ -55,7 +55,7 @@ fn parser() -> ArgMatches {
         .subcommand(
             Command::new("dns")
                 .about("resolve a hostname and inspect DNS results")
-                .arg(positional_target("hostname to resolve"))
+                .arg(positional_target("hostname to resolve (repeatable for a DNS sweep)").num_args(1..))
                 .arg(server_arg())
                 .arg(doh_arg())
                 .arg(dot_arg())

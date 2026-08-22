@@ -71,7 +71,12 @@ ip-tools dns example.com --server 1.1.1.1 --server 8.8.8.8
 ip-tools dns example.com --ipv6        # AAAA only
 ip-tools dns example.com --json        # raw observations as JSON
 ip-tools dns example.com --count 30    # repeated resolution, latency stats
+ip-tools dns example.com example.org another.net   # DNS health sweep (multi-target)
 ```
+
+`dns` accepts **multiple targets** — a DNS health sweep — resolving each in
+turn. Human output renders every host; `--json` with >1 target emits a
+per-target array; `--strict` fails if any resolver on any target failed.
 
 An IP-literal target is shorthand for "this is already an address": `dns
 1.1.1.1` reports the literal as its own `A` record (and a clean NODATA-style
