@@ -508,6 +508,11 @@ Repeated probes
       jitter: 1 ms
 ```
 
+`--csv` emits a `host,destination,attempts,success_rate,latency_p50_ms,
+latency_p95_ms,latency_max_ms,jitter_ms,failures` row per destination across
+single and multi-target sweeps — a connectivity-health sweep loads straight
+into a spreadsheet (`--csv`/`--json`/human output are mutually exclusive).
+
 ### Scripting exit codes
 
 A failed probe is an observation, not an error, so by default the CLI exits

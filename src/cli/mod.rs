@@ -102,6 +102,7 @@ fn parser() -> ArgMatches {
                 path_arg(),
                 header_arg(),
                 body_arg(),
+                csv_arg(),
             ],
         ))
         .subcommand(probe_command(
@@ -405,11 +406,17 @@ fn run_tokio(name: &str, sub_m: &ArgMatches) -> ExitCode {
 /// `probe` is invoked once per destination with `(host, destination,
 /// timeout)`; subcommand-specific state (e.g. `--method`, `--count`) is
 /// captured by the caller's closure.
+/// A whole-sweep CSV renderer (host + per-destination results); only `probe`
+/// supplies one.
+type CsvRenderer<O> = fn(&[(String, Vec<O>)]) -> String;
+
+#[allow(clippy::too_many_lines)] // orchestration: resolve, probe, render (json/csv/human)
 pub async fn run_probe_flow<O, Fut>(
     sub_m: &ArgMatches,
     render: fn(&[O]) -> String,
     sort_key: fn(&O) -> SocketAddr,
     failed: fn(&O) -> bool,
+    csv_render: Option<CsvRenderer<O>>,
     probe: impl Fn(String, SocketAddr, Duration) -> Fut + Send + Sync + Clone + 'static,
 ) -> ExitCode
 where
@@ -417,6 +424,15 @@ where
     Fut: Future<Output = O> + Send + 'static,
 {
     let json = sub_m.get_flag("json");
+    // Only the `probe` subcommand defines `--csv` (it supplies the renderer);
+    // the other per-address probe commands have no `csv` arg, so read it
+    // defensively (try_get_one returns Err when the arg isn't defined).
+    let csv = sub_m
+        .try_get_one::<bool>("csv")
+        .ok()
+        .flatten()
+        .copied()
+        .unwrap_or_default();
     let strict = sub_m.get_flag("strict");
     let timeout_ms = *sub_m.get_one::<u64>("timeout").expect("timeout has default");
     let concurrency = *sub_m.get_one::<usize>("concurrency").expect("concurrency has default");
@@ -478,7 +494,14 @@ where
         per_target.push((target.host.clone(), results));
     }
 
-    if json {
+    if csv {
+        if let Some(renderer) = csv_render {
+            print!("{}", renderer(&per_target));
+        } else {
+            eprintln!("Error: --csv is not supported for this subcommand");
+            return ExitCode::FAILURE;
+        }
+    } else if json {
         if single {
             if let Some((_, results)) = per_target.first() {
                 println!("{}", to_json(results));

@@ -16,6 +16,7 @@ pub(super) async fn run_tls(sub_m: &ArgMatches) -> ExitCode {
         render_tls,
         |obs: &TlsObservation| obs.destination,
         |obs: &TlsObservation| !obs.success,
+        None,
         move |host, dest, timeout| async move {
             if insecure {
                 ip_tls::probe_insecure(dest, &host, timeout).await

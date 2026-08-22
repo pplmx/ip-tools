@@ -32,6 +32,7 @@ pub(super) async fn run_http3(sub_m: &ArgMatches) -> ExitCode {
         render_http,
         |obs: &HttpObservation| obs.destination,
         |obs: &HttpObservation| obs.failure.is_some(),
+        None,
         move |host, dest, timeout| {
             let method = method.clone();
             let path = path.clone();

@@ -1001,6 +1001,41 @@ fn probe_cli_http2_repeats_fixture_via_protocol_flag() {
 }
 
 #[test]
+fn probe_cli_csv_export_renders_rows() {
+    // `probe --csv` emits a header + one row per destination carrying the
+    // aggregated `--count` latency/failure stats, so a connectivity-health
+    // sweep loads into a spreadsheet.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let addr = fixture.tcp_addr().to_string();
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args(["probe", &addr, "--count", "3", "--csv", "--timeout", "2000"])
+        .output()
+        .expect("run probe --csv");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "probe --csv should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let mut lines = stdout.lines();
+    assert_eq!(
+        lines.next(),
+        Some("host,destination,attempts,success_rate,latency_p50_ms,latency_p95_ms,latency_max_ms,jitter_ms,failures"),
+        "CSV header: {stdout}"
+    );
+    assert!(
+        stdout.lines().any(|l| l.contains(&format!("{addr},3,1.0000,"))),
+        "expected a 3/3 success row for {addr}: {stdout}"
+    );
+}
+
+#[test]
 fn http_cli_insecure_probes_self_signed_fixture() {
     // End-to-end: the real binary with --insecure must talk to the self-signed
     // fixture over HTTP/2 (http2 tcp listener) without a certificate error.

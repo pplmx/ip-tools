@@ -15,6 +15,7 @@ pub(super) async fn run_tcp(sub_m: &ArgMatches) -> ExitCode {
         render_tcp,
         |obs: &TcpObservation| obs.destination,
         |obs: &TcpObservation| !obs.success,
+        None,
         |_host, dest, timeout| async move { ip_tcp::probe(dest, timeout).await },
     )
     .await

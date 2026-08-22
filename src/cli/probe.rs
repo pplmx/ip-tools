@@ -46,6 +46,7 @@ pub(super) async fn run_probe(sub_m: &ArgMatches) -> ExitCode {
         render_probe,
         |result: &ProbeResult| result.destination,
         |result: &ProbeResult| result.failures > 0,
+        Some(render_probe_csv),
         move |host, dest, timeout| {
             let method = method.clone();
             let path = path.clone();
@@ -104,4 +105,52 @@ pub(super) async fn run_probe(sub_m: &ArgMatches) -> ExitCode {
         },
     )
     .await
+}
+
+/// Render every repeated-probe result as CSV: a header then one
+/// `host,destination,attempts,success_rate,latency_p50_ms,latency_p95_ms,latency_max_ms,jitter_ms,failures`
+/// row per destination across every target. Latency statistics come from the
+/// `--count` aggregation (only successful attempts).
+fn render_probe_csv(per_target: &[(String, Vec<ProbeResult>)]) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::from(
+        "host,destination,attempts,success_rate,latency_p50_ms,latency_p95_ms,latency_max_ms,jitter_ms,failures\n",
+    );
+    for (host, results) in per_target {
+        for r in results {
+            out.push_str(&csv_field(host));
+            out.push(',');
+            out.push_str(&csv_field(&r.destination.to_string()));
+            out.push(',');
+            out.push_str(&r.attempts.to_string());
+            out.push(',');
+            let _ = write!(out, "{:.4}", r.success_rate);
+            out.push(',');
+            out.push_str(&opt64(r.latency.p50));
+            out.push(',');
+            out.push_str(&opt64(r.latency.p95));
+            out.push(',');
+            out.push_str(&opt64(r.latency.max));
+            out.push(',');
+            out.push_str(&opt64(r.latency.jitter));
+            out.push(',');
+            out.push_str(&r.failures.to_string());
+            out.push('\n');
+        }
+    }
+    out
+}
+
+/// Format an optional millisecond value as an empty field or its value.
+fn opt64(v: Option<u64>) -> String {
+    v.map_or_else(String::new, |x| x.to_string())
+}
+
+/// Quote a CSV field when it contains a comma, quote, or newline (RFC 4180).
+fn csv_field(value: &str) -> String {
+    if value.contains(',') || value.contains('"') || value.contains('\n') {
+        format!("\"{}\"", value.replace('"', "\"\""))
+    } else {
+        value.to_string()
+    }
 }
