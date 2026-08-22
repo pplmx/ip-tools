@@ -21,40 +21,42 @@ use std::net::{IpAddr, SocketAddr};
 use std::process::ExitCode;
 use std::time::Duration;
 
-/// Full diagnostic run: collect observations across layers, then run the
-/// deterministic engine. The diagnostic engine performs no network I/O.
-#[allow(clippy::too_many_lines)] // sequential pipeline steps are clearer inline
+/// Full diagnostic run: collect observations across layers for one or more
+/// targets, then run the deterministic engine (which performs no network I/O).
+///
+/// `diagnose` accepts many targets — a fleet/health sweep — running the full
+/// pipeline per host sequentially. Single-target JSON stays the existing
+/// object; >1 target emits a JSON array; `--strict` aggregates across hosts.
+#[allow(clippy::too_many_lines)] // orchestration: parse, loop hosts, render
 pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
     let json = sub_m.get_flag("json");
     let insecure = sub_m.get_flag("insecure");
-    let target_str = sub_m.get_one::<String>("target").expect("required target");
     let timeout_ms = *sub_m.get_one::<u64>("timeout").expect("timeout has default");
     let concurrency = *sub_m.get_one::<usize>("concurrency").expect("concurrency has default");
     let timeout = Duration::from_millis(timeout_ms);
 
-    let target = match Target::parse(target_str, DEFAULT_PORT) {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("Error: {e}");
-            return ExitCode::FAILURE;
+    let raw_targets: Vec<String> = sub_m
+        .get_many::<String>("target")
+        .map(|vals| vals.cloned().collect())
+        .unwrap_or_default();
+    let mut targets = Vec::with_capacity(raw_targets.len());
+    for raw in &raw_targets {
+        match Target::parse(raw, DEFAULT_PORT) {
+            Ok(t) => targets.push(t),
+            Err(e) => {
+                eprintln!("Error: {e}");
+                return ExitCode::FAILURE;
+            }
         }
-    };
+    }
 
     // A `--sni` override presents a chosen hostname as SNI (and HTTP `Host`)
-    // while the probe pipeline still connects to the target's resolved
-    // addresses — scoping the whole diagnosis to "how does this address
-    // behave *as* that hostname" (its certificate, virtual-hosted response,
-    // etc.). Resolution is unaffected; only the presented name changes.
-    let presented = sub_m
-        .try_get_one::<String>("sni")
-        .ok()
-        .flatten()
-        .cloned()
-        .unwrap_or_else(|| target.host.clone());
-    // Request control for the HTTP phase: like `http`/`http2`/`http3`, the
-    // HTTP evidence can be scoped to a specific method, path and extra
-    // headers (e.g. a `/healthz` behind a WAF or an authenticated endpoint),
-    // so the diagnosis covers the request the user actually cares about.
+    // while the probe pipeline still connects to each target's resolved
+    // addresses — scoping the diagnosis to "how does this address behave *as*
+    // that hostname". Resolution is unaffected; only the presented name
+    // changes (per-host it falls back to that host's name).
+    let sni = sub_m.try_get_one::<String>("sni").ok().flatten().cloned();
+    // Request control for the HTTP phase, shared by every target.
     let method = sub_m.get_one::<String>("method").expect("method has default").clone();
     let path = sub_m.get_one::<String>("path").expect("path has default").clone();
     let headers = match super::parse_custom_headers(sub_m) {
@@ -65,15 +67,6 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
         }
     };
     let body: Option<Vec<u8>> = sub_m.get_one::<String>("body").map(|s| s.as_bytes().to_vec());
-
-    // --- Measure (probe layer) ---
-    // Resolve once: the DNS observations and the probed addresses come from
-    // the same lookups (previously the hostname was resolved twice). Custom
-    // `--server` resolvers are included so the engine can see resolver
-    // disagreement, not just the system resolver's answer. An IP-literal
-    // target short-circuits resolution (used directly), which is what makes
-    // `--sni` on `diagnose` well-defined: the address set comes from the
-    // target, the presented name comes from `--sni`.
     let custom_servers = match super::parse_custom_servers(sub_m) {
         Ok(v) => v,
         Err(e) => {
@@ -81,7 +74,6 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let dns_client = DnsClient::new(&custom_servers, timeout, 1);
     let doh_endpoints: Vec<String> = sub_m
         .get_many::<String>("doh")
         .map(|vals| vals.cloned().collect())
@@ -90,9 +82,94 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
         .get_many::<String>("dot")
         .map(|vals| vals.cloned().collect())
         .unwrap_or_default();
+
+    let mut reports: Vec<DiagnoseReport> = Vec::with_capacity(targets.len());
+    let mut unresolved = 0usize;
+    for target in targets {
+        let presented = sni.clone().unwrap_or_else(|| target.host.clone());
+        match diagnose_one(
+            &target,
+            &presented,
+            &method,
+            &path,
+            &headers,
+            body.as_deref(),
+            &custom_servers,
+            &doh_endpoints,
+            &dot_eps,
+            timeout,
+            concurrency,
+            insecure,
+        )
+        .await
+        {
+            Some(report) => reports.push(report),
+            None => unresolved += 1,
+        }
+    }
+
+    // `--strict`: any non-Healthy diagnosis across any host exits non-zero.
+    let anomalies = if sub_m.get_flag("strict") {
+        reports
+            .iter()
+            .flat_map(|r| &r.diagnoses)
+            .filter(|d| d.category != DiagnosticCategory::Healthy)
+            .count()
+    } else {
+        0
+    };
+
+    if json {
+        if reports.len() == 1 {
+            println!("{}", to_json(&reports[0]));
+        } else {
+            println!("{}", to_json(&reports));
+        }
+    } else {
+        for report in &reports {
+            print!("{}", report.render_human());
+        }
+    }
+
+    if unresolved > 0 {
+        eprintln!("Error: {unresolved} host(s) did not resolve to any address");
+        return ExitCode::FAILURE;
+    }
+    if anomalies > 0 {
+        eprintln!("Error: {anomalies} anomaly diagnosis(es) raised (--strict)");
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    }
+}
+
+/// Run the full probe + engine pipeline for a single target and build its
+/// [`DiagnoseReport`]. Returns `None` (having printed a resolution error) when
+/// the hostname resolves to no address.
+#[allow(clippy::too_many_arguments)] // the shared request + probe configuration
+#[allow(clippy::too_many_lines)] // sequential pipeline steps are clearer inline
+async fn diagnose_one(
+    target: &Target,
+    presented: &str,
+    method: &str,
+    path: &str,
+    headers: &[(String, String)],
+    body: Option<&[u8]>,
+    custom_servers: &[SocketAddr],
+    doh_endpoints: &[String],
+    dot_eps: &[String],
+    timeout: Duration,
+    concurrency: usize,
+    insecure: bool,
+) -> Option<DiagnoseReport> {
+    // Resolve once: the DNS observations and the probed addresses come from
+    // the same lookups. Custom `--server`/`--doh`/`--dot` resolvers are
+    // included so the engine can see resolver disagreement. An IP-literal
+    // target short-circuits resolution (used directly), which is what makes
+    // `--sni` well-defined.
+    let dns_client = DnsClient::new(custom_servers, timeout, 1);
     let mut dns_obs = Vec::new();
     let mut addresses: Vec<IpAddr> = Vec::new();
-    // Bracket-form IPv6 literals (`[::1]`) must be recognized as literals.
     let literal = target.host.trim_start_matches('[').trim_end_matches(']');
     if let Ok(ip) = literal.parse::<IpAddr>() {
         addresses.push(ip);
@@ -105,18 +182,14 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
                 }
             }
             dns_obs.extend(obs);
-            // Encrypted-DNS resolvers (`--doh` / `--dot`) join the same
-            // evidence and address pool: when the local path is being
-            // steered, their answers feed resolver-disagreement detection
-            // and are also probed.
-            for endpoint in &doh_endpoints {
+            for endpoint in doh_endpoints {
                 let o = ip_tools::dns::doh_query(endpoint, &target.host, rt, timeout, insecure).await;
                 if o.error.is_none() {
                     addresses.extend(o.records.iter().copied());
                 }
                 dns_obs.push(o);
             }
-            for endpoint in &dot_eps {
+            for endpoint in dot_eps {
                 let o = ip_tools::dns::dot_query(endpoint, &target.host, rt, timeout, insecure).await;
                 if o.error.is_none() {
                     addresses.extend(o.records.iter().copied());
@@ -124,7 +197,6 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
                 dns_obs.push(o);
             }
         }
-        // De-duplicate while preserving resolution order (as `resolve_for_tcp`).
         let mut seen = std::collections::HashSet::new();
         addresses.retain(|a| seen.insert(*a));
     }
@@ -133,7 +205,7 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
             "Error: hostname {} did not resolve to any address via the system resolver, --server, --doh, or --dot resolvers",
             target.host
         );
-        return ExitCode::FAILURE;
+        return None;
     }
     let destinations: Vec<SocketAddr> = addresses
         .into_iter()
@@ -145,7 +217,7 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
     })
     .await;
 
-    let sni = presented.clone();
+    let sni = presented.to_string();
     let tls_obs: Vec<TlsObservation> = parallel_map(destinations.clone(), concurrency, move |d| {
         let sni = sni.clone();
         async move {
@@ -160,11 +232,11 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
 
     let http_obs = collect_http_probes(
         destinations.clone(),
-        &presented,
-        &method,
-        &path,
-        &headers,
-        body.as_deref(),
+        presented,
+        method,
+        path,
+        headers,
+        body,
         concurrency,
         timeout,
         insecure,
@@ -176,7 +248,6 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
     })
     .await;
 
-    // --- Diagnose (pure engine, no I/O) ---
     let input = DiagnosticInput {
         hostname: &target.host,
         dns: &dns_obs,
@@ -187,46 +258,15 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
     };
     let diagnoses = diagnose(&input);
 
-    // `--strict`: a diagnosis (other than Healthy) is an interpretation, but
-    // scripting/CI often wants a non-zero exit once any anomaly was raised.
-    // Computed before the JSON branch moves `diagnoses`; output is rendered
-    // in full either way.
-    let anomalies = if sub_m.get_flag("strict") {
-        diagnoses
-            .iter()
-            .filter(|d| d.category != DiagnosticCategory::Healthy)
-            .count()
-    } else {
-        0
-    };
-
-    if json {
-        let report = DiagnoseReport {
-            target: target.host.clone(),
-            diagnoses,
-            dns: dns_obs,
-            tcp: tcp_obs,
-            tls: tls_obs,
-            http: http_obs,
-            probes: probe_obs,
-        };
-        println!("{}", to_json(&report));
-    } else {
-        // Render the full evidence stack the engine reasoned over (DNS, TCP,
-        // TLS, HTTP/1.1+2+3, repeated probes), not just DNS + TCP + verdicts.
-        print!("{}", render_dns(&target.host, &dns_obs));
-        print!("{}", render_tcp(&tcp_obs));
-        print!("{}", render_tls(&tls_obs));
-        print!("{}", render_http(&http_obs));
-        print!("{}", render_probe(&probe_obs));
-        print!("{}", render_diagnoses(&diagnoses));
-    }
-    if anomalies > 0 {
-        eprintln!("Error: {anomalies} anomaly diagnosis(es) raised (--strict)");
-        ExitCode::FAILURE
-    } else {
-        ExitCode::SUCCESS
-    }
+    Some(DiagnoseReport {
+        target: target.host.clone(),
+        diagnoses,
+        dns: dns_obs,
+        tcp: tcp_obs,
+        tls: tls_obs,
+        http: http_obs,
+        probes: probe_obs,
+    })
 }
 
 /// Aggregated JSON report: full raw observations (evidence) plus diagnoses.
@@ -239,6 +279,21 @@ struct DiagnoseReport {
     tls: Vec<TlsObservation>,
     http: Vec<HttpObservation>,
     probes: Vec<ProbeResult>,
+}
+
+impl DiagnoseReport {
+    /// Render the full evidence stack (DNS, TCP, TLS, HTTP/1.1+2+3, repeated
+    /// probes) and the verdicts as human text, so multi-target output is the
+    /// concatenation of each host's report.
+    fn render_human(&self) -> String {
+        let mut out = render_dns(&self.target, &self.dns);
+        out.push_str(&render_tcp(&self.tcp));
+        out.push_str(&render_tls(&self.tls));
+        out.push_str(&render_http(&self.http));
+        out.push_str(&render_probe(&self.probes));
+        out.push_str(&render_diagnoses(&self.diagnoses));
+        out
+    }
 }
 
 /// Probe HTTP/1.1, HTTP/2 and HTTP/3 for every address, concatenated.

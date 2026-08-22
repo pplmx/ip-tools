@@ -369,6 +369,18 @@ ip-tools diagnose example.com
 ip-tools diagnose example.com --json
 ```
 
+`diagnose` accepts **multiple targets** — a fleet/health sweep — running the
+full pipeline per host sequentially:
+
+```shell
+ip-tools diagnose a.example b.example c.example
+ip-tools diagnose a.example b.example --json      # one array of per-host reports
+```
+
+Human output renders every host's evidence + verdicts; `--json` emits the
+existing single-report object for one host and a JSON array for more than one;
+`--strict` exits non-zero if **any** host raised an anomaly.
+
 Example output (on a host whose IPv6 has no route — the IPv4 path works, the
 IPv6 and QUIC paths fail locally):
 

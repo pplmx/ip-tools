@@ -1000,6 +1000,97 @@ fn diagnose_cli_sends_request_body_through_echo() {
 }
 
 #[test]
+fn diagnose_cli_multiple_targets_render_each_and_emit_json_array() {
+    // `diagnose` accepts multiple targets (a fleet sweep): each host runs the
+    // full pipeline, human output shows every host's report, and `--json`
+    // emits a single array (one report per host) rather than one object.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let addr1 = fixture.tcp_addr().to_string();
+    let host1 = "127.0.0.1".to_string(); // report target has no port
+    let addr2 = "127.0.0.2".to_string();
+    let host2 = "127.0.0.2".to_string();
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args(["diagnose", &addr1, &addr2, "--insecure", "--timeout", "1500"])
+        .output()
+        .expect("run diagnose with two targets");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "multi-target diagnose should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.contains(&format!("DNS {host1}")) && stdout.contains(&format!("DNS {host2}")),
+        "each target's report must render: {stdout}"
+    );
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args(["diagnose", &addr1, &addr2, "--insecure", "--json", "--timeout", "1500"])
+        .output()
+        .expect("run multi-target diagnose --json");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "multi-target diagnose --json should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("diagnose --json must parse");
+    let reports = parsed.as_array().expect(">1 target must yield a JSON array");
+    assert_eq!(reports.len(), 2, "expected 2 reports: {stdout}");
+    let targets: Vec<&str> = reports
+        .iter()
+        .filter_map(|r| r.get("target").and_then(serde_json::Value::as_str))
+        .collect();
+    assert!(
+        targets.contains(&host1.as_str()),
+        "report for {host1} missing: {targets:?}"
+    );
+    assert!(
+        targets.contains(&host2.as_str()),
+        "report for {host2} missing: {targets:?}"
+    );
+}
+
+#[test]
+fn diagnose_cli_strict_aggregates_across_targets() {
+    // `--strict` is aggregated across hosts: one unhealthy target (a refused
+    // TCP connect on 127.0.0.1:443) makes the whole sweep exit non-zero.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let addr1 = fixture.tcp_addr().to_string();
+    let addr2 = "127.0.0.1".to_string();
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "diagnose",
+            &addr1,
+            &addr2,
+            "--insecure",
+            "--strict",
+            "--timeout",
+            "1500",
+        ])
+        .output()
+        .expect("run multi-target diagnose --strict");
+    assert!(
+        !out.status.success(),
+        "an unhealthy target must fail --strict: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[test]
 fn http_cli_sni_override_reaches_the_http_host_header() {
     // `--sni` must present the chosen name as the HTTP `Host` header while
     // still connecting to the target's resolved addresses. The fixture routes

@@ -201,9 +201,14 @@ fn dot_arg() -> Arg {
 /// `--timeout`/`--concurrency` flags, and subcommand-specific flags (e.g.
 /// `--method`, `--insecure`) inserted after the target.
 fn probe_command(name: &'static str, about: &'static str, extras: &[Arg]) -> Command {
-    let mut cmd = Command::new(name)
-        .about(about)
-        .arg(positional_target("host[:port] to probe (default port 443)"));
+    // `diagnose` accepts many targets (a fleet/health sweep) while the raw
+    // probe subcommands take a single host.
+    let positional = if name == "diagnose" {
+        positional_target("host[:port] to probe (default port 443)").num_args(1..)
+    } else {
+        positional_target("host[:port] to probe (default port 443)")
+    };
+    let mut cmd = Command::new(name).about(about).arg(positional);
     for extra in extras {
         cmd = cmd.arg(extra.clone());
     }
