@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-22T16:33:38+00:00",
+  "updated_at": "2026-08-22T16:45:32+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -1560,6 +1560,54 @@
       "touched_round": 0,
       "commit": "76652ad6f758d04d7e40bc2eb97804cf49fe6cf6",
       "summary": "Fixed flaky route_strict_exits_nonzero_only_on_lost_hops: under root/ICMP a real traceroute can run and lose a loopback hop (>300ms), exiting non-zero with \"N route hop(s) lost (--strict)\" plus the Traceroute header (not icmp/root/linux), intermittently failing the old assertion. Now accepts either a clean permission/unsupported explanation OR a completed run showing the Traceroute header (lost hops or not). Test-quality only; no behavior change. Verified 3x stable local + full suite green."
+    },
+    "DEC-027": {
+      "id": "DEC-027",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T16:45:04+00:00",
+      "updated_at": "2026-08-22T16:45:04+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-23): TLS protocol-version forcing, delivered as a vertical slice on the tls command. A TLS diagnostics tool should let an operator restrict the offered protocol versions to verify which TLS versions an endpoint actually negotiates (compliance/security). Added TlsProtocol (Auto/1.2/1.3), version-aware probe_with_version/probe_insecure_with_version (existing probe functions unchanged, delegating to Auto), rustls protocol-version wiring, and --tls-version on tls. Scope is a slice: later rounds extend to http/http2/http3/probe. Public API change (regenerated api-baseline). Large-feature guidance: delivered as a verifiable slice rather than forcing the full 12-signature change at once.",
+      "alternatives_rejected": "forcing versions across all commands at once (12 public signatures + ~49 call sites, high blast radius, better split into slices); source-IP/interface binding (largest blast radius, untestable here); --output-body (requires streaming full bodies through probe signatures)"
+    },
+    "TASK-028": {
+      "id": "TASK-028",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T16:45:04+00:00",
+      "updated_at": "2026-08-22T16:45:32+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.25,
+      "unlock_factor": 1,
+      "summary": "tls --tls-version 1.2|1.3 offers only that protocol version during the handshake (default auto): add TlsProtocol enum, version-aware probe_with_version/probe_insecure_with_version (existing probe fns delegate Auto), rustls protocol-version wiring, CLI flag. Vertical slice on the tls command; later extends to http/http2/http3/probe. Pinned by protocol_versions unit test, fixture 1.3/1.2 handshake test, and a CLI test."
+    },
+    "ISS-021": {
+      "id": "ISS-021",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T16:45:04+00:00",
+      "updated_at": "2026-08-22T16:45:32+00:00",
+      "touched_round": 0,
+      "severity": "low",
+      "summary": "The TLS probe only offers rustls default protocol versions, so an operator cannot verify which TLS versions an endpoint actually accepts or rejects (e.g. whether TLS 1.2 is still enabled)."
+    },
+    "CHG-022": {
+      "id": "CHG-022",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T16:45:32+00:00",
+      "updated_at": "2026-08-22T16:45:32+00:00",
+      "touched_round": 0,
+      "commit": "0c6bb010b2595a34edbb4bf65726213939ce5206",
+      "summary": "tls --tls-version 1.2|1.3 forces the offered protocol version (default auto): TlsProtocol enum + probe_with_version/probe_insecure_with_version (existing probe fns delegate Auto), rustls protocol-version wiring, Tcping Auto threaded into DoT + http/http2/http3 connect paths. Vertical slice on tls command (later extends to http/http2/http3/probe). Public API change, api-baseline regenerated; no new dependency. Pinned: protocol_versions unit test, fixture 1.3/1.2 handshake test, tls --tls-version 1.3 CLI test. 206 tests green, clippy/fmt/doc clean."
     }
   },
   "edges": [
@@ -2540,6 +2588,36 @@
       "to": "ISS-020",
       "type": "resolves",
       "created_at": "2026-08-22T16:33:38+00:00"
+    },
+    {
+      "from": "DEC-027",
+      "to": "TASK-028",
+      "type": "governs",
+      "created_at": "2026-08-22T16:45:04+00:00"
+    },
+    {
+      "from": "TASK-028",
+      "to": "ISS-021",
+      "type": "addresses",
+      "created_at": "2026-08-22T16:45:04+00:00"
+    },
+    {
+      "from": "ISS-021",
+      "to": "COMP-tls",
+      "type": "located_in",
+      "created_at": "2026-08-22T16:45:04+00:00"
+    },
+    {
+      "from": "CHG-022",
+      "to": "TASK-028",
+      "type": "implements",
+      "created_at": "2026-08-22T16:45:32+00:00"
+    },
+    {
+      "from": "CHG-022",
+      "to": "ISS-021",
+      "type": "resolves",
+      "created_at": "2026-08-22T16:45:32+00:00"
     }
   ]
 }
