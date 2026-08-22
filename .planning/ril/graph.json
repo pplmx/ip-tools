@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-22T16:29:08+00:00",
+  "updated_at": "2026-08-22T16:33:38+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -1512,6 +1512,54 @@
       "touched_round": 0,
       "commit": "66c13af53c2d5bc68f153f52d627bd54123e4e5b",
       "summary": "TLS human report now prints covers {sni}: yes/no — whether the served cert SANs cover the presented hostname (RFC 6125-ish: IP SAN for IP-literal SNI; case-insensitive DNS SAN with single-left-most-label *. wildcard). Surfaces wrong-host/wildcard mismatch even under --insecure. Derived at render time (obs.sni vs cert.sans); no public API change. Pinned: matcher unit tests (exact/case/one-label-wildcard/not-multi-level/not-apex/IP), render verdict test, fixture-lived assertion. 203 tests green, clippy/fmt/doc clean."
+    },
+    "DEC-026": {
+      "id": "DEC-026",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T16:31:16+00:00",
+      "updated_at": "2026-08-22T16:31:16+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-23): fix a flaky integration test. tests/test_cli_probes.rs route_strict_exits_nonzero_only_on_lost_hops asserted that a non-zero exit implies an icmp/root/linux permission explanation. But under root/ICMP the traceroute can run and lose a loopback hop (>300ms), in which case exit is non-zero with an \"N route hop(s) lost (--strict)\" message plus the \"Traceroute\" header — containing neither icmp/root/linux nor the expected check, so the test intermittently fails. Robustify: accept either a clean permission/unsupported explanation OR a completed run (which always prints the Traceroute header, lost hops or not). Test-quality category; no behavior change.",
+      "alternatives_rejected": "weakening coverage by deleting the strict assertion or only asserting non-crash blindly; forcing deterministic lost hops (requires privileged control of ICMP timing, not portable)"
+    },
+    "TASK-027": {
+      "id": "TASK-027",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T16:31:17+00:00",
+      "updated_at": "2026-08-22T16:33:38+00:00",
+      "touched_round": 0,
+      "category": "test-quality",
+      "severity": 0.6,
+      "confidence": 1,
+      "effort": 0.1,
+      "unlock_factor": 1,
+      "summary": "Robustify route_strict_exits_nonzero_only_on_lost_hops so a non-zero exit from a real traceroute run with lost hops (which prints the Traceroute header, NOT an icmp/root/linux message) does not fail: accept either a permission/unsupported explanation or a completed run showing the Traceroute header."
+    },
+    "ISS-020": {
+      "id": "ISS-020",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T16:31:17+00:00",
+      "updated_at": "2026-08-22T16:33:38+00:00",
+      "touched_round": 0,
+      "severity": "low",
+      "summary": "route_strict_exits_nonzero_only_on_lost_hops is flaky: under root/ICMP a real traceroute run can lose a loopback hop and exit non-zero with a \"hop(s) lost\" message (not icmp/root/linux), intermittently failing the test."
+    },
+    "CHG-021": {
+      "id": "CHG-021",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T16:33:38+00:00",
+      "updated_at": "2026-08-22T16:33:38+00:00",
+      "touched_round": 0,
+      "commit": "76652ad6f758d04d7e40bc2eb97804cf49fe6cf6",
+      "summary": "Fixed flaky route_strict_exits_nonzero_only_on_lost_hops: under root/ICMP a real traceroute can run and lose a loopback hop (>300ms), exiting non-zero with \"N route hop(s) lost (--strict)\" plus the Traceroute header (not icmp/root/linux), intermittently failing the old assertion. Now accepts either a clean permission/unsupported explanation OR a completed run showing the Traceroute header (lost hops or not). Test-quality only; no behavior change. Verified 3x stable local + full suite green."
     }
   },
   "edges": [
@@ -2462,6 +2510,36 @@
       "to": "ISS-019",
       "type": "resolves",
       "created_at": "2026-08-22T16:29:08+00:00"
+    },
+    {
+      "from": "DEC-026",
+      "to": "TASK-027",
+      "type": "governs",
+      "created_at": "2026-08-22T16:31:17+00:00"
+    },
+    {
+      "from": "TASK-027",
+      "to": "ISS-020",
+      "type": "addresses",
+      "created_at": "2026-08-22T16:31:17+00:00"
+    },
+    {
+      "from": "ISS-020",
+      "to": "COMP-route",
+      "type": "located_in",
+      "created_at": "2026-08-22T16:31:17+00:00"
+    },
+    {
+      "from": "CHG-021",
+      "to": "TASK-027",
+      "type": "implements",
+      "created_at": "2026-08-22T16:33:38+00:00"
+    },
+    {
+      "from": "CHG-021",
+      "to": "ISS-020",
+      "type": "resolves",
+      "created_at": "2026-08-22T16:33:38+00:00"
     }
   ]
 }
