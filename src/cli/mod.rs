@@ -154,6 +154,7 @@ fn parser() -> ArgMatches {
             &[
                 insecure_arg(),
                 doh_arg(),
+                dot_arg(),
                 strict_arg(),
                 sni_arg(),
                 method_arg(),

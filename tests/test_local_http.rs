@@ -635,6 +635,45 @@ fn diagnose_cli_includes_doh_resolver_evidence() {
 }
 
 #[test]
+fn diagnose_cli_includes_dot_resolver_evidence() {
+    // `diagnose --dot` must fold the DoT answers into the DNS observations
+    // (visible in the evidence stack) and probe the DoT-resolved address.
+    // The fixture's DoT answer is 192.0.2.77 (TEST-NET, unroutable), so the
+    // probes fail cleanly while the diagnosis still renders.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let endpoint = fixture.dot_addr().to_string();
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "diagnose",
+            "host.example",
+            "--dot",
+            &endpoint,
+            "--insecure",
+            "--timeout",
+            "500",
+        ])
+        .output()
+        .expect("run diagnose --dot");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "diagnose --dot should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.contains("192.0.2.77"),
+        "DoT-resolved record missing from evidence: {stdout}"
+    );
+    assert!(stdout.contains("Diagnosis"), "diagnoses missing: {stdout}");
+}
+
+#[test]
 fn probe_cli_http2_repeats_fixture_via_protocol_flag() {
     // End-to-end: `probe --protocol http2 --insecure` repeats HTTP/2 against
     // the self-signed fixture and aggregates 3 successes.

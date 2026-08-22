@@ -85,6 +85,10 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
         .get_many::<String>("doh")
         .map(|vals| vals.cloned().collect())
         .unwrap_or_default();
+    let dot_eps: Vec<String> = sub_m
+        .get_many::<String>("dot")
+        .map(|vals| vals.cloned().collect())
+        .unwrap_or_default();
     let mut dns_obs = Vec::new();
     let mut addresses: Vec<IpAddr> = Vec::new();
     // Bracket-form IPv6 literals (`[::1]`) must be recognized as literals.
@@ -100,11 +104,19 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
                 }
             }
             dns_obs.extend(obs);
-            // DNS-over-HTTPS (`--doh`) resolvers join the same evidence and
-            // address pool: when the local path is being steered, the DoH
-            // answer both feeds resolver-disagreement detection and is probed.
+            // Encrypted-DNS resolvers (`--doh` / `--dot`) join the same
+            // evidence and address pool: when the local path is being
+            // steered, their answers feed resolver-disagreement detection
+            // and are also probed.
             for endpoint in &doh_endpoints {
                 let o = ip_tools::dns::doh_query(endpoint, &target.host, rt, timeout, insecure).await;
+                if o.error.is_none() {
+                    addresses.extend(o.records.iter().copied());
+                }
+                dns_obs.push(o);
+            }
+            for endpoint in &dot_eps {
+                let o = ip_tools::dns::dot_query(endpoint, &target.host, rt, timeout, insecure).await;
                 if o.error.is_none() {
                     addresses.extend(o.records.iter().copied());
                 }
@@ -117,7 +129,7 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
     }
     if addresses.is_empty() {
         eprintln!(
-            "Error: hostname {} did not resolve to any address via the system resolver, --server, or --doh resolvers",
+            "Error: hostname {} did not resolve to any address via the system resolver, --server, --doh, or --dot resolvers",
             target.host
         );
         return ExitCode::FAILURE;

@@ -381,9 +381,10 @@ Because the failures above are the *local* address family being unroutable —
 not the destination's addresses being partially down — the engine reports the
 honest address-family and QUIC verdicts and does **not** raise a
 destination-side partial-connectivity or filtering alarm. A resolver
-*disagreement* diagnosis requires comparing resolvers (`--server` and/or
-`--doh`); a single system-resolver run answers A+AAAA normally and is not
-"disagreeing with itself".
+*disagreement* diagnosis requires comparing resolvers (`--server`, `--doh`
+and/or `--dot`); a single system-resolver run answers A+AAAA normally and is
+not "disagreeing with itself". `diagnose --dot <endpoint>` folds a DNS-over-TLS
+resolver into the same evidence and address pool as `--doh`.
 
 The engine separates measurement from diagnosis: each diagnosis carries a
 severity, a category, a confidence, the evidence that supports it, and the
