@@ -5,7 +5,10 @@
 //! the HTTP/1.1 probe makes `HTTP/1.1 PASS / HTTP/2 FAIL` (and the reverse) a
 //! first-class, observable distinction.
 
-use crate::http_common::{build_tls_observation, collect_response_headers, http_error, MAX_BODY_BYTES};
+use crate::http_common::{
+    body_snippet_string, build_tls_observation, collect_response_headers, http_error, push_body_snippet,
+    BODY_SNIPPET_BYTES, MAX_BODY_BYTES,
+};
 use crate::model::http::HttpObservation;
 use crate::model::{FailureKind, ProbeError};
 use std::net::SocketAddr;
@@ -174,6 +177,7 @@ async fn probe_impl(
     let mut body = response.into_body();
     let mut bytes_read: u64 = 0;
     let mut ended = false;
+    let mut snippet: Vec<u8> = Vec::with_capacity(BODY_SNIPPET_BYTES);
     loop {
         let chunk = match tokio::time::timeout(timeout, body.data()).await {
             Ok(Some(Ok(chunk))) => chunk,
@@ -184,6 +188,7 @@ async fn probe_impl(
             }
             Err(_) => break, // body read timed out before completion
         };
+        push_body_snippet(&mut snippet, &chunk[..]);
         bytes_read = bytes_read.saturating_add(chunk.len() as u64);
         let _ = body.flow_control().release_capacity(chunk.len());
         if bytes_read >= MAX_BODY_BYTES {
@@ -192,6 +197,7 @@ async fn probe_impl(
         }
     }
 
+    let body_snippet = body_snippet_string(&snippet, (bytes_read as usize) > snippet.len());
     HttpObservation {
         tls: Some(tls_obs),
         status: Some(status),
@@ -199,6 +205,7 @@ async fn probe_impl(
         location,
         headers,
         body_bytes: ended.then_some(bytes_read),
+        body_snippet,
         latency_ms: Some(start.elapsed().as_millis() as u64),
         ..base
     }

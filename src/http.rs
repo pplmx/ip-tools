@@ -5,7 +5,10 @@
 //! connection. Redirection is *not* followed by default: a redirect is
 //! recorded, not chased, so the raw server behaviour is visible.
 
-use crate::http_common::{build_tls_observation, collect_response_headers, http_error, MAX_BODY_BYTES};
+use crate::http_common::{
+    body_snippet_string, build_tls_observation, collect_response_headers, http_error, push_body_snippet,
+    BODY_SNIPPET_BYTES, MAX_BODY_BYTES,
+};
 use crate::model::http::HttpObservation;
 use crate::model::{FailureKind, ProbeError};
 use http_body_util::{BodyExt, Empty};
@@ -175,6 +178,7 @@ async fn probe_impl(
     let mut body = response.into_body();
     let mut bytes_read: u64 = 0;
     let mut ended = false;
+    let mut snippet: Vec<u8> = Vec::with_capacity(BODY_SNIPPET_BYTES);
     loop {
         let frame = match tokio::time::timeout(timeout, body.frame()).await {
             Ok(Some(Ok(frame))) => frame,
@@ -186,6 +190,7 @@ async fn probe_impl(
             Err(_) => break, // body read timed out before completion
         };
         if let Ok(data) = frame.into_data() {
+            push_body_snippet(&mut snippet, &data[..]);
             bytes_read = bytes_read.saturating_add(data.len() as u64);
         }
         if bytes_read >= MAX_BODY_BYTES {
@@ -194,6 +199,7 @@ async fn probe_impl(
         }
     }
     let body_bytes = ended.then_some(bytes_read);
+    let body_snippet = body_snippet_string(&snippet, (bytes_read as usize) > snippet.len());
 
     HttpObservation {
         tls: Some(tls_obs),
@@ -202,6 +208,7 @@ async fn probe_impl(
         location,
         headers,
         body_bytes,
+        body_snippet,
         latency_ms: Some(start.elapsed().as_millis() as u64),
         ..base
     }

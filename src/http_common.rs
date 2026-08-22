@@ -7,6 +7,11 @@ use std::net::SocketAddr;
 /// Cap on the response body read from the server, to bound resource use.
 pub const MAX_BODY_BYTES: u64 = 1024 * 1024;
 
+/// Cap on the response-body text snippet kept in each observation, so a
+/// hostile or binary body cannot balloon the probe's memory or dump unbounded
+/// content into a report.
+pub const BODY_SNIPPET_BYTES: usize = 1024;
+
 /// Cap on the number of response headers recorded per observation, so a
 /// hostile or chatty server cannot balloon the probe's memory.
 pub const MAX_RESPONSE_HEADERS: usize = 24;
@@ -52,4 +57,29 @@ pub fn http_error(step: &str, e: impl std::fmt::Display) -> ProbeError {
         kind: FailureKind::Http,
         message: format!("{step} failed: {e}"),
     }
+}
+
+/// Append up to [`BODY_SNIPPET_BYTES`] of `data` to the running snippet,
+/// stopping once the cap is reached.
+pub fn push_body_snippet(snippet: &mut Vec<u8>, data: &[u8]) {
+    if snippet.len() >= BODY_SNIPPET_BYTES {
+        return;
+    }
+    let take = (BODY_SNIPPET_BYTES - snippet.len()).min(data.len());
+    snippet.extend_from_slice(&data[..take]);
+}
+
+/// Build the lossy-UTF8 text snippet from the captured bytes. Returns `None`
+/// when nothing was captured; appends `…` when the body had more content than
+/// the snippet cap (`truncated`).
+#[must_use]
+pub fn body_snippet_string(snippet: &[u8], truncated: bool) -> Option<String> {
+    if snippet.is_empty() {
+        return None;
+    }
+    let mut text = String::from_utf8_lossy(snippet).into_owned();
+    if truncated {
+        text.push('…');
+    }
+    Some(text)
 }

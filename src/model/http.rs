@@ -38,6 +38,11 @@ pub struct HttpObservation {
     /// received but the body did not complete within the probe timeout (a
     /// stalled or truncated response), for every protocol.
     pub body_bytes: Option<u64>,
+    /// A bounded, lossy-UTF8 textual snippet of the response body (first
+    /// `http_common::BODY_SNIPPET_BYTES` bytes, with an explicit `…` when the
+    /// body continued past the cap). `None` when no response body bytes were
+    /// captured. Carried in `--json` and shown as evidence in the human report.
+    pub body_snippet: Option<String>,
     /// Overall latency (TLS + HTTP) in milliseconds on success.
     pub latency_ms: Option<u64>,
     /// Classified failure mode and context, when not successful.
@@ -59,6 +64,7 @@ impl HttpObservation {
             location: None,
             headers: Vec::new(),
             body_bytes: None,
+            body_snippet: None,
             latency_ms: None,
             failure: None,
         }

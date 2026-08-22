@@ -282,6 +282,11 @@ pub fn render_http(observations: &[HttpObservation]) -> String {
             // probe bound: the response is visibly truncated/stalled.
             out.push_str("    body: incomplete (timed out)\n");
         }
+        if let Some(snippet) = &obs.body_snippet {
+            out.push_str("    body content: ");
+            out.push_str(snippet);
+            out.push('\n');
+        }
         out.push_str(&format!("    latency: {} ms\n", obs.latency_ms.unwrap_or(0)));
     }
     out
@@ -600,6 +605,7 @@ mod tests {
             location: Some("https://example.com/login".into()),
             headers: Vec::new(),
             body_bytes: Some(1234),
+            body_snippet: None,
             latency_ms: Some(30),
             failure: None,
         };
@@ -614,6 +620,7 @@ mod tests {
             location: None,
             headers: Vec::new(),
             body_bytes: None,
+            body_snippet: None,
             latency_ms: None,
             failure: Some(ProbeError {
                 kind: FailureKind::Http,
@@ -631,6 +638,7 @@ mod tests {
             location: None,
             headers: Vec::new(),
             body_bytes: None,
+            body_snippet: None,
             latency_ms: Some(1),
             failure: None,
         };
@@ -647,6 +655,7 @@ mod tests {
             location: None,
             headers: Vec::new(),
             body_bytes: None,
+            body_snippet: None,
             latency_ms: None,
             failure: None,
         };
@@ -665,6 +674,53 @@ mod tests {
         assert!(out.contains("HTTP/1.1"));
         assert!(out.contains("301"));
         assert!(out.contains("body: incomplete"), "stalled body must be visible: {out}");
+    }
+
+    #[test]
+    fn render_http_shows_body_content_snippet() {
+        // A captured body snippet is rendered as a `body content:` line; the
+        // explicit … marks truncation when the body continued past the cap.
+        let ok = HttpObservation {
+            destination: "1.1.1.1:443".parse().unwrap(),
+            host: "example.com".into(),
+            method: "GET".into(),
+            path: "/".into(),
+            tls: None,
+            protocol: Some("HTTP/1.1".into()),
+            status: Some(200),
+            location: None,
+            headers: Vec::new(),
+            body_bytes: Some(2),
+            body_snippet: Some("ok".into()),
+            latency_ms: Some(10),
+            failure: None,
+        };
+        let out = render_http(&[ok]);
+        assert!(
+            out.contains("body content: ok"),
+            "small body snippet must be visible: {out}"
+        );
+
+        let truncated = HttpObservation {
+            destination: "2.2.2.2:443".parse().unwrap(),
+            host: "example.com".into(),
+            method: "GET".into(),
+            path: "/".into(),
+            tls: None,
+            protocol: Some("HTTP/1.1".into()),
+            status: Some(200),
+            location: None,
+            headers: Vec::new(),
+            body_bytes: Some(2048),
+            body_snippet: Some("xxxx…".into()),
+            latency_ms: Some(10),
+            failure: None,
+        };
+        let out = render_http(&[truncated]);
+        assert!(
+            out.contains("body content: xxxx…"),
+            "truncated snippet with … must be visible: {out}"
+        );
     }
 
     #[test]

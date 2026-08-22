@@ -31,7 +31,7 @@ probing with latency statistics**, and the **evidence-based diagnostic engine**.
 - TLS: handshake with SNI, ALPN, cipher, TLS version and certificate
   subject/issuer/validity, per address.
 - HTTPS/HTTP1.1: single request per address over TLS (status, redirect,
-  protocol, body size).
+  protocol, body size and a bounded body-content snippet).
 - Repeated probes: per-address success rate, min/p50/p90/p95/p99/max latency,
   jitter, and failure distribution.
 - IPv4 and IPv6 are kept separate and never collapsed.
@@ -274,6 +274,14 @@ diagnostic-relevant ones — server identity (`server`, `x-powered-by`,
 `expires`, `etag`, `last-modified`), and `set-cookie`/`content-type` — so
 *which* server or CDN actually answered is visible in both modes.
 
+The probes also capture a **bounded textual snippet of the response body**
+(the first 1024 bytes, lossy-UTF8, with an explicit `…` when the body
+continues past that cap): the human report shows a `body content:` line and
+`--json` carries the `body_snippet` field. Because the body is what makes a
+status code meaningful — a WAF block page, an auth/JSON error, a rate-limit
+message, a JS challenge, a captive-portal prompt — surfacing it completes the
+HTTP observation (request control, headers, status, and now content).
+
 Example output:
 
 ```
@@ -284,6 +292,7 @@ HTTPS
     TLS: TLSv1.3
     ALPN: http/1.1
     body: 559 bytes
+    body content: <html>...
     latency: 899 ms
 ```
 

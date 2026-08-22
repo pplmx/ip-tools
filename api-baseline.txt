@@ -112,6 +112,7 @@ pub fn ip_tools::model::dns::DnsRepeatResult::success_rate(&self) -> f64
 pub mod ip_tools::model::http
 pub struct ip_tools::model::http::HttpObservation
 pub ip_tools::model::http::HttpObservation::body_bytes: core::option::Option<u64>
+pub ip_tools::model::http::HttpObservation::body_snippet: core::option::Option<alloc::string::String>
 pub ip_tools::model::http::HttpObservation::destination: core::net::socket_addr::SocketAddr
 pub ip_tools::model::http::HttpObservation::failure: core::option::Option<ip_tools::model::ProbeError>
 pub ip_tools::model::http::HttpObservation::headers: alloc::vec::Vec<(alloc::string::String, alloc::string::String)>
@@ -266,6 +267,7 @@ pub ip_tools::model::FailureCount::count: usize
 pub ip_tools::model::FailureCount::kind: ip_tools::model::FailureKind
 pub struct ip_tools::model::HttpObservation
 pub ip_tools::model::HttpObservation::body_bytes: core::option::Option<u64>
+pub ip_tools::model::HttpObservation::body_snippet: core::option::Option<alloc::string::String>
 pub ip_tools::model::HttpObservation::destination: core::net::socket_addr::SocketAddr
 pub ip_tools::model::HttpObservation::failure: core::option::Option<ip_tools::model::ProbeError>
 pub ip_tools::model::HttpObservation::headers: alloc::vec::Vec<(alloc::string::String, alloc::string::String)>
@@ -453,6 +455,7 @@ pub struct ip_tools::Evidence
 pub ip_tools::Evidence::detail: alloc::string::String
 pub struct ip_tools::HttpObservation
 pub ip_tools::HttpObservation::body_bytes: core::option::Option<u64>
+pub ip_tools::HttpObservation::body_snippet: core::option::Option<alloc::string::String>
 pub ip_tools::HttpObservation::destination: core::net::socket_addr::SocketAddr
 pub ip_tools::HttpObservation::failure: core::option::Option<ip_tools::model::ProbeError>
 pub ip_tools::HttpObservation::headers: alloc::vec::Vec<(alloc::string::String, alloc::string::String)>

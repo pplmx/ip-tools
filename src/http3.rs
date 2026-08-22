@@ -4,7 +4,9 @@
 //! HTTP/3, via `quinn` and `h3`. Keeping this distinct from the TCP path makes
 //! `TCP/HTTPS PASS / QUIC/HTTP3 FAIL` (and the reverse) observable.
 
-use crate::http_common::{collect_response_headers, MAX_BODY_BYTES};
+use crate::http_common::{
+    body_snippet_string, collect_response_headers, push_body_snippet, BODY_SNIPPET_BYTES, MAX_BODY_BYTES,
+};
 use crate::model::http::HttpObservation;
 use crate::model::tls::TlsObservation;
 use crate::model::{FailureKind, ProbeError};
@@ -228,6 +230,7 @@ async fn probe_impl(
     // error mid-body is a failed observation, already returned above.
     let mut bytes_read: u64 = 0;
     let mut ended = false;
+    let mut snippet: Vec<u8> = Vec::with_capacity(BODY_SNIPPET_BYTES);
     loop {
         let chunk = match tokio::time::timeout(timeout, req_stream.recv_data()).await {
             Ok(Ok(Some(chunk))) => chunk,
@@ -238,6 +241,7 @@ async fn probe_impl(
             Err(_) => break, // body read timed out before completion
             Ok(Err(e)) => return base.with_failure(failure(FailureKind::Http, format!("http/3 body failed: {e}"))),
         };
+        push_body_snippet(&mut snippet, chunk.chunk());
         bytes_read = bytes_read.saturating_add(chunk.remaining() as u64);
         if bytes_read >= MAX_BODY_BYTES {
             ended = true;
@@ -245,6 +249,7 @@ async fn probe_impl(
         }
     }
 
+    let body_snippet = body_snippet_string(&snippet, (bytes_read as usize) > snippet.len());
     HttpObservation {
         tls: Some(quic_tls_summary(&quic_conn, destination, host)),
         status: Some(status),
@@ -252,6 +257,7 @@ async fn probe_impl(
         location,
         headers,
         body_bytes: ended.then_some(bytes_read),
+        body_snippet,
         latency_ms: Some(start.elapsed().as_millis() as u64),
         ..base
     }

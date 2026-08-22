@@ -163,6 +163,7 @@ mod tests {
             location: None,
             headers: Vec::new(),
             body_bytes: None,
+            body_snippet: None,
             latency_ms: Some(1),
             failure: failed.then(|| ProbeError {
                 kind: FailureKind::Quic,

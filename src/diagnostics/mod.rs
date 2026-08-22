@@ -346,6 +346,7 @@ mod tests {
                 location: None,
                 headers: Vec::new(),
                 body_bytes: Some(100),
+                body_snippet: None,
                 latency_ms: Some(30),
                 failure: None,
             },
@@ -360,6 +361,7 @@ mod tests {
                 location: None,
                 headers: Vec::new(),
                 body_bytes: None,
+                body_snippet: None,
                 latency_ms: None,
                 failure: Some(ProbeError {
                     kind: FailureKind::Timeout,
@@ -393,6 +395,7 @@ mod tests {
             location: None,
             headers: Vec::new(),
             body_bytes: None, // headers received, body stalled
+            body_snippet: None,
             latency_ms: Some(30),
             failure: None,
         }];

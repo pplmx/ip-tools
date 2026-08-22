@@ -754,6 +754,78 @@ fn http_cli_insecure_probes_self_signed_fixture() {
 }
 
 #[test]
+fn http_cli_includes_body_content_snippet() {
+    // The fixture's ordinary route serves a 2-byte body ("ok"). The CLI report
+    // must surface that content (human `body content:` line) and the JSON
+    // observation must carry the `body_snippet` field.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let addr = fixture.tcp_addr().to_string();
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args(["http2", &addr, "--insecure", "--timeout", "2000"])
+        .output()
+        .expect("run http2 --insecure");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "http2 --insecure should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.contains("body content: ok"),
+        "small body snippet must be captured: {stdout}"
+    );
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args(["http2", &addr, "--insecure", "--json", "--timeout", "2000"])
+        .output()
+        .expect("run http2 --insecure --json");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("\"body_snippet\": \"ok\""),
+        "json must carry the body snippet: {stdout}"
+    );
+}
+
+#[test]
+fn http_cli_truncates_large_body_snippet() {
+    // `big.invalid` streams 2 MiB of 'x'. The captured snippet must be capped
+    // at BODY_SNIPPET_BYTES and carry the explicit truncation marker.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let addr = fixture.tcp_addr().to_string();
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args(["http", &addr, "--sni", "big.invalid", "--insecure", "--timeout", "2000"])
+        .output()
+        .expect("run http --sni big.invalid");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "http big.invalid should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let snippet_line = stdout
+        .lines()
+        .find(|l| l.contains("body content:"))
+        .expect("a body content line must be present");
+    assert!(
+        snippet_line.ends_with('…'),
+        "large body snippet must be truncated with …: {stdout}"
+    );
+}
+
+#[test]
 fn http_cli_sni_override_reaches_the_http_host_header() {
     // `--sni` must present the chosen name as the HTTP `Host` header while
     // still connecting to the target's resolved addresses. The fixture routes
