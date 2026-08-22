@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-22T12:11:25+00:00",
+  "updated_at": "2026-08-22T12:26:33+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -836,6 +836,69 @@
       "touched_round": 0,
       "commit": "237cfc1a02859178bd561783319f971bedc90df7",
       "summary": "dns accepts multiple positional targets (DNS health sweep): per-host system/+--server/+--doh/+--dot resolution (single-shot or --count repeat) via dns_compute; every host renders; >1 target emits a per-target JSON array (single keeps flat array); --strict aggregates failures across targets; IP literals keep the no-resolver short-circuit. No public API change. 1 fixture-free CLI test (two literals render + 2-element array). 181 tests green, all gates clean, coverage 93.39%. commit 237cfc1"
+    },
+    "DEC-012": {
+      "id": "DEC-012",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T12:24:45+00:00",
+      "updated_at": "2026-08-22T12:24:45+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-22): extend multi-target to the per-address probe commands (tcp/tls/http/http2/http3/probe). diagnose and dns already sweep many targets, but connectivity/latency probes still take a single host, so a fleet connectivity sweep needs a shell loop. Make every probe command accept multiple positional targets and generalize the shared run_probe_flow to loop: resolve+probe each target in turn, label each host block in human output, emit a per-target JSON array for >1 host (single stays flat), and aggregate --strict across targets. No public library API change (cli-private); the probe closure gains a Clone bound so it can be re-invoked per target.",
+      "alternatives_rejected": "--interface source-IP binding (touches tcp/tls/quinn bind paths, higher blast radius); --body @file/stdin (small DX follow-up to --body, not a milestone); making dns/diagnose multi again (already done in prior milestones)"
+    },
+    "ISS-007": {
+      "id": "ISS-007",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T12:24:46+00:00",
+      "updated_at": "2026-08-22T12:26:33+00:00",
+      "touched_round": 0,
+      "summary": "The per-address probe commands (tcp/tls/http/http2/http3/probe) accept a single target, so a fleet connectivity/latency sweep over many hosts requires a shell loop — no per-target JSON corpus or one aggregated --strict exit.",
+      "severity": "medium"
+    },
+    "TASK-012": {
+      "id": "TASK-012",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T12:24:51+00:00",
+      "updated_at": "2026-08-22T12:26:33+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.8,
+      "confidence": 1,
+      "effort": 0.6,
+      "unlock_factor": 1,
+      "summary": "Generalize run_probe_flow to accept multiple targets (variadic positional on every probe subcommand via probe_command): resolve+probe each in turn, label each host block in human output, emit a per-target JSON array for >1 host (single keeps flat array), aggregate --strict and unresolved failure across targets. Add a Clone bound on the probe closure so it re-invokes per target."
+    },
+    "TASK-013": {
+      "id": "TASK-013",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T12:24:52+00:00",
+      "updated_at": "2026-08-22T12:26:33+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.7,
+      "confidence": 1,
+      "effort": 0.3,
+      "unlock_factor": 1,
+      "summary": "Tests + docs: a fixture-gated CLI test proving tcp on two loopback targets labels each block and yields a 2-element per-target JSON array; README/CHANGELOG updates for multi-target probe commands."
+    },
+    "CHG-007": {
+      "id": "CHG-007",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T12:26:33+00:00",
+      "updated_at": "2026-08-22T12:26:33+00:00",
+      "touched_round": 0,
+      "commit": "4927e16dc93eb3c47d7367d92fa187c758a8045e",
+      "summary": "The per-address probe commands (tcp/tls/http/http2/http3/probe) accept multiple positional targets: run_probe_flow loops target resolution+probing, labels each host block in human output, emits a per-target JSON array for >1 host (single keeps flat array), aggregates --strict and unresolved-target failure across targets; probe closure gains a Clone bound. No public library API change. 1 fixture-gated CLI test (tcp on two loopbacks labels + 2-element array). 182 tests green, all gates clean, coverage 93.41%. commit 4927e16"
     }
   },
   "edges": [
@@ -1366,6 +1429,60 @@
       "to": "ISS-006",
       "type": "resolves",
       "created_at": "2026-08-22T12:11:25+00:00"
+    },
+    {
+      "from": "ISS-007",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-22T12:24:59+00:00"
+    },
+    {
+      "from": "TASK-012",
+      "to": "ISS-007",
+      "type": "addresses",
+      "created_at": "2026-08-22T12:24:59+00:00"
+    },
+    {
+      "from": "TASK-013",
+      "to": "ISS-007",
+      "type": "addresses",
+      "created_at": "2026-08-22T12:24:59+00:00"
+    },
+    {
+      "from": "TASK-013",
+      "to": "TASK-012",
+      "type": "depends_on",
+      "created_at": "2026-08-22T12:24:59+00:00"
+    },
+    {
+      "from": "DEC-012",
+      "to": "TASK-012",
+      "type": "governs",
+      "created_at": "2026-08-22T12:24:59+00:00"
+    },
+    {
+      "from": "DEC-012",
+      "to": "TASK-013",
+      "type": "governs",
+      "created_at": "2026-08-22T12:24:59+00:00"
+    },
+    {
+      "from": "CHG-007",
+      "to": "TASK-012",
+      "type": "implements",
+      "created_at": "2026-08-22T12:26:33+00:00"
+    },
+    {
+      "from": "CHG-007",
+      "to": "TASK-013",
+      "type": "implements",
+      "created_at": "2026-08-22T12:26:33+00:00"
+    },
+    {
+      "from": "CHG-007",
+      "to": "ISS-007",
+      "type": "resolves",
+      "created_at": "2026-08-22T12:26:33+00:00"
     }
   ]
 }
