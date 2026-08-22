@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-22T16:03:14+00:00",
+  "updated_at": "2026-08-22T16:23:28+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -1416,6 +1416,54 @@
       "touched_round": 0,
       "commit": "b62f943db779619aec59e7548e329c1a10ee5485",
       "summary": "dns --record-type gains CAA (257) and SRV (33): DnsRecordType +Caa/Srv; DnsRecord +Caa{flags,tag,value}/Srv{priority,weight,port,target}; hickory record_from_rdata + DoH/DoT wire parser decode both (CAA flags/tag/len/value, SRV priority/weight/port/name); rendering and parse_record_type updated. Public API change, api-baseline regenerated; no new dependency. Pinned: wire-parser unit tests, render test, --record-type CLI acceptance. 200 tests green, clippy/fmt/doc clean."
+    },
+    "DEC-024": {
+      "id": "DEC-024",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T16:19:00+00:00",
+      "updated_at": "2026-08-22T16:19:00+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-23): surface certificate Subject Alternative Names (SANs) in the TLS/HTTP certificate report. A TLS diagnostics tool should show which hostnames/IPs a certificate actually covers, so an operator can see whether the probed host matches (vs a wrong-host or wildcard-only cert). x509-parser is already a dependency and cert_summary already parses the peer cert, so extracting the SAN extension is a small, contained addition: add CertificateSummary.sans: Vec<String> (DNSName/email/URI/IPAddress as strings), render it in the human TLS report and carry it in JSON. Distinct from the record-type/CSV work; public API change (regenerated api-baseline); deterministically testable against the self-signed fixture cert (known SANs) plus a unit test parsing a generated cert.",
+      "alternatives_rejected": "source-IP/interface binding (large cross-cutting blast radius, untestable without multiple source IPs); TLS-version forcing (changes 12 public probe signatures + ~49 call sites); route multi-target (privileged, not deterministically testable)"
+    },
+    "TASK-025": {
+      "id": "TASK-025",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T16:19:07+00:00",
+      "updated_at": "2026-08-22T16:23:28+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.25,
+      "unlock_factor": 1,
+      "summary": "Add CertificateSummary.sans: Vec<String> populated from the peer cert SubjectAlternativeName extension (DNSName/email/URI/IPAddress as strings) in tls::cert_summary using the already-parsed x509 cert; render SANs in the human TLS report and carry in JSON. Public API change (regenerate api-baseline). Pinned by a fixture TLS test (known SANs on the self-signed cert) and/or a unit test parsing a generated cert."
+    },
+    "ISS-018": {
+      "id": "ISS-018",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T16:19:07+00:00",
+      "updated_at": "2026-08-22T16:23:28+00:00",
+      "touched_round": 0,
+      "severity": "low",
+      "summary": "The TLS/HTTP certificate report shows subject/issuer/validity but not the certificate Subject Alternative Names, so an operator cannot see which hostnames/IPs the cert actually covers and whether the probed host matches."
+    },
+    "CHG-019": {
+      "id": "CHG-019",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T16:23:28+00:00",
+      "updated_at": "2026-08-22T16:23:28+00:00",
+      "touched_round": 0,
+      "commit": "97309fd6eb1b7a8849df96d4fca957da5200bf8f",
+      "summary": "CertificateSummary.sans: Vec<String> parsed from the peer cert SAN extension in tls::cert_summary via x509-parser (DNSName/email/URI/IPAddress as strings); rendered in the human TLS report (; sans: ...) and carried in JSON. Lets an operator see which hostnames/IPs a cert covers. Public API change, api-baseline regenerated; no new dependency. Pinned: fixture TLS test (SANs localhost,127.0.0.1 on self-signed cert) + render_cert unit test. 201 tests green, clippy/fmt/doc clean."
     }
   },
   "edges": [
@@ -2306,6 +2354,36 @@
       "to": "ISS-017",
       "type": "resolves",
       "created_at": "2026-08-22T16:03:14+00:00"
+    },
+    {
+      "from": "DEC-024",
+      "to": "TASK-025",
+      "type": "governs",
+      "created_at": "2026-08-22T16:19:07+00:00"
+    },
+    {
+      "from": "TASK-025",
+      "to": "ISS-018",
+      "type": "addresses",
+      "created_at": "2026-08-22T16:19:07+00:00"
+    },
+    {
+      "from": "ISS-018",
+      "to": "COMP-tls",
+      "type": "located_in",
+      "created_at": "2026-08-22T16:19:07+00:00"
+    },
+    {
+      "from": "CHG-019",
+      "to": "TASK-025",
+      "type": "implements",
+      "created_at": "2026-08-22T16:23:28+00:00"
+    },
+    {
+      "from": "CHG-019",
+      "to": "ISS-018",
+      "type": "resolves",
+      "created_at": "2026-08-22T16:23:28+00:00"
     }
   ]
 }
