@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-22T07:44:05+00:00",
+  "updated_at": "2026-08-22T09:52:55+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -451,10 +451,10 @@
     "TASK-diagnose-request": {
       "id": "TASK-diagnose-request",
       "type": "task",
-      "status": "active",
-      "version": 1,
+      "status": "resolved",
+      "version": 2,
       "created_at": "2026-08-22T07:44:05+00:00",
-      "updated_at": "2026-08-22T07:44:05+00:00",
+      "updated_at": "2026-08-22T09:52:54+00:00",
       "touched_round": 0,
       "category": "core-feature",
       "severity": 0.7,
@@ -466,13 +466,24 @@
     "ISS-diagnose-no-request": {
       "id": "ISS-diagnose-no-request",
       "type": "issue",
-      "status": "active",
-      "version": 1,
+      "status": "resolved",
+      "version": 2,
       "created_at": "2026-08-22T07:44:05+00:00",
-      "updated_at": "2026-08-22T07:44:05+00:00",
+      "updated_at": "2026-08-22T09:52:55+00:00",
       "touched_round": 0,
       "summary": "diagnose gained --sni but its HTTP evidence is always GET / with default headers: a user cannot scope the diagnostic pipeline to a specific method/path/headers, so path- or auth-dependent behavior is invisible to the full diagnosis even though the per-address probes support it",
       "severity": "medium"
+    },
+    "CHG-diagnose-request": {
+      "id": "CHG-diagnose-request",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T09:52:26+00:00",
+      "updated_at": "2026-08-22T09:52:26+00:00",
+      "touched_round": 0,
+      "commit": "afe6b9c8a2c42f1e477c51d7258741f28cdc28a8",
+      "summary": "diagnose --method/--path/--header thread into collect_http_probes so the HTTP evidence phase is scoped to the request the user cares about (GET / no headers before). 3 flags plumbed through diagnose CLI + mod.rs default wiring; fixture-gated test proving a --header x-fixture-marker reaches the server through the full pipeline (202). 167 tests green, all gates clean. commit afe6b9c"
     }
   },
   "edges": [
@@ -685,6 +696,18 @@
       "to": "TASK-diagnose-request",
       "type": "governs",
       "created_at": "2026-08-22T07:44:05+00:00"
+    },
+    {
+      "from": "CHG-diagnose-request",
+      "to": "TASK-diagnose-request",
+      "type": "implements",
+      "created_at": "2026-08-22T09:52:54+00:00"
+    },
+    {
+      "from": "CHG-diagnose-request",
+      "to": "ISS-diagnose-no-request",
+      "type": "resolves",
+      "created_at": "2026-08-22T09:52:54+00:00"
     }
   ]
 }
