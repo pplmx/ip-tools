@@ -38,11 +38,15 @@ pub ip_tools::error::DiagError::Timeout::timeout: core::time::Duration
 pub mod ip_tools::http
 pub async fn ip_tools::http::probe(core::net::socket_addr::SocketAddr, &str, &str, &str, &[(&str, &str)], core::option::Option<&[u8]>, core::time::Duration) -> ip_tools::model::http::HttpObservation
 pub async fn ip_tools::http::probe_insecure(core::net::socket_addr::SocketAddr, &str, &str, &str, &[(&str, &str)], core::option::Option<&[u8]>, core::time::Duration) -> ip_tools::model::http::HttpObservation
+pub async fn ip_tools::http::probe_insecure_with_version(core::net::socket_addr::SocketAddr, &str, &str, &str, &[(&str, &str)], core::option::Option<&[u8]>, core::time::Duration, ip_tools::tls::TlsProtocol) -> ip_tools::model::http::HttpObservation
 pub async fn ip_tools::http::probe_with_roots(core::net::socket_addr::SocketAddr, &str, &str, &str, &[(&str, &str)], core::option::Option<&[u8]>, core::time::Duration, &rustls::webpki::anchors::RootCertStore) -> ip_tools::model::http::HttpObservation
+pub async fn ip_tools::http::probe_with_version(core::net::socket_addr::SocketAddr, &str, &str, &str, &[(&str, &str)], core::option::Option<&[u8]>, core::time::Duration, ip_tools::tls::TlsProtocol) -> ip_tools::model::http::HttpObservation
 pub mod ip_tools::http2
 pub async fn ip_tools::http2::probe(core::net::socket_addr::SocketAddr, &str, &str, &str, &[(&str, &str)], core::option::Option<&[u8]>, core::time::Duration) -> ip_tools::model::http::HttpObservation
 pub async fn ip_tools::http2::probe_insecure(core::net::socket_addr::SocketAddr, &str, &str, &str, &[(&str, &str)], core::option::Option<&[u8]>, core::time::Duration) -> ip_tools::model::http::HttpObservation
+pub async fn ip_tools::http2::probe_insecure_with_version(core::net::socket_addr::SocketAddr, &str, &str, &str, &[(&str, &str)], core::option::Option<&[u8]>, core::time::Duration, ip_tools::tls::TlsProtocol) -> ip_tools::model::http::HttpObservation
 pub async fn ip_tools::http2::probe_with_roots(core::net::socket_addr::SocketAddr, &str, &str, &str, &[(&str, &str)], core::option::Option<&[u8]>, core::time::Duration, &rustls::webpki::anchors::RootCertStore) -> ip_tools::model::http::HttpObservation
+pub async fn ip_tools::http2::probe_with_version(core::net::socket_addr::SocketAddr, &str, &str, &str, &[(&str, &str)], core::option::Option<&[u8]>, core::time::Duration, ip_tools::tls::TlsProtocol) -> ip_tools::model::http::HttpObservation
 pub mod ip_tools::http3
 pub async fn ip_tools::http3::probe(core::net::socket_addr::SocketAddr, &str, &str, &str, &[(&str, &str)], core::option::Option<&[u8]>, core::time::Duration) -> ip_tools::model::http::HttpObservation
 pub async fn ip_tools::http3::probe_insecure(core::net::socket_addr::SocketAddr, &str, &str, &str, &[(&str, &str)], core::option::Option<&[u8]>, core::time::Duration) -> ip_tools::model::http::HttpObservation

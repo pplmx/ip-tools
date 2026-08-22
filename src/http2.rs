@@ -37,6 +37,33 @@ pub async fn probe(
         body,
         timeout,
         crate::tls::TlsMode::Roots(&crate::tls::roots()),
+        crate::tls::TlsProtocol::Auto,
+    )
+    .await
+}
+
+/// [`probe`] offering only the given TLS protocol version.
+#[allow(clippy::too_many_arguments)] // destination/host/method/path/headers/body/timeout/protocol
+pub async fn probe_with_version(
+    destination: SocketAddr,
+    host: &str,
+    method: &str,
+    path: &str,
+    headers: &[(&str, &str)],
+    body: Option<&[u8]>,
+    timeout: Duration,
+    protocol: crate::tls::TlsProtocol,
+) -> HttpObservation {
+    probe_impl(
+        destination,
+        host,
+        method,
+        path,
+        headers,
+        body,
+        timeout,
+        crate::tls::TlsMode::Roots(&crate::tls::roots()),
+        protocol,
     )
     .await
 }
@@ -62,6 +89,7 @@ pub async fn probe_with_roots(
         body,
         timeout,
         crate::tls::TlsMode::Roots(roots),
+        crate::tls::TlsProtocol::Auto,
     )
     .await
 }
@@ -85,6 +113,33 @@ pub async fn probe_insecure(
         body,
         timeout,
         crate::tls::TlsMode::Insecure,
+        crate::tls::TlsProtocol::Auto,
+    )
+    .await
+}
+
+/// [`probe_insecure`] offering only the given TLS protocol version.
+#[allow(clippy::too_many_arguments)] // destination/host/method/path/headers/body/timeout/protocol
+pub async fn probe_insecure_with_version(
+    destination: SocketAddr,
+    host: &str,
+    method: &str,
+    path: &str,
+    headers: &[(&str, &str)],
+    body: Option<&[u8]>,
+    timeout: Duration,
+    protocol: crate::tls::TlsProtocol,
+) -> HttpObservation {
+    probe_impl(
+        destination,
+        host,
+        method,
+        path,
+        headers,
+        body,
+        timeout,
+        crate::tls::TlsMode::Insecure,
+        protocol,
     )
     .await
 }
@@ -100,6 +155,7 @@ async fn probe_impl(
     body: Option<&[u8]>,
     timeout: Duration,
     mode: crate::tls::TlsMode<'_>,
+    protocol: crate::tls::TlsProtocol,
 ) -> HttpObservation {
     let start = Instant::now();
     // Name the protocol up front so a *failed* observation keeps its identity
@@ -110,16 +166,7 @@ async fn probe_impl(
         ..HttpObservation::base(destination, host, method, path)
     };
 
-    let conn = match crate::tls::connect_to(
-        destination,
-        host,
-        crate::tls::ALPN_H2,
-        timeout,
-        mode,
-        crate::tls::TlsProtocol::Auto,
-    )
-    .await
-    {
+    let conn = match crate::tls::connect_to(destination, host, crate::tls::ALPN_H2, timeout, mode, protocol).await {
         Ok(c) => c,
         Err(failure) => return base.with_failure(failure),
     };

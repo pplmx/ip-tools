@@ -70,6 +70,66 @@ async fn tls_probe_forces_the_requested_protocol_version() {
     assert_eq!(v12.version.as_deref(), Some("TLSv1.2"));
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn http_and_http2_probes_force_tls_version() {
+    let fixture = FixtureServer::start().await;
+    // Forced TLS 1.3 against the fixture succeeds for both HTTP/1.1 and HTTP/2
+    // (the rustls fixture supports 1.3) — proving --tls-version on these
+    // commands actually restricts the offered protocol set.
+    let h1 = http::probe_insecure_with_version(
+        fixture.tcp_addr(),
+        "localhost",
+        "GET",
+        "/",
+        &[],
+        None,
+        timeout(),
+        tls::TlsProtocol::Tls13,
+    )
+    .await;
+    assert!(h1.failure.is_none(), "forced TLS 1.3 http1 probe failed: {h1:?}");
+    assert_eq!(h1.status, Some(200));
+
+    let h2 = http2::probe_insecure_with_version(
+        fixture.tcp_addr(),
+        "localhost",
+        "GET",
+        "/",
+        &[],
+        None,
+        timeout(),
+        tls::TlsProtocol::Tls13,
+    )
+    .await;
+    assert!(h2.failure.is_none(), "forced TLS 1.3 http2 probe failed: {h2:?}");
+    assert_eq!(h2.status, Some(200));
+}
+
+#[test]
+fn http_cli_tls_version_forces_protocol() {
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let addr = fixture.tcp_addr().to_string();
+
+    for cmd in ["http", "http2"] {
+        let out = Command::cargo_bin("ip-tools")
+            .expect("ip-tools binary")
+            .args([cmd, &addr, "--insecure", "--tls-version", "1.3", "--timeout", "2000"])
+            .output()
+            .unwrap_or_else(|e| panic!("run {cmd} --tls-version 1.3: {e}"));
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            out.status.success(),
+            "{cmd} --tls-version 1.3 should succeed: {stdout}\n{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(stdout.contains("200"), "{cmd} forced TLS 1.3: {stdout}");
+    }
+}
+
 #[test]
 fn tls_cli_tls_version_forces_protocol() {
     let rt = tokio::runtime::Builder::new_multi_thread()

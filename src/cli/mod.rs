@@ -99,6 +99,7 @@ fn parser() -> ArgMatches {
                 ipv4_arg(),
                 ipv6_arg(),
                 csv_arg(),
+                tls_version_arg(),
             ],
         ))
         .subcommand(probe_command(
@@ -133,6 +134,7 @@ fn parser() -> ArgMatches {
                 ipv4_arg(),
                 ipv6_arg(),
                 csv_arg(),
+                tls_version_arg(),
             ],
         ))
         .subcommand(probe_command(
@@ -339,6 +341,15 @@ fn tls_version_arg() -> Arg {
         .value_parser(["auto", "1.2", "1.3"])
         .default_value("auto")
         .help("offer only this TLS protocol version (auto = rustls defaults)")
+}
+
+/// Map the `--tls-version` CLI value to a [`ip_tools::tls::TlsProtocol`].
+pub fn parse_tls_protocol(sub_m: &ArgMatches) -> ip_tools::tls::TlsProtocol {
+    match sub_m.get_one::<String>("tls-version").map(String::as_str) {
+        Some("1.2") => ip_tools::tls::TlsProtocol::Tls12,
+        Some("1.3") => ip_tools::tls::TlsProtocol::Tls13,
+        _ => ip_tools::tls::TlsProtocol::Auto,
+    }
 }
 
 /// `--path` argument: the HTTP request path to probe (e.g. `/`, `/healthz`).

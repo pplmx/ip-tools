@@ -232,8 +232,9 @@ skipped.
 `--tls-version 1.2|1.3` offers only that protocol version during the handshake
 (default `auto` = rustls defaults), so you can verify *which* TLS versions an
 endpoint actually negotiates — e.g. confirming a server still accepts or has
-dropped TLS 1.2 for compliance. The negotiated version is reported in the
-`TLS:` row.
+dropped TLS 1.2 for compliance. It applies to the TLS-over-TCP probes (`tls`
+and the `http`/`http2` HTTP probes; `http3` is QUIC and only negotiates
+TLS 1.3). The negotiated version is reported in the `TLS:` row.
 
 The certificate row also annotates the remaining lifetime when it is
 actionable: `(expires in N days)` within 30 days, or `(expired)` once past
