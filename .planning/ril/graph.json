@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-22T10:48:01+00:00",
+  "updated_at": "2026-08-22T11:30:59+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -647,6 +647,69 @@
       "touched_round": 0,
       "commit": "5b68c6b617e5f92a656961b8700712ce51b59340",
       "summary": "HttpObservation.body_snippet captures a bounded (1024-byte, lossy-UTF8, explicit …) textual snippet of the HTTP response body across h1/h2/h3 (reuses the body already read for sizing; zero new deps/flags); human report shows 'body content:' and --json carries it. Report unit test + 2 fixture-gated CLI tests (ok body captured in human+JSON; 2MiB truncated with …). 175 tests green, all gates clean, coverage 93.47%. commit 5b68c6b"
+    },
+    "DEC-009": {
+      "id": "DEC-009",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T10:58:17+00:00",
+      "updated_at": "2026-08-22T10:58:17+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-22): HTTP request-body sending. Promote --method/--path/--header already control the request, but there is no way to send a request body, so POST/PUT/API and health endpoints that require a body cannot be probed truthfully. Add --body <TEXT> (repeatable via the shared probe CLI) and a body: Option<&[u8]> parameter through http/http2/http3 probe + repeat library fns and diagnose, sending it on the wire with content-length across all three stacks (h1 hyper Full body; h2 SendStream::send_data; h3 request-stream send_data+finish). No new dependency.",
+      "alternatives_rejected": "batch/multi-host diagnose (new input+aggregation surface, larger scope); route --json (already implemented); choosing only HTTP/1.1 body support (inconsistent across the three first-class protocols core to the tool); a --body @file reader (can follow later; raw TEXT body is the needed first slice)"
+    },
+    "ISS-004": {
+      "id": "ISS-004",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T10:58:19+00:00",
+      "updated_at": "2026-08-22T11:30:59+00:00",
+      "touched_round": 0,
+      "summary": "The HTTP probes can set method/path/headers but cannot send a request body, so POST/PUT/API and health-check endpoints that require a body (JSON, form data, text) cannot be probed truthfully — the tool can only GET them.",
+      "severity": "medium"
+    },
+    "TASK-006": {
+      "id": "TASK-006",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T10:58:31+00:00",
+      "updated_at": "2026-08-22T11:30:59+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.8,
+      "confidence": 1,
+      "effort": 0.6,
+      "unlock_factor": 1,
+      "summary": "Library: thread body: Option<&[u8]> through http/http2/http3 probe(+/with_roots/+/insecure/impl) and probe::http_repeat/http2_repeat/http3_repeat; send it on the wire with content-length across all three stacks (h1 hyper Full body, h2 SendStream::send_data + trailers, h3 request-stream send_data + finish)."
+    },
+    "TASK-007": {
+      "id": "TASK-007",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T10:58:40+00:00",
+      "updated_at": "2026-08-22T11:30:59+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.7,
+      "confidence": 1,
+      "effort": 0.35,
+      "unlock_factor": 1,
+      "summary": "CLI + docs + tests: --body <TEXT> flag on http/http2/http3/probe/diagnose threaded like --method/--path/--header; fixture-gated test proving a POST body reaches the server on each protocol; README/CHANGELOG updates."
+    },
+    "CHG-004": {
+      "id": "CHG-004",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T11:30:59+00:00",
+      "updated_at": "2026-08-22T11:30:59+00:00",
+      "touched_round": 0,
+      "commit": "4b2dcd8ce3cc3968b243c7fd88d1324484b8a0ad",
+      "summary": "--body <TEXT> sends an HTTP request body verbatim on http/http2/http3/probe/diagnose (library body: Option<&[u8]> threaded through probe + *_repeat fns; content-length across h1 Full / h2 SendStream+trailers / h3 stream send_data+finish; diagnose collect_http_probes). Fixture echo.invalid echoes the body; library test proves h1/h2/h3 echo a --body marker, 2 CLI tests (http + diagnose) render it. 178 tests green, all gates clean, coverage 93.38%. commit 4b2dcd8"
     }
   },
   "edges": [
@@ -1015,6 +1078,60 @@
       "to": "ISS-003",
       "type": "resolves",
       "created_at": "2026-08-22T10:48:01+00:00"
+    },
+    {
+      "from": "ISS-004",
+      "to": "COMP-http",
+      "type": "located_in",
+      "created_at": "2026-08-22T10:58:50+00:00"
+    },
+    {
+      "from": "TASK-006",
+      "to": "ISS-004",
+      "type": "addresses",
+      "created_at": "2026-08-22T10:58:50+00:00"
+    },
+    {
+      "from": "TASK-007",
+      "to": "ISS-004",
+      "type": "addresses",
+      "created_at": "2026-08-22T10:58:50+00:00"
+    },
+    {
+      "from": "TASK-007",
+      "to": "TASK-006",
+      "type": "depends_on",
+      "created_at": "2026-08-22T10:58:50+00:00"
+    },
+    {
+      "from": "DEC-009",
+      "to": "TASK-006",
+      "type": "governs",
+      "created_at": "2026-08-22T10:58:50+00:00"
+    },
+    {
+      "from": "DEC-009",
+      "to": "TASK-007",
+      "type": "governs",
+      "created_at": "2026-08-22T10:58:50+00:00"
+    },
+    {
+      "from": "CHG-004",
+      "to": "TASK-006",
+      "type": "implements",
+      "created_at": "2026-08-22T11:30:59+00:00"
+    },
+    {
+      "from": "CHG-004",
+      "to": "TASK-007",
+      "type": "implements",
+      "created_at": "2026-08-22T11:30:59+00:00"
+    },
+    {
+      "from": "CHG-004",
+      "to": "ISS-004",
+      "type": "resolves",
+      "created_at": "2026-08-22T11:30:59+00:00"
     }
   ]
 }
