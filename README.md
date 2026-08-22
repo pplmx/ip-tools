@@ -69,12 +69,21 @@ ip-tools dns example.com
 ip-tools dns example.com --server 1.1.1.1 --server 8.8.8.8
 ip-tools dns example.com --ipv6        # AAAA only
 ip-tools dns example.com --json        # raw observations as JSON
+ip-tools dns example.com --count 30    # repeated resolution, latency stats
 ```
 
 An IP-literal target is shorthand for "this is already an address": `dns
 1.1.1.1` reports the literal as its own `A` record (and a clean NODATA-style
 empty `AAAA`), with no resolver consulted — consistent with the probe
 subcommands, and never a `--strict` failure.
+
+`--count N` repeats each resolution N times and aggregates per-resolver /
+per-record-type latency statistics (min/p50/p95/p99/max, jitter) plus the
+success rate and failure distribution — the DNS analogue of `probe`'s
+per-layer repeat view. Resolver flakiness and intermittent `SERVFAIL` /
+`REFUSED` answers that a single lookup cannot show become visible over
+repeated queries. With `--count 1` (the default) the output is the ordinary
+single-shot report.
 
 Example output:
 

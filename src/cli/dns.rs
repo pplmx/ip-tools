@@ -2,9 +2,9 @@
 
 use super::{parse_custom_servers, DEFAULT_PORT};
 use clap::ArgMatches;
-use ip_tools::dns::DnsClient;
+use ip_tools::dns::{aggregate_repeat, DnsClient};
 use ip_tools::model::{DnsObservation, DnsRecordType, ResolverKind};
-use ip_tools::report::{render_dns, to_json};
+use ip_tools::report::{render_dns, render_dns_repeat, to_json};
 use ip_tools::target::Target;
 use std::net::{IpAddr, SocketAddr};
 use std::process::ExitCode;
@@ -58,12 +58,18 @@ pub(super) async fn run_dns(sub_m: &ArgMatches) -> ExitCode {
         .trim_end_matches(']')
         .parse::<IpAddr>()
         .ok();
+    let count = *sub_m.get_one::<usize>("count").expect("count has default");
+    // A DNS repeat is hostname-centric, so it belongs here (the `dns`
+    // subcommand) rather than in the address-sweep `probe` flow: aggregate
+    // per-resolver/per-record-type latency + failure stats over `--count`
+    // resolutions, mirroring `probe`'s per-layer repeat view.
+    let repeat = literal.is_none() && count > 1;
     let observations = if let Some(literal) = literal {
         literal_observations(&target.host, literal, &record_types)
     } else {
         let client = DnsClient::new(&custom, timeout, 1);
         let mut obs = Vec::new();
-        for rt in record_types {
+        for &rt in &record_types {
             obs.extend(client.resolve(&target.host, rt).await);
             for endpoint in &doh_endpoints {
                 obs.push(ip_tools::dns::doh_query(endpoint, &target.host, rt, timeout, insecure).await);
@@ -71,6 +77,42 @@ pub(super) async fn run_dns(sub_m: &ArgMatches) -> ExitCode {
         }
         obs
     };
+
+    if repeat {
+        // Aggregated repeat view (system + `--server` via the DnsClient,
+        // `--doh` endpoints looped per attempt, then bucketed like the
+        // client resolvers). IP-literal targets never reach here.
+        let client = DnsClient::new(&custom, timeout, 1);
+        let mut results = Vec::new();
+        for &rt in &record_types {
+            results.extend(client.resolve_repeat(&target.host, rt, count).await);
+            for endpoint in &doh_endpoints {
+                let mut bucket: Vec<DnsObservation> = Vec::with_capacity(count);
+                for _ in 0..count {
+                    bucket.push(ip_tools::dns::doh_query(endpoint, &target.host, rt, timeout, insecure).await);
+                }
+                results.push(aggregate_repeat(&bucket, rt, count));
+            }
+        }
+        if json {
+            println!("{}", to_json(&results));
+        } else {
+            print!("{}", render_dns_repeat(&target.host, &results));
+        }
+        // `--strict` for the repeat view: any resolver that failed at least
+        // one lookup (or whose per-attempt failure count exceeds zero).
+        let strict = sub_m.get_flag("strict");
+        let failed = results.iter().filter(|r| r.failures > 0).count();
+        let failed = if strict { failed } else { 0 };
+        if failed > 0 {
+            eprintln!(
+                "Error: {failed}/{} DNS repeat row(s) had failures (--strict)",
+                results.len()
+            );
+            return ExitCode::FAILURE;
+        }
+        return ExitCode::SUCCESS;
+    }
 
     // `--strict`: a failed lookup is an observation, but scripting/CI often
     // wants a non-zero exit when any resolver could not answer. Output above

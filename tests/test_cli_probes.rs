@@ -246,6 +246,59 @@ fn dns_cli_resolves_via_custom_local_server() {
 }
 
 #[test]
+fn dns_cli_count_repeats_and_aggregates_latency_stats() {
+    let server = local_dns_server(&["192.0.2.77"], &[]);
+    let out = stdout(
+        &cmd()
+            .args([
+                "dns",
+                "host.example",
+                "--server",
+                &server.to_string(),
+                "--count",
+                "5",
+                "--timeout",
+                "1200",
+            ])
+            .assert()
+            .success(),
+    );
+    assert!(out.contains("Repeated DNS"), "repeat heading missing: {out}");
+    assert!(out.contains("host.example"), "host label missing: {out}");
+    assert!(
+        out.contains("success:  5 (100.0%)"),
+        "all five resolutions should aggregate as success: {out}"
+    );
+    assert!(out.contains("attempts: 5"), "attempt count wrong: {out}");
+    assert!(out.contains("p50:"), "latency stats missing: {out}");
+}
+
+#[test]
+fn dns_cli_count_of_one_keeps_single_shot_output() {
+    let server = local_dns_server(&["192.0.2.77"], &[]);
+    let out = stdout(
+        &cmd()
+            .args([
+                "dns",
+                "host.example",
+                "--server",
+                &server.to_string(),
+                "--count",
+                "1",
+                "--timeout",
+                "1200",
+            ])
+            .assert()
+            .success(),
+    );
+    // A single query is the ordinary per-resolver address report, not the
+    // repeat aggregation — `--count 1` must not switch output mode.
+    assert!(out.contains("DNS host.example"), "single-shot header missing: {out}");
+    assert!(out.contains("192.0.2.77"), "A record missing: {out}");
+    assert!(!out.contains("Repeated DNS"), "--count 1 must stay single-shot: {out}");
+}
+
+#[test]
 fn dns_cli_rejects_invalid_server() {
     let err = stderr(
         &cmd()

@@ -13,6 +13,8 @@ pub struct ip_tools::dns::DnsClient
 impl ip_tools::dns::DnsClient
 pub fn ip_tools::dns::DnsClient::new(&[core::net::socket_addr::SocketAddr], core::time::Duration, usize) -> Self
 pub async fn ip_tools::dns::DnsClient::resolve(&self, &str, ip_tools::model::dns::DnsRecordType) -> alloc::vec::Vec<ip_tools::model::dns::DnsObservation>
+pub async fn ip_tools::dns::DnsClient::resolve_repeat(&self, &str, ip_tools::model::dns::DnsRecordType, usize) -> alloc::vec::Vec<ip_tools::model::dns::DnsRepeatResult>
+pub fn ip_tools::dns::aggregate_repeat(&[ip_tools::model::dns::DnsObservation], ip_tools::model::dns::DnsRecordType, usize) -> ip_tools::model::dns::DnsRepeatResult
 pub async fn ip_tools::dns::doh_query(&str, &str, ip_tools::model::dns::DnsRecordType, core::time::Duration, bool) -> ip_tools::model::dns::DnsObservation
 pub mod ip_tools::error
 pub enum ip_tools::error::DiagError
@@ -95,6 +97,16 @@ pub ip_tools::model::dns::DnsObservation::latency_ms: core::option::Option<u64>
 pub ip_tools::model::dns::DnsObservation::record_type: ip_tools::model::dns::DnsRecordType
 pub ip_tools::model::dns::DnsObservation::records: alloc::vec::Vec<core::net::ip_addr::IpAddr>
 pub ip_tools::model::dns::DnsObservation::resolver: ip_tools::model::dns::ResolverKind
+pub struct ip_tools::model::dns::DnsRepeatResult
+pub ip_tools::model::dns::DnsRepeatResult::attempts: usize
+pub ip_tools::model::dns::DnsRepeatResult::failure_counts: alloc::vec::Vec<ip_tools::model::probe::FailureCount>
+pub ip_tools::model::dns::DnsRepeatResult::failures: usize
+pub ip_tools::model::dns::DnsRepeatResult::latency: ip_tools::model::latency::LatencySummary
+pub ip_tools::model::dns::DnsRepeatResult::record_type: ip_tools::model::dns::DnsRecordType
+pub ip_tools::model::dns::DnsRepeatResult::resolver: ip_tools::model::dns::ResolverKind
+pub ip_tools::model::dns::DnsRepeatResult::successes: usize
+impl ip_tools::model::dns::DnsRepeatResult
+pub fn ip_tools::model::dns::DnsRepeatResult::success_rate(&self) -> f64
 pub mod ip_tools::model::http
 pub struct ip_tools::model::http::HttpObservation
 pub ip_tools::model::http::HttpObservation::body_bytes: core::option::Option<u64>
@@ -234,6 +246,16 @@ pub ip_tools::model::DnsObservation::latency_ms: core::option::Option<u64>
 pub ip_tools::model::DnsObservation::record_type: ip_tools::model::dns::DnsRecordType
 pub ip_tools::model::DnsObservation::records: alloc::vec::Vec<core::net::ip_addr::IpAddr>
 pub ip_tools::model::DnsObservation::resolver: ip_tools::model::dns::ResolverKind
+pub struct ip_tools::model::DnsRepeatResult
+pub ip_tools::model::DnsRepeatResult::attempts: usize
+pub ip_tools::model::DnsRepeatResult::failure_counts: alloc::vec::Vec<ip_tools::model::probe::FailureCount>
+pub ip_tools::model::DnsRepeatResult::failures: usize
+pub ip_tools::model::DnsRepeatResult::latency: ip_tools::model::latency::LatencySummary
+pub ip_tools::model::DnsRepeatResult::record_type: ip_tools::model::dns::DnsRecordType
+pub ip_tools::model::DnsRepeatResult::resolver: ip_tools::model::dns::ResolverKind
+pub ip_tools::model::DnsRepeatResult::successes: usize
+impl ip_tools::model::dns::DnsRepeatResult
+pub fn ip_tools::model::dns::DnsRepeatResult::success_rate(&self) -> f64
 pub struct ip_tools::model::Evidence
 pub ip_tools::model::Evidence::detail: alloc::string::String
 pub struct ip_tools::model::FailureCount
@@ -307,6 +329,7 @@ pub async fn ip_tools::probe::tls_repeat(core::net::socket_addr::SocketAddr, &st
 pub mod ip_tools::report
 pub fn ip_tools::report::render_diagnoses(&[ip_tools::model::diagnosis::Diagnosis]) -> alloc::string::String
 pub fn ip_tools::report::render_dns(&str, &[ip_tools::model::dns::DnsObservation]) -> alloc::string::String
+pub fn ip_tools::report::render_dns_repeat(&str, &[ip_tools::model::dns::DnsRepeatResult]) -> alloc::string::String
 pub fn ip_tools::report::render_http(&[ip_tools::model::http::HttpObservation]) -> alloc::string::String
 pub fn ip_tools::report::render_probe(&[ip_tools::model::probe::ProbeResult]) -> alloc::string::String
 pub fn ip_tools::report::render_route(&[ip_tools::route::RouteHop]) -> alloc::string::String

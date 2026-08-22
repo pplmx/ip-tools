@@ -60,6 +60,7 @@ fn parser() -> ArgMatches {
                 .arg(doh_arg())
                 .arg(insecure_arg())
                 .arg(record_type_arg())
+                .arg(dns_count_arg())
                 .arg(strict_arg())
                 .arg(timeout_arg()),
         )
@@ -216,6 +217,17 @@ fn count_arg() -> Arg {
         .value_parser(clap::value_parser!(usize))
         .default_value("10")
         .help("number of repeated attempts per address")
+}
+
+/// `--count` for the `dns` subcommand: repeat each resolution that many
+/// times and aggregate latency/failure statistics (default 1 = single query).
+fn dns_count_arg() -> Arg {
+    Arg::new("count")
+        .long("count")
+        .value_name("N")
+        .value_parser(clap::value_parser!(usize))
+        .default_value("1")
+        .help("number of repeated resolutions to aggregate")
 }
 
 /// `--protocol` argument selecting which transport/protocol to repeat-probe.

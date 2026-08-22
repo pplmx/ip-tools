@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-22T01:11:31+00:00",
+  "updated_at": "2026-08-22T01:43:07+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -362,6 +362,43 @@
       "touched_round": 0,
       "commit": "4c7849d8d84c123e18fb27d2da2a1f5587bea2c1",
       "summary": "HttpObservation.headers captures bounded response headers; JSON carries all, human report shows diagnostic subset; fixture sends server: ip-tools-fixture; tests prove TCP+QUIC capture; api-baseline regenerated (headers field)"
+    },
+    "TASK-probe-dns": {
+      "id": "TASK-probe-dns",
+      "type": "task",
+      "status": "active",
+      "version": 2,
+      "created_at": "2026-08-22T01:32:57+00:00",
+      "updated_at": "2026-08-22T01:43:07+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.75,
+      "confidence": 1.0,
+      "effort": 0.55,
+      "unlock_factor": 1.2,
+      "summary": "dns --count N: repeat resolution of the target and aggregate per-resolver/per-record-type latency statistics (min/p50/p90/p95/p99/max/mean/jitter) plus success rate and failure distribution, filling the one layer (DNS) without a repeat view; design per DEC-006"
+    },
+    "ISS-dns-repeat-missing": {
+      "id": "ISS-dns-repeat-missing",
+      "type": "issue",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T01:32:57+00:00",
+      "updated_at": "2026-08-22T01:32:57+00:00",
+      "touched_round": 0,
+      "summary": "The probe command aggregates repeated latency/success/failure stats for tcp/tls/http/http2/http3 but not dns — the very first layer the tool measures and often the first to show flakiness or steering. A single dns run shows one-lookup latency; there is no way to see resolver stability over time (p50/p95/jitter of resolution, intermittent SERVFAIL/REFUSED)",
+      "severity": "medium"
+    },
+    "DEC-006": {
+      "id": "DEC-006",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T01:43:07+00:00",
+      "updated_at": "2026-08-22T01:43:07+00:00",
+      "touched_round": 0,
+      "rationale": "DNS-repeat lands on the dns subcommand (--count N), not probe --protocol dns: ProbeResult.destination is a SocketAddr and the diagnose engine joins repeated probes to addresses by destination, whereas DNS repeat is hostname-centric (per resolver + record type); shoehorning it into the address-sweep probe flow would mislabel rows or silently drop per-resolver detail",
+      "alternatives_rejected": "probe --protocol dns (address-keyed ProbeResult does not fit hostname resolution); a separate repeat command (more CLI surface for the same capability)"
     }
   },
   "edges": [
@@ -490,6 +527,30 @@
       "to": "ISS-headers-not-observed",
       "type": "resolves",
       "created_at": "2026-08-22T01:11:31+00:00"
+    },
+    {
+      "from": "ISS-dns-repeat-missing",
+      "to": "COMP-probe",
+      "type": "located_in",
+      "created_at": "2026-08-22T01:32:57+00:00"
+    },
+    {
+      "from": "TASK-probe-dns",
+      "to": "ISS-dns-repeat-missing",
+      "type": "addresses",
+      "created_at": "2026-08-22T01:32:57+00:00"
+    },
+    {
+      "from": "DEC-005",
+      "to": "TASK-probe-dns",
+      "type": "governs",
+      "created_at": "2026-08-22T01:32:57+00:00"
+    },
+    {
+      "from": "DEC-006",
+      "to": "DEC-005",
+      "type": "supersedes",
+      "created_at": "2026-08-22T01:43:07+00:00"
     }
   ]
 }

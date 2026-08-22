@@ -6,7 +6,7 @@
 //! *reported*, never automatically classified as poisoning — the diagnostic
 //! engine decides and considers GeoDNS/CDN/ECS/etc. as alternatives.
 
-use crate::model::{DnsObservation, DnsRecordType, FailureKind, ProbeError, ResolverKind};
+use crate::model::{DnsObservation, DnsRecordType, DnsRepeatResult, FailureKind, ProbeError, ResolverKind};
 use hickory_resolver::config::{ConnectionConfig, NameServerConfig, ProtocolConfig, ResolverConfig, ResolverOpts};
 use hickory_resolver::net::runtime::TokioRuntimeProvider;
 use hickory_resolver::proto::rr::RData;
@@ -101,6 +101,74 @@ impl DnsClient {
             }
         }
         results
+    }
+
+    /// Repeatedly resolve `host`/`record_type` `attempts` times and aggregate
+    /// per-resolver success/failure rates and latency statistics — the DNS
+    /// analogue of [`crate::probe::tcp_repeat`], for a single hostname's
+    /// resolution rather than a socket address.
+    ///
+    /// Attempts run sequentially so the latency distribution reflects genuine
+    /// per-query timing (a resolver's flakiness and jitter), not concurrent
+    /// skew. Each attempt queries every configured resolver; results are
+    /// grouped by resolver + record type.
+    pub async fn resolve_repeat(
+        &self,
+        host: &str,
+        record_type: DnsRecordType,
+        attempts: usize,
+    ) -> Vec<DnsRepeatResult> {
+        // Collect attempts first: a resolver may transiently produce an
+        // unanswered/failed observation, and the aggregation below must see
+        // every attempt's outcome for that resolver.
+        let mut per_resolver: Vec<(ResolverKind, Vec<DnsObservation>)> = Vec::new();
+        for _ in 0..attempts {
+            let obs = self.resolve(host, record_type).await;
+            for o in obs {
+                let key = o.resolver.clone();
+                match per_resolver.iter_mut().find(|(r, _)| *r == key) {
+                    Some((_, bucket)) => bucket.push(o),
+                    None => per_resolver.push((key, vec![o])),
+                }
+            }
+        }
+
+        let mut out = Vec::with_capacity(per_resolver.len());
+        for (_resolver, bucket) in per_resolver {
+            out.push(aggregate_repeat(&bucket, record_type, attempts));
+        }
+        out
+    }
+}
+
+/// Aggregate one resolver's repeated DNS observations into a
+/// [`DnsRepeatResult`]: successes feed latency, failures are bucketed by kind.
+#[must_use]
+pub fn aggregate_repeat(bucket: &[DnsObservation], record_type: DnsRecordType, attempts: usize) -> DnsRepeatResult {
+    let mut latency = crate::model::LatencyStats::default();
+    let mut failures: HashMap<FailureKind, usize> = HashMap::new();
+    let mut successes = 0usize;
+    for obs in bucket {
+        if let Some(ms) = obs.latency_ms {
+            successes += 1;
+            latency.push(ms);
+        } else if let Some(err) = &obs.error {
+            *failures.entry(err.kind).or_default() += 1;
+        }
+    }
+    let failure_counts: Vec<crate::model::FailureCount> = failures
+        .into_iter()
+        .map(|(kind, count)| crate::model::FailureCount { kind, count })
+        .collect();
+    DnsRepeatResult {
+        // Every observation in one bucket came from the same resolver.
+        resolver: bucket.first().map_or(ResolverKind::System, |o| o.resolver.clone()),
+        record_type,
+        attempts,
+        successes,
+        failures: attempts.saturating_sub(successes),
+        latency: latency.summarize(),
+        failure_counts,
     }
 }
 
@@ -763,6 +831,81 @@ mod tests {
         assert!(o.error.is_none(), "unexpected error: {:?}", o.error);
         assert_eq!(o.records, vec!["2001:db8::1".parse::<IpAddr>().unwrap()]);
         assert_eq!(o.record_type, DnsRecordType::Aaaa);
+    }
+
+    #[tokio::test]
+    async fn resolve_repeat_aggregates_per_resolver_successes_and_latency() {
+        let fake = FakeDns::start(&["192.0.2.1"], &[]);
+        let client = custom(&[fake.addr()], Duration::from_secs(2));
+        let results = client.resolve_repeat("host.example", DnsRecordType::A, 5).await;
+        let r = results
+            .iter()
+            .find(|r| r.resolver == ResolverKind::Custom(fake.addr()))
+            .expect("custom resolver repeat row");
+        assert_eq!(r.record_type, DnsRecordType::A);
+        assert_eq!(r.attempts, 5);
+        assert_eq!(r.successes, 5, "all five queries should succeed: {r:?}");
+        assert_eq!(r.failures, 0, "no failures expected: {r:?}");
+        assert!(r.failure_counts.is_empty(), "no failure kinds: {r:?}");
+        assert_eq!(r.latency.count, 5, "five latency samples: {r:?}");
+        assert!(r.latency.min.is_some() && r.latency.max.is_some());
+
+        // The system resolver is also probed when it exists; when it does not
+        // (as here on a bare sandbox), only the custom row appears.
+        assert!(
+            results.iter().any(|r| r.resolver == ResolverKind::Custom(fake.addr())),
+            "custom row must be present: {results:?}"
+        );
+    }
+
+    #[test]
+    fn aggregate_repeat_buckets_failures_and_keeps_resolver_identity() {
+        use crate::model::ProbeError;
+        let addr: SocketAddr = "192.0.2.53:53".parse().expect("static addr");
+        let bucket = vec![
+            DnsObservation {
+                hostname: "host.example".into(),
+                resolver: ResolverKind::Custom(addr),
+                record_type: DnsRecordType::A,
+                records: vec!["192.0.2.1".parse().unwrap()],
+                latency_ms: Some(3),
+                error: None,
+            },
+            DnsObservation {
+                hostname: "host.example".into(),
+                resolver: ResolverKind::Custom(addr),
+                record_type: DnsRecordType::A,
+                records: Vec::new(),
+                latency_ms: None,
+                error: Some(ProbeError {
+                    kind: crate::model::FailureKind::Dns,
+                    message: "SERVFAIL".into(),
+                }),
+            },
+            DnsObservation {
+                hostname: "host.example".into(),
+                resolver: ResolverKind::Custom(addr),
+                record_type: DnsRecordType::A,
+                records: Vec::new(),
+                latency_ms: None,
+                error: Some(ProbeError {
+                    kind: crate::model::FailureKind::Timeout,
+                    message: "timed out".into(),
+                }),
+            },
+        ];
+        let r = aggregate_repeat(&bucket, DnsRecordType::A, 3);
+        assert_eq!(r.resolver, ResolverKind::Custom(addr));
+        assert_eq!(r.attempts, 3);
+        assert_eq!(r.successes, 1);
+        assert_eq!(r.failures, 2);
+        assert_eq!(r.latency.count, 1);
+        assert_eq!(r.latency.min, Some(3));
+        // Failure distribution: one Dns (SERVFAIL) + one Timeout.
+        let kinds: Vec<crate::model::FailureKind> = r.failure_counts.iter().map(|f| f.kind).collect();
+        assert!(kinds.contains(&crate::model::FailureKind::Dns));
+        assert!(kinds.contains(&crate::model::FailureKind::Timeout));
+        assert!(r.failure_counts.iter().all(|f| f.count == 1));
     }
 
     #[test]

@@ -9,8 +9,8 @@
 #![allow(clippy::format_push_string)]
 
 use crate::model::{
-    CertificateSummary, Diagnosis, DnsObservation, DnsRecordType, HttpObservation, ProbeResult, ResolverKind,
-    TcpObservation, TlsObservation,
+    CertificateSummary, Diagnosis, DnsObservation, DnsRecordType, DnsRepeatResult, HttpObservation, ProbeResult,
+    ResolverKind, TcpObservation, TlsObservation,
 };
 use crate::RouteHop;
 
@@ -233,6 +233,44 @@ pub fn render_http(observations: &[HttpObservation]) -> String {
             out.push_str("    body: incomplete (timed out)\n");
         }
         out.push_str(&format!("    latency: {} ms\n", obs.latency_ms.unwrap_or(0)));
+    }
+    out
+}
+
+/// Render repeated DNS resolution results (`dns --count N`) as human text.
+#[must_use]
+pub fn render_dns_repeat(host: &str, results: &[DnsRepeatResult]) -> String {
+    let mut out = String::from("Repeated DNS ");
+    out.push_str(host);
+    out.push('\n');
+    for r in results {
+        // Identify the resolver and record type on the row, like `render_dns`
+        // groups by resolver then lists each record type's addresses.
+        let label = match &r.resolver {
+            ResolverKind::System => "system".to_string(),
+            ResolverKind::Custom(addr) => addr.to_string(),
+            ResolverKind::Doh(endpoint) => endpoint.clone(),
+        };
+        out.push_str(&format!("  {label} {}\n", rt_label(r.record_type)));
+        out.push_str(&format!("    attempts: {}\n", r.attempts));
+        out.push_str(&format!(
+            "    success:  {} ({:.1}%)\n",
+            r.successes,
+            r.success_rate() * 100.0
+        ));
+        out.push_str(&format!("    failure:  {}\n", r.failures));
+        for fc in &r.failure_counts {
+            out.push_str(&format!("      - {}: {}\n", fc.kind, fc.count));
+        }
+        if r.latency.count > 0 {
+            out.push_str("    latency:\n");
+            out.push_str(&format!("      min:  {} ms\n", r.latency.min.unwrap_or(0)));
+            out.push_str(&format!("      p50:  {} ms\n", r.latency.p50.unwrap_or(0)));
+            out.push_str(&format!("      p95:  {} ms\n", r.latency.p95.unwrap_or(0)));
+            out.push_str(&format!("      p99:  {} ms\n", r.latency.p99.unwrap_or(0)));
+            out.push_str(&format!("      max:  {} ms\n", r.latency.max.unwrap_or(0)));
+            out.push_str(&format!("      jitter: {} ms\n", r.latency.jitter.unwrap_or(0)));
+        }
     }
     out
 }
@@ -615,6 +653,35 @@ mod tests {
         assert!(out.contains("timeout: 2"));
         // No samples -> latency block omitted; no failures -> defaults.
         assert!(out.contains("0.0%"));
+    }
+
+    #[test]
+    fn render_dns_repeat_covers_success_latency_and_failures() {
+        let mut stats = LatencyStats::default();
+        for v in [10u64, 20, 30] {
+            stats.push(v);
+        }
+        let ok = DnsRepeatResult {
+            resolver: ResolverKind::Custom("9.9.9.9:53".parse().unwrap()),
+            record_type: DnsRecordType::A,
+            attempts: 4,
+            successes: 3,
+            failures: 1,
+            latency: stats.summarize(),
+            failure_counts: vec![FailureCount {
+                kind: FailureKind::Dns,
+                count: 1,
+            }],
+        };
+        let out = render_dns_repeat("host.example", &[ok]);
+        assert!(out.contains("Repeated DNS host.example"));
+        assert!(out.contains("9.9.9.9:53 A"));
+        assert!(out.contains("attempts: 4"));
+        assert!(out.contains("success:  3 (75.0%)"));
+        assert!(out.contains("failure:  1"));
+        assert!(out.contains("dns: 1"));
+        assert!(out.contains("p50:"));
+        assert!(out.contains("jitter:"));
     }
 
     #[test]

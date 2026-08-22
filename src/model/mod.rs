@@ -14,7 +14,7 @@ pub mod tcp;
 pub mod tls;
 
 pub use diagnosis::{Confidence, Diagnosis, DiagnosticCategory, Evidence, Severity};
-pub use dns::{DnsObservation, DnsRecordType, ResolverKind};
+pub use dns::{DnsObservation, DnsRecordType, DnsRepeatResult, ResolverKind};
 pub use http::HttpObservation;
 pub use latency::{LatencyStats, LatencySummary};
 pub use probe::{FailureCount, ProbeResult};
