@@ -110,7 +110,16 @@ async fn probe_impl(
         ..HttpObservation::base(destination, host, method, path)
     };
 
-    let conn = match crate::tls::connect_to(destination, host, crate::tls::ALPN_H2, timeout, mode).await {
+    let conn = match crate::tls::connect_to(
+        destination,
+        host,
+        crate::tls::ALPN_H2,
+        timeout,
+        mode,
+        crate::tls::TlsProtocol::Auto,
+    )
+    .await
+    {
         Ok(c) => c,
         Err(failure) => return base.with_failure(failure),
     };

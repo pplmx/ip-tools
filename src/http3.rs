@@ -29,7 +29,7 @@ fn quic_client_config_from(mode: crate::tls::TlsMode<'_>) -> Result<QuinnClientC
             cfg
         }
         crate::tls::TlsMode::Insecure => {
-            let cfg = crate::tls::insecure_client_config(&[b"h3"]);
+            let cfg = crate::tls::insecure_client_config(&[b"h3"], crate::tls::TlsProtocol::Auto);
             (*cfg).clone()
         }
     };

@@ -53,6 +53,47 @@ async fn tls_probe_handshakes_local_fixture() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn tls_probe_forces_the_requested_protocol_version() {
+    // The rustls fixture supports both TLS 1.2 and 1.3, so forcing each must
+    // handshake and report the forced version — proving --tls-version actually
+    // restricts the offered protocol set.
+    let fixture = FixtureServer::start().await;
+
+    let v13 =
+        tls::probe_insecure_with_version(fixture.tcp_addr(), "localhost", timeout(), tls::TlsProtocol::Tls13).await;
+    assert!(v13.success, "forced TLS 1.3 handshake should succeed: {v13:?}");
+    assert_eq!(v13.version.as_deref(), Some("TLSv1.3"));
+
+    let v12 =
+        tls::probe_insecure_with_version(fixture.tcp_addr(), "localhost", timeout(), tls::TlsProtocol::Tls12).await;
+    assert!(v12.success, "forced TLS 1.2 handshake should succeed: {v12:?}");
+    assert_eq!(v12.version.as_deref(), Some("TLSv1.2"));
+}
+
+#[test]
+fn tls_cli_tls_version_forces_protocol() {
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let addr = fixture.tcp_addr().to_string();
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args(["tls", &addr, "--insecure", "--tls-version", "1.3", "--timeout", "2000"])
+        .output()
+        .expect("run tls --tls-version 1.3");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "tls --tls-version 1.3 should succeed: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(stdout.contains("TLSv1.3"), "expected TLSv1.3: {stdout}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn http1_probe_gets_200_from_local_fixture() {
     let fixture = FixtureServer::start().await;
     let obs = http::probe_with_roots(

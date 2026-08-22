@@ -392,6 +392,7 @@ pub async fn doh_query(
         crate::tls::ALPN_HTTP1,
         timeout,
         mode,
+        crate::tls::TlsProtocol::Auto,
     )
     .await
     {
@@ -568,7 +569,16 @@ pub async fn dot_query(
     } else {
         crate::tls::TlsMode::Roots(&roots)
     };
-    let conn = match crate::tls::connect_to(SocketAddr::new(ip, eport), &ehost, &[], timeout, mode).await {
+    let conn = match crate::tls::connect_to(
+        SocketAddr::new(ip, eport),
+        &ehost,
+        &[],
+        timeout,
+        mode,
+        crate::tls::TlsProtocol::Auto,
+    )
+    .await
+    {
         Ok(c) => c,
         Err(f) => return DnsObservation { error: Some(f), ..base },
     };

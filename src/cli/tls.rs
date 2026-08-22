@@ -11,6 +11,7 @@ use std::process::ExitCode;
 /// hostname as SNI) to each in parallel.
 pub(super) async fn run_tls(sub_m: &ArgMatches) -> ExitCode {
     let insecure = sub_m.get_flag("insecure");
+    let protocol = parse_tls_protocol(sub_m);
     run_probe_flow(
         sub_m,
         render_tls,
@@ -19,13 +20,22 @@ pub(super) async fn run_tls(sub_m: &ArgMatches) -> ExitCode {
         Some(render_tls_csv),
         move |host, dest, timeout| async move {
             if insecure {
-                ip_tls::probe_insecure(dest, &host, timeout).await
+                ip_tls::probe_insecure_with_version(dest, &host, timeout, protocol).await
             } else {
-                ip_tls::probe(dest, &host, timeout).await
+                ip_tls::probe_with_version(dest, &host, timeout, protocol).await
             }
         },
     )
     .await
+}
+
+/// Map the `--tls-version` CLI value to a [`TlsProtocol`].
+fn parse_tls_protocol(sub_m: &ArgMatches) -> ip_tls::TlsProtocol {
+    match sub_m.get_one::<String>("tls-version").map(String::as_str) {
+        Some("1.2") => ip_tls::TlsProtocol::Tls12,
+        Some("1.3") => ip_tls::TlsProtocol::Tls13,
+        _ => ip_tls::TlsProtocol::Auto,
+    }
 }
 
 /// Render a TLS call sweep as CSV: a header then one row per destination,

@@ -432,12 +432,18 @@ pub fn ip_tools::target::Target::parse(&str, u16) -> core::result::Result<Self, 
 pub mod ip_tools::tcp
 pub async fn ip_tools::tcp::probe(core::net::socket_addr::SocketAddr, core::time::Duration) -> ip_tools::model::tcp::TcpObservation
 pub mod ip_tools::tls
+pub enum ip_tools::tls::TlsProtocol
+pub ip_tools::tls::TlsProtocol::Auto
+pub ip_tools::tls::TlsProtocol::Tls12
+pub ip_tools::tls::TlsProtocol::Tls13
 pub const ip_tools::tls::ALPN_GENERAL: &[&[u8]]
 pub const ip_tools::tls::ALPN_H2: &[&[u8]]
 pub const ip_tools::tls::ALPN_HTTP1: &[&[u8]]
 pub async fn ip_tools::tls::probe(core::net::socket_addr::SocketAddr, &str, core::time::Duration) -> ip_tools::model::tls::TlsObservation
 pub async fn ip_tools::tls::probe_insecure(core::net::socket_addr::SocketAddr, &str, core::time::Duration) -> ip_tools::model::tls::TlsObservation
+pub async fn ip_tools::tls::probe_insecure_with_version(core::net::socket_addr::SocketAddr, &str, core::time::Duration, ip_tools::tls::TlsProtocol) -> ip_tools::model::tls::TlsObservation
 pub async fn ip_tools::tls::probe_with_roots(core::net::socket_addr::SocketAddr, &str, core::time::Duration, &rustls::webpki::anchors::RootCertStore) -> ip_tools::model::tls::TlsObservation
+pub async fn ip_tools::tls::probe_with_version(core::net::socket_addr::SocketAddr, &str, core::time::Duration, ip_tools::tls::TlsProtocol) -> ip_tools::model::tls::TlsObservation
 pub enum ip_tools::Confidence
 pub ip_tools::Confidence::High
 pub ip_tools::Confidence::Low

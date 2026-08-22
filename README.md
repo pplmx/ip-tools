@@ -221,12 +221,19 @@ Perform a TLS handshake (with the target hostname as SNI) to each address:
 ```shell
 ip-tools tls example.com
 ip-tools tls 10.0.0.5:443 --insecure   # skip certificate validation
+ip-tools tls example.com --tls-version 1.3   # offer TLS 1.3 only
 ```
 
 `--insecure` (also on `http`, `http2`, `http3` and `diagnose`) skips TLS/QUIC
 certificate validation — useful for self-signed or private-PKI endpoints.
 Signatures on the wire are still verified; only the certificate chain check is
 skipped.
+
+`--tls-version 1.2|1.3` offers only that protocol version during the handshake
+(default `auto` = rustls defaults), so you can verify *which* TLS versions an
+endpoint actually negotiates — e.g. confirming a server still accepts or has
+dropped TLS 1.2 for compliance. The negotiated version is reported in the
+`TLS:` row.
 
 The certificate row also annotates the remaining lifetime when it is
 actionable: `(expires in N days)` within 30 days, or `(expired)` once past

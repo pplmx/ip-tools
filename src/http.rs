@@ -116,7 +116,16 @@ async fn probe_impl(
 
     // 1. TLS handshake (HTTP/1.1 ALPN).
     let tls_obs;
-    let conn = match crate::tls::connect_to(destination, host, crate::tls::ALPN_HTTP1, timeout, mode).await {
+    let conn = match crate::tls::connect_to(
+        destination,
+        host,
+        crate::tls::ALPN_HTTP1,
+        timeout,
+        mode,
+        crate::tls::TlsProtocol::Auto,
+    )
+    .await
+    {
         Ok(c) => {
             tls_obs = build_tls_observation(&c, destination, host);
             c

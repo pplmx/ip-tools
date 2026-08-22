@@ -82,6 +82,7 @@ fn parser() -> ArgMatches {
                 ipv4_arg(),
                 ipv6_arg(),
                 csv_arg(),
+                tls_version_arg(),
             ],
         ))
         .subcommand(probe_command(
@@ -328,6 +329,16 @@ fn sni_arg() -> Arg {
         .long("sni")
         .value_name("NAME")
         .help("present this hostname as SNI (and HTTP Host) instead of the target host")
+}
+
+/// `--tls-version` argument for `tls`: offer only the given protocol version.
+fn tls_version_arg() -> Arg {
+    Arg::new("tls-version")
+        .long("tls-version")
+        .value_name("1.2|1.3|auto")
+        .value_parser(["auto", "1.2", "1.3"])
+        .default_value("auto")
+        .help("offer only this TLS protocol version (auto = rustls defaults)")
 }
 
 /// `--path` argument: the HTTP request path to probe (e.g. `/`, `/healthz`).

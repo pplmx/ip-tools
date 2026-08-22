@@ -56,10 +56,32 @@ pub(crate) enum TlsMode<'a> {
     Insecure,
 }
 
+/// Which TLS protocol versions to offer during the handshake.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TlsProtocol {
+    /// Offer the rustls defaults (TLS 1.2 and 1.3).
+    Auto,
+    /// Offer TLS 1.2 only.
+    Tls12,
+    /// Offer TLS 1.3 only.
+    Tls13,
+}
+
+/// The rustls protocol-version set for a [`TlsProtocol`] selection.
+static TLS12_ONLY: &[&rustls::SupportedProtocolVersion] = &[&rustls::version::TLS12];
+static TLS13_ONLY: &[&rustls::SupportedProtocolVersion] = &[&rustls::version::TLS13];
+fn protocol_versions(protocol: TlsProtocol) -> &'static [&'static rustls::SupportedProtocolVersion] {
+    match protocol {
+        TlsProtocol::Auto => rustls::ALL_VERSIONS,
+        TlsProtocol::Tls12 => TLS12_ONLY,
+        TlsProtocol::Tls13 => TLS13_ONLY,
+    }
+}
+
 /// Build a TLS client configuration offering the given ALPN protocols and
 /// trusting `roots`.
-fn client_config(alpn: &[&[u8]], roots: &rustls::RootCertStore) -> Arc<rustls::ClientConfig> {
-    let mut config = rustls::ClientConfig::builder()
+fn client_config(alpn: &[&[u8]], roots: &rustls::RootCertStore, protocol: TlsProtocol) -> Arc<rustls::ClientConfig> {
+    let mut config = rustls::ClientConfig::builder_with_protocol_versions(protocol_versions(protocol))
         .with_root_certificates(roots.clone())
         .with_no_client_auth();
     config.alpn_protocols = alpn.iter().map(|p| p.to_vec()).collect();
@@ -71,11 +93,11 @@ fn client_config(alpn: &[&[u8]], roots: &rustls::RootCertStore) -> Arc<rustls::C
 /// Used only by the explicit `--insecure` CLI flag for probing self-signed or
 /// private-PKI endpoints; signatures are still verified, so the wire
 /// cryptography is unchanged.
-pub(crate) fn insecure_client_config(alpn: &[&[u8]]) -> Arc<rustls::ClientConfig> {
+pub(crate) fn insecure_client_config(alpn: &[&[u8]], protocol: TlsProtocol) -> Arc<rustls::ClientConfig> {
     let provider = Arc::new(rustls::crypto::ring::default_provider());
     let mut config = rustls::ClientConfig::builder_with_provider(provider.clone())
-        .with_safe_default_protocol_versions()
-        .expect("ring supports the default TLS protocols")
+        .with_protocol_versions(protocol_versions(protocol))
+        .expect("ring supports the selected TLS protocols")
         .dangerous()
         .with_custom_certificate_verifier(Arc::new(NoCertificateVerification(provider)))
         .with_no_client_auth();
@@ -147,6 +169,7 @@ pub(crate) async fn connect_to(
     alpn: &[&[u8]],
     timeout: Duration,
     mode: TlsMode<'_>,
+    protocol: TlsProtocol,
 ) -> Result<TlsConnection, ProbeError> {
     let start = Instant::now();
 
@@ -173,8 +196,8 @@ pub(crate) async fn connect_to(
         });
     };
     let connector = TlsConnector::from(match mode {
-        TlsMode::Roots(roots) => client_config(alpn, roots),
-        TlsMode::Insecure => insecure_client_config(alpn),
+        TlsMode::Roots(roots) => client_config(alpn, roots, protocol),
+        TlsMode::Insecure => insecure_client_config(alpn, protocol),
     });
     let handshake = connector.connect(name, stream);
     let tls_stream = match tokio::time::timeout(timeout, handshake).await {
@@ -216,7 +239,17 @@ pub(crate) async fn connect_to(
 /// Perform a single TLS handshake to `destination` presenting `sni`, bounded
 /// by `timeout`, and record a complete observation.
 pub async fn probe(destination: SocketAddr, sni: &str, timeout: Duration) -> TlsObservation {
-    probe_impl(destination, sni, timeout, TlsMode::Roots(&roots())).await
+    probe_impl(destination, sni, timeout, TlsMode::Roots(&roots()), TlsProtocol::Auto).await
+}
+
+/// [`probe`] offering only the given TLS protocol version.
+pub async fn probe_with_version(
+    destination: SocketAddr,
+    sni: &str,
+    timeout: Duration,
+    protocol: TlsProtocol,
+) -> TlsObservation {
+    probe_impl(destination, sni, timeout, TlsMode::Roots(&roots()), protocol).await
 }
 
 /// [`probe`] trusting an explicit root store, for verifying TLS fixtures.
@@ -226,18 +259,34 @@ pub async fn probe_with_roots(
     timeout: Duration,
     roots: &rustls::RootCertStore,
 ) -> TlsObservation {
-    probe_impl(destination, sni, timeout, TlsMode::Roots(roots)).await
+    probe_impl(destination, sni, timeout, TlsMode::Roots(roots), TlsProtocol::Auto).await
 }
 
 /// [`probe`] without certificate validation (the `--insecure` CLI flag).
 pub async fn probe_insecure(destination: SocketAddr, sni: &str, timeout: Duration) -> TlsObservation {
-    probe_impl(destination, sni, timeout, TlsMode::Insecure).await
+    probe_impl(destination, sni, timeout, TlsMode::Insecure, TlsProtocol::Auto).await
+}
+
+/// [`probe_insecure`] offering only the given TLS protocol version.
+pub async fn probe_insecure_with_version(
+    destination: SocketAddr,
+    sni: &str,
+    timeout: Duration,
+    protocol: TlsProtocol,
+) -> TlsObservation {
+    probe_impl(destination, sni, timeout, TlsMode::Insecure, protocol).await
 }
 
 /// Shared probe body for the given trust mode.
-async fn probe_impl(destination: SocketAddr, sni: &str, timeout: Duration, mode: TlsMode<'_>) -> TlsObservation {
+async fn probe_impl(
+    destination: SocketAddr,
+    sni: &str,
+    timeout: Duration,
+    mode: TlsMode<'_>,
+    protocol: TlsProtocol,
+) -> TlsObservation {
     let start = Instant::now();
-    match connect_to(destination, sni, ALPN_GENERAL, timeout, mode).await {
+    match connect_to(destination, sni, ALPN_GENERAL, timeout, mode, protocol).await {
         Ok(conn) => TlsObservation {
             destination,
             sni: sni.to_string(),
@@ -394,6 +443,21 @@ fn format_utc(ts: i64) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn protocol_versions_select_the_requested_single_version() {
+        let auto = protocol_versions(TlsProtocol::Auto);
+        assert!(auto.iter().any(|v| v.version == rustls::ProtocolVersion::TLSv1_3));
+        assert!(auto.iter().any(|v| v.version == rustls::ProtocolVersion::TLSv1_2));
+
+        let v13 = protocol_versions(TlsProtocol::Tls13);
+        assert_eq!(v13.len(), 1);
+        assert_eq!(v13[0].version, rustls::ProtocolVersion::TLSv1_3);
+
+        let v12 = protocol_versions(TlsProtocol::Tls12);
+        assert_eq!(v12.len(), 1);
+        assert_eq!(v12[0].version, rustls::ProtocolVersion::TLSv1_2);
+    }
 
     #[test]
     fn formats_epoch_as_utc() {
