@@ -1022,3 +1022,48 @@ fn http3_probe_records_response_headers() {
         "http3 must record the server header value: {stdout}"
     );
 }
+
+#[test]
+fn diagnose_cli_request_flags_scope_http_evidence() {
+    // `diagnose --header x-fixture-marker: present` must scope the HTTP phase
+    // to a request carrying that header: the fixture answers 202 only when it
+    // sees the marker, so the diagnose output must show a 202 HTTP row (proof
+    // the header reached the server through the full pipeline), alongside the
+    // other evidence phases.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let addr = fixture.tcp_addr();
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "diagnose",
+            &addr.to_string(),
+            "--header",
+            "x-fixture-marker: present",
+            "--insecure",
+            "--path",
+            "/",
+            "--method",
+            "GET",
+            "--timeout",
+            "1500",
+        ])
+        .output()
+        .expect("run diagnose with request flags");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "diagnose --header should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.contains("202"),
+        "the HTTP phase must carry the marker header (202 expected): {stdout}"
+    );
+    assert!(stdout.contains("HTTPS"), "HTTP evidence missing: {stdout}");
+    assert!(stdout.contains("Diagnosis"), "diagnoses missing: {stdout}");
+}

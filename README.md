@@ -214,9 +214,15 @@ users actually connect with:
 
 ```shell
 ip-tools diagnose 104.20.23.154:443 --sni example.com
+ip-tools diagnose example.com --path /healthz
+ip-tools diagnose example.com --method HEAD --header 'authorization: Bearer abc123'
 ```
 
-### HTTPS / HTTP/1.1
+`diagnose` accepts the same request-control flags as the HTTP probes —
+`--method`, `--path`, `--header` (plus `--sni` above) — so the HTTP evidence
+the engine reasons over can be scoped to a specific request: a `/healthz`
+behind a WAF, an authenticated endpoint, or a HEAD-only route. The rest of
+the pipeline (DNS/TCP/TLS/repeated) is unaffected.
 
 Issue a single request over TLS to each address (redirects not followed):
 

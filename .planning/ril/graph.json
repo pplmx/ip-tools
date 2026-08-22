@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-22T07:32:53+00:00",
+  "updated_at": "2026-08-22T07:44:05+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -447,6 +447,32 @@
       "touched_round": 0,
       "commit": "61419b5047e187bdd8ec6d333cbfa983b78b7c53",
       "summary": "tls/http cert row annotates remaining lifetime: (expires in N days) within 30d or (expired); renderer-only via Hinnant day-diff; unit tests for date math + far/near/past"
+    },
+    "TASK-diagnose-request": {
+      "id": "TASK-diagnose-request",
+      "type": "task",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T07:44:05+00:00",
+      "updated_at": "2026-08-22T07:44:05+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.7,
+      "confidence": 1.0,
+      "effort": 0.4,
+      "unlock_factor": 1.0,
+      "summary": "diagnose --method/--path/--header: thread the request-control flags the milestone added to http/http2/http3 into diagnose HTTP collection (currently hard-codes GET / with no headers), so the full diagnostic pipeline can be scoped to a specific request (e.g. a /healthz behind a WAF or an authenticated endpoint)"
+    },
+    "ISS-diagnose-no-request": {
+      "id": "ISS-diagnose-no-request",
+      "type": "issue",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T07:44:05+00:00",
+      "updated_at": "2026-08-22T07:44:05+00:00",
+      "touched_round": 0,
+      "summary": "diagnose gained --sni but its HTTP evidence is always GET / with default headers: a user cannot scope the diagnostic pipeline to a specific method/path/headers, so path- or auth-dependent behavior is invisible to the full diagnosis even though the per-address probes support it",
+      "severity": "medium"
     }
   },
   "edges": [
@@ -641,6 +667,24 @@
       "to": "ISS-cert-lifetime-invisible",
       "type": "resolves",
       "created_at": "2026-08-22T07:32:53+00:00"
+    },
+    {
+      "from": "ISS-diagnose-no-request",
+      "to": "COMP-diagnose",
+      "type": "located_in",
+      "created_at": "2026-08-22T07:44:05+00:00"
+    },
+    {
+      "from": "TASK-diagnose-request",
+      "to": "ISS-diagnose-no-request",
+      "type": "addresses",
+      "created_at": "2026-08-22T07:44:05+00:00"
+    },
+    {
+      "from": "DEC-005",
+      "to": "TASK-diagnose-request",
+      "type": "governs",
+      "created_at": "2026-08-22T07:44:05+00:00"
     }
   ]
 }

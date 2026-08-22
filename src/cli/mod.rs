@@ -150,7 +150,15 @@ fn parser() -> ArgMatches {
         .subcommand(probe_command(
             "diagnose",
             "run the full probe pipeline and produce evidence-based diagnoses",
-            &[insecure_arg(), doh_arg(), strict_arg(), sni_arg()],
+            &[
+                insecure_arg(),
+                doh_arg(),
+                strict_arg(),
+                sni_arg(),
+                method_arg(),
+                path_arg(),
+                header_arg(),
+            ],
         ))
         .get_matches()
 }

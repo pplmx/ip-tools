@@ -51,6 +51,19 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
         .flatten()
         .cloned()
         .unwrap_or_else(|| target.host.clone());
+    // Request control for the HTTP phase: like `http`/`http2`/`http3`, the
+    // HTTP evidence can be scoped to a specific method, path and extra
+    // headers (e.g. a `/healthz` behind a WAF or an authenticated endpoint),
+    // so the diagnosis covers the request the user actually cares about.
+    let method = sub_m.get_one::<String>("method").expect("method has default").clone();
+    let path = sub_m.get_one::<String>("path").expect("path has default").clone();
+    let headers = match super::parse_custom_headers(sub_m) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("Error: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
 
     // --- Measure (probe layer) ---
     // Resolve once: the DNS observations and the probed addresses come from
@@ -132,7 +145,17 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
     })
     .await;
 
-    let http_obs = collect_http_probes(destinations.clone(), &presented, concurrency, timeout, insecure).await;
+    let http_obs = collect_http_probes(
+        destinations.clone(),
+        &presented,
+        &method,
+        &path,
+        &headers,
+        concurrency,
+        timeout,
+        insecure,
+    )
+    .await;
 
     let probe_obs: Vec<ProbeResult> = parallel_map(destinations.clone(), concurrency, move |d| async move {
         ip_probe::tcp_repeat(d, 3, timeout).await
@@ -205,47 +228,61 @@ struct DiagnoseReport {
 }
 
 /// Probe HTTP/1.1, HTTP/2 and HTTP/3 for every address, concatenated.
+// The request shape (host/method/path/headers) mirrors the underlying probes;
+// the arity is a deliberate, readable signature rather than a hidden struct.
+#[allow(clippy::too_many_arguments)]
 async fn collect_http_probes(
     destinations: Vec<SocketAddr>,
     host: &str,
+    method: &str,
+    path: &str,
+    headers: &[(String, String)],
     concurrency: usize,
     timeout: Duration,
     insecure: bool,
 ) -> Vec<HttpObservation> {
-    let host_1 = host.to_string();
+    // Each `parallel_map` closure is `move` and spawns `'static` futures, so
+    // every captured value (host, method, path, headers) must be an owned
+    // clone per protocol that the `async move` block can take.
+    let (host_1, host_2, host_3) = (host.to_string(), host.to_string(), host.to_string());
+    let (method_1, method_2, method_3) = (method.to_string(), method.to_string(), method.to_string());
+    let (path_1, path_2, path_3) = (path.to_string(), path.to_string(), path.to_string());
+    let (headers_1, headers_2, headers_3) = (headers.to_vec(), headers.to_vec(), headers.to_vec());
+
     let http1: Vec<HttpObservation> = parallel_map(destinations.clone(), concurrency, move |d| {
-        let host = host_1.clone();
+        let (host, method, path, headers) = (host_1.clone(), method_1.clone(), path_1.clone(), headers_1.clone());
         async move {
+            let header_refs: Vec<(&str, &str)> = headers.iter().map(|(n, v)| (n.as_str(), v.as_str())).collect();
             if insecure {
-                ip_http::probe_insecure(d, &host, "GET", "/", &[], timeout).await
+                ip_http::probe_insecure(d, &host, &method, &path, &header_refs, timeout).await
             } else {
-                ip_http::probe(d, &host, "GET", "/", &[], timeout).await
+                ip_http::probe(d, &host, &method, &path, &header_refs, timeout).await
             }
         }
     })
     .await;
 
-    let host_2 = host.to_string();
     let http2: Vec<HttpObservation> = parallel_map(destinations.clone(), concurrency, move |d| {
-        let host = host_2.clone();
+        let (host, method, path, headers) = (host_2.clone(), method_2.clone(), path_2.clone(), headers_2.clone());
         async move {
+            let header_refs: Vec<(&str, &str)> = headers.iter().map(|(n, v)| (n.as_str(), v.as_str())).collect();
             if insecure {
-                ip_http2::probe_insecure(d, &host, "GET", "/", &[], timeout).await
+                ip_http2::probe_insecure(d, &host, &method, &path, &header_refs, timeout).await
             } else {
-                ip_http2::probe(d, &host, "GET", "/", &[], timeout).await
+                ip_http2::probe(d, &host, &method, &path, &header_refs, timeout).await
             }
         }
     })
     .await;
 
-    let host_3 = host.to_string();
     let http3: Vec<HttpObservation> = parallel_map(destinations.clone(), concurrency, move |d| {
-        let host = host_3.clone();
+        let (host, method, path, headers) = (host_3.clone(), method_3.clone(), path_3.clone(), headers_3.clone());
         async move {
+            let header_refs: Vec<(&str, &str)> = headers.iter().map(|(n, v)| (n.as_str(), v.as_str())).collect();
             if insecure {
-                ip_http3::probe_insecure(d, &host, "GET", "/", &[], timeout).await
+                ip_http3::probe_insecure(d, &host, &method, &path, &header_refs, timeout).await
             } else {
-                ip_http3::probe(d, &host, "GET", "/", &[], timeout).await
+                ip_http3::probe(d, &host, &method, &path, &header_refs, timeout).await
             }
         }
     })
