@@ -77,6 +77,7 @@ fn resolver_label(r: &ResolverKind) -> String {
         ResolverKind::System => "system".to_string(),
         ResolverKind::Custom(addr) => addr.to_string(),
         ResolverKind::Doh(endpoint) => endpoint.clone(),
+        ResolverKind::Dot(endpoint) => format!("{endpoint} (DoT)"),
     }
 }
 
@@ -299,6 +300,7 @@ pub fn render_dns_repeat(host: &str, results: &[DnsRepeatResult]) -> String {
             ResolverKind::System => "system".to_string(),
             ResolverKind::Custom(addr) => addr.to_string(),
             ResolverKind::Doh(endpoint) => endpoint.clone(),
+            ResolverKind::Dot(endpoint) => format!("{endpoint} (DoT)"),
         };
         out.push_str(&format!("  {label} {}\n", rt_label(r.record_type)));
         out.push_str(&format!("    attempts: {}\n", r.attempts));

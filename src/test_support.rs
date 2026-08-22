@@ -20,6 +20,7 @@ use tokio::task::JoinHandle;
 /// certificate.
 pub struct FixtureServer {
     tcp_addr: SocketAddr,
+    dot_addr: SocketAddr,
     udp_addr: SocketAddr,
     /// QUIC endpoint that completes the handshake but never drives h3.
     stalled_quic_addr: SocketAddr,
@@ -63,6 +64,14 @@ impl FixtureServer {
             .expect("build TLS server config");
         tls_server.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
 
+        // DNS-over-TLS server: a TLS listener that speaks raw RFC 7858 framing
+        // (no ALPN, no HTTP) and answers with the canned DNS response.
+        let mut dot_tls_server = rustls::ServerConfig::builder()
+            .with_no_client_auth()
+            .with_single_cert(vec![cert.der().clone()], key_der.clone_key())
+            .expect("build DoT TLS server config");
+        dot_tls_server.alpn_protocols = Vec::new();
+
         // QUIC server cert (ALPN h3).
         let mut quic_rustls = rustls::ServerConfig::builder()
             .with_no_client_auth()
@@ -76,6 +85,11 @@ impl FixtureServer {
         let tcp_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind tcp");
         let tcp_addr = tcp_listener.local_addr().expect("tcp local addr");
 
+        let dot_listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind dot tcp");
+        let dot_addr = dot_listener.local_addr().expect("dot local addr");
+
         let quic_endpoint = quinn::Endpoint::server(quic_cfg.clone(), "127.0.0.1:0".parse().expect("udp bind addr"))
             .expect("bind quic endpoint");
         let udp_addr = quic_endpoint.local_addr().expect("udp local addr");
@@ -88,15 +102,18 @@ impl FixtureServer {
         let stalled_quic_addr = stalled_endpoint.local_addr().expect("stalled udp local addr");
 
         let tls_acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(tls_server));
+        let dot_acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(dot_tls_server));
 
         let handles = vec![
             tokio::spawn(run_tcp_server(tcp_listener, tls_acceptor)),
+            tokio::spawn(run_dot_server(dot_listener, dot_acceptor)),
             tokio::spawn(run_quic_server(quic_endpoint)),
             tokio::spawn(run_stalled_quic_server(stalled_endpoint)),
         ];
 
         Self {
             tcp_addr,
+            dot_addr,
             udp_addr,
             stalled_quic_addr,
             roots,
@@ -108,6 +125,12 @@ impl FixtureServer {
     #[must_use]
     pub const fn tcp_addr(&self) -> SocketAddr {
         self.tcp_addr
+    }
+
+    /// TCP DNS-over-TLS (RFC 7858) listen address.
+    #[must_use]
+    pub const fn dot_addr(&self) -> SocketAddr {
+        self.dot_addr
     }
 
     /// UDP (HTTP/3) listen address.
@@ -293,6 +316,37 @@ async fn run_tcp_server(listener: tokio::net::TcpListener, acceptor: tokio_rustl
                     .await
             };
             let _ = result;
+        });
+    }
+}
+
+/// Accept TLS connections and speak raw DNS-over-TLS (RFC 7858): read a
+/// 2-byte length-prefixed query and answer with the canned DNS response.
+async fn run_dot_server(listener: tokio::net::TcpListener, acceptor: tokio_rustls::TlsAcceptor) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    loop {
+        let Ok((tcp, _peer)) = listener.accept().await else {
+            continue;
+        };
+        let acceptor = acceptor.clone();
+        tokio::spawn(async move {
+            let Ok(mut tls) = acceptor.accept(tcp).await else {
+                return;
+            };
+            // Answer every incoming query (regardless of its id/question)
+            // with the canned response, length-prefixed. The client parses
+            // the answer section structurally, so a fixed reply is enough.
+            let mut wire = Vec::with_capacity(2 + DOH_RESPONSE.len());
+            wire.extend_from_slice(&(DOH_RESPONSE.len() as u16).to_be_bytes());
+            wire.extend_from_slice(DOH_RESPONSE);
+            let mut buf = [0u8; 2];
+            // Read one query then reply; a client that leaks a query just
+            // causes this task to stall harmlessly until the client times out.
+            let _ = AsyncReadExt::read_exact(&mut tls, &mut buf).await;
+            let len = u16::from_be_bytes(buf) as usize;
+            let mut query = vec![0u8; len];
+            let _ = AsyncReadExt::read_exact(&mut tls, &mut query).await;
+            let _ = AsyncWriteExt::write_all(&mut tls, &wire).await;
         });
     }
 }

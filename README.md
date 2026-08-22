@@ -23,8 +23,9 @@ Currently implements: **DNS**, **TCP**, **TLS**, **HTTPS/HTTP1.1**, **HTTP/2**,
 **HTTP/3/QUIC**, **route diagnostics (Linux, traceroute)**, **repeated
 probing with latency statistics**, and the **evidence-based diagnostic engine**.
 
-- DNS: A + AAAA via the system resolver and/or explicit DNS servers, with
-  latency.
+- DNS: A + AAAA via the system resolver and/or explicit DNS servers, plus
+  DNS-over-HTTPS (`--doh`, RFC 8484) and DNS-over-TLS (`--dot`, RFC 7858)
+  endpoints, with latency.
 - TCP: per-address connect probes with classified failure modes (timeout /
   refused / reset / unreachable) and latency.
 - TLS: handshake with SNI, ALPN, cipher, TLS version and certificate
@@ -115,6 +116,27 @@ does not cover that address: certificates are usually issued to a hostname,
 so `https://1.1.1.1/dns-query` typically needs it — but some providers
 publish a matching IP subject-alt-name (Cloudflare's `1.1.1.1` does), in
 which case the certificate validates either way.
+
+#### DNS-over-TLS
+
+Query a DNS-over-TLS (RFC 7858) endpoint directly, so the answer cannot be
+seen or altered by the local resolver over a TLS-protected channel (raw DNS
+inside TLS on port 853, no HTTP):
+
+```shell
+ip-tools dns example.com --dot 1.1.1.1
+ip-tools dns example.com --dot 8.8.8.8:853 --dot dns.google
+ip-tools dns example.com --dot 1.1.1.1 --count 30
+```
+
+Each `--dot` endpoint is queried for both A and AAAA (subject to `--ipv6`)
+and reported alongside the system, `--server` and `--doh` results — so the
+UDP/plain path can be compared with both encrypted transports side by side
+(DoT's TLS-over-853 channel is a first-class alternative to DoH for detecting
+steering or tampering). The port defaults to 853; `--insecure` is for an
+IP-literal endpoint whose certificate does not cover that address. `--count`
+loops the DoT query and aggregates latency/failure statistics like the other
+resolvers.
 
 ### Custom DNS resolvers
 

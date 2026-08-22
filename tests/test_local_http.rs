@@ -518,6 +518,84 @@ fn dns_cli_doh_reports_error_from_a_non_dns_endpoint() {
 }
 
 #[test]
+fn dns_cli_queries_dot_fixture_endpoint() {
+    // End-to-end DNS-over-TLS (RFC 7858): `dns --dot <addr> --insecure` must
+    // open a TLS connection to the fixture's raw DoT listener, send the
+    // 2-byte-length-prefixed query, read the canned response, and surface the
+    // A and AAAA records labeled with the DoT endpoint.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let endpoint = fixture.dot_addr().to_string();
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "dns",
+            "host.example",
+            "--dot",
+            &endpoint,
+            "--insecure",
+            "--timeout",
+            "2000",
+        ])
+        .output()
+        .expect("run dns --dot");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "dns --dot should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(stdout.contains("192.0.2.77"), "DoT A record missing: {stdout}");
+    assert!(stdout.contains("2001:db8::77"), "DoT AAAA record missing: {stdout}");
+    assert!(
+        stdout.contains(&format!("{endpoint} (DoT)")),
+        "DoT endpoint should be labeled in output: {stdout}"
+    );
+}
+
+#[test]
+fn dns_cli_dot_repeat_aggregates() {
+    // `dns --dot <addr> --count N` must loop the DoT query N times and render
+    // the aggregated view (latency + success) rather than a single row.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let endpoint = fixture.dot_addr().to_string();
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "dns",
+            "host.example",
+            "--dot",
+            &endpoint,
+            "--insecure",
+            "--count",
+            "3",
+            "--timeout",
+            "2000",
+        ])
+        .output()
+        .expect("run dns --dot --count");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "dns --dot --count should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.contains(&format!("{endpoint} (DoT)")) && stdout.contains("100.0%"),
+        "expected a DoT repeat row with 100.0% success: {stdout}"
+    );
+}
+
+#[test]
 fn diagnose_cli_includes_doh_resolver_evidence() {
     // `diagnose --doh` must fold the DoH answers into the DNS observations
     // (visible in the evidence stack) and probe the DoH-resolved address.

@@ -14,6 +14,8 @@ pub enum ResolverKind {
     Custom(SocketAddr),
     /// A DNS-over-HTTPS (RFC 8484) endpoint, e.g. `https://1.1.1.1/dns-query`.
     Doh(String),
+    /// A DNS-over-TLS (RFC 7858) endpoint, e.g. `1.1.1.1` (port 853).
+    Dot(String),
 }
 
 /// A DNS record type/query family.

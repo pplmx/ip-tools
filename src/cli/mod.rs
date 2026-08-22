@@ -58,6 +58,7 @@ fn parser() -> ArgMatches {
                 .arg(positional_target("hostname to resolve"))
                 .arg(server_arg())
                 .arg(doh_arg())
+                .arg(dot_arg())
                 .arg(insecure_arg())
                 .arg(record_type_arg())
                 .arg(dns_count_arg())
@@ -179,6 +180,15 @@ fn doh_arg() -> Arg {
         .value_name("URL")
         .action(ArgAction::Append)
         .help("DNS-over-HTTPS endpoint to query (repeatable), e.g. https://1.1.1.1/dns-query (use --insecure for IP-literal endpoints)")
+}
+
+/// `--dot` DNS-over-TLS endpoint argument (repeatable).
+fn dot_arg() -> Arg {
+    Arg::new("dot")
+        .long("dot")
+        .value_name("HOST[:PORT]")
+        .action(ArgAction::Append)
+        .help("DNS-over-TLS endpoint to query (repeatable), e.g. 1.1.1.1 (port defaults to 853; use --insecure for IP-literal endpoints)")
 }
 
 /// Build a per-address probe subcommand: positional target plus the shared

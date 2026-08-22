@@ -3,7 +3,7 @@
 use super::{parse_custom_servers, DEFAULT_PORT};
 use clap::ArgMatches;
 use ip_tools::dns::{aggregate_repeat, DnsClient};
-use ip_tools::model::{DnsObservation, DnsRecordType, ResolverKind};
+use ip_tools::model::{DnsObservation, DnsRecordType, DnsRepeatResult, ResolverKind};
 use ip_tools::report::{render_dns, render_dns_repeat, to_json};
 use ip_tools::target::Target;
 use std::net::{IpAddr, SocketAddr};
@@ -39,6 +39,10 @@ pub(super) async fn run_dns(sub_m: &ArgMatches) -> ExitCode {
         .get_many::<String>("doh")
         .map(|vals| vals.cloned().collect())
         .unwrap_or_default();
+    let dot_eps: Vec<String> = sub_m
+        .get_many::<String>("dot")
+        .map(|vals| vals.cloned().collect())
+        .unwrap_or_default();
 
     let record_types = if only_v6 {
         vec![DnsRecordType::Aaaa]
@@ -71,9 +75,7 @@ pub(super) async fn run_dns(sub_m: &ArgMatches) -> ExitCode {
         let mut obs = Vec::new();
         for &rt in &record_types {
             obs.extend(client.resolve(&target.host, rt).await);
-            for endpoint in &doh_endpoints {
-                obs.push(ip_tools::dns::doh_query(endpoint, &target.host, rt, timeout, insecure).await);
-            }
+            obs.extend(encrypted_dns(&doh_endpoints, &dot_eps, &target.host, rt, timeout, insecure).await);
         }
         obs
     };
@@ -86,13 +88,8 @@ pub(super) async fn run_dns(sub_m: &ArgMatches) -> ExitCode {
         let mut results = Vec::new();
         for &rt in &record_types {
             results.extend(client.resolve_repeat(&target.host, rt, count).await);
-            for endpoint in &doh_endpoints {
-                let mut bucket: Vec<DnsObservation> = Vec::with_capacity(count);
-                for _ in 0..count {
-                    bucket.push(ip_tools::dns::doh_query(endpoint, &target.host, rt, timeout, insecure).await);
-                }
-                results.push(aggregate_repeat(&bucket, rt, count));
-            }
+            results
+                .extend(encrypted_repeat(&doh_endpoints, &dot_eps, &target.host, rt, count, timeout, insecure).await);
         }
         if json {
             println!("{}", to_json(&results));
@@ -134,6 +131,56 @@ pub(super) async fn run_dns(sub_m: &ArgMatches) -> ExitCode {
     } else {
         ExitCode::SUCCESS
     }
+}
+
+/// Query every configured encrypted-DNS endpoint (`DoH` then `DoT`) for
+/// `host`/`rt`, returning one observation per endpoint.
+async fn encrypted_dns(
+    https_endpoints: &[String],
+    tls_endpoints: &[String],
+    host: &str,
+    rt: DnsRecordType,
+    timeout: Duration,
+    insecure: bool,
+) -> Vec<DnsObservation> {
+    let mut out = Vec::with_capacity(https_endpoints.len() + tls_endpoints.len());
+    for endpoint in https_endpoints {
+        out.push(ip_tools::dns::doh_query(endpoint, host, rt, timeout, insecure).await);
+    }
+    for endpoint in tls_endpoints {
+        out.push(ip_tools::dns::dot_query(endpoint, host, rt, timeout, insecure).await);
+    }
+    out
+}
+
+/// Repeatedly query each encrypted-DNS endpoint `count` times and aggregate
+/// each endpoint's results into a per-(endpoint, record type) row, mirroring
+/// the `dns --count` repeat view.
+async fn encrypted_repeat(
+    https_endpoints: &[String],
+    tls_endpoints: &[String],
+    host: &str,
+    rt: DnsRecordType,
+    count: usize,
+    timeout: Duration,
+    insecure: bool,
+) -> Vec<DnsRepeatResult> {
+    let mut out = Vec::new();
+    for endpoint in https_endpoints {
+        let mut bucket: Vec<DnsObservation> = Vec::with_capacity(count);
+        for _ in 0..count {
+            bucket.push(ip_tools::dns::doh_query(endpoint, host, rt, timeout, insecure).await);
+        }
+        out.push(aggregate_repeat(&bucket, rt, count));
+    }
+    for endpoint in tls_endpoints {
+        let mut bucket: Vec<DnsObservation> = Vec::with_capacity(count);
+        for _ in 0..count {
+            bucket.push(ip_tools::dns::dot_query(endpoint, host, rt, timeout, insecure).await);
+        }
+        out.push(aggregate_repeat(&bucket, rt, count));
+    }
+    out
 }
 
 /// Observations for an IP-literal target: the literal is its own record for

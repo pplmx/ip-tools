@@ -322,7 +322,7 @@ pub async fn doh_query(
         Ok(p) => p,
         Err(msg) => return fail(FailureKind::Other, msg),
     };
-    let ip = match resolve_doh_host(&ehost, timeout).await {
+    let ip = match resolve_endpoint_host(&ehost, timeout).await {
         Ok(ip) => ip,
         Err(msg) => return fail(FailureKind::Dns, msg),
     };
@@ -445,6 +445,181 @@ pub async fn doh_query(
     }
 }
 
+// --- DNS-over-TLS (RFC 7858) -------------------------------------------------
+
+/// Maximum response a `DoT` endpoint is allowed to return.
+const DOT_MAX_LEN: usize = 64 * 1024;
+
+/// Query a `DNS`-over-TLS endpoint for `host`/`record_type` over a raw
+/// `TLS` connection (RFC 7858: a 2-byte length prefix wraps each DNS message),
+/// and build a [`DnsObservation`].
+///
+/// `endpoint` is a `host[:port]` like `1.1.1.1` (port defaults to 853);
+/// `insecure` skips certificate validation.
+#[must_use]
+#[allow(clippy::too_many_lines)]
+///
+/// # Examples
+///
+/// ```no_run
+/// use ip_tools::dns;
+/// use ip_tools::model::DnsRecordType;
+/// use std::time::Duration;
+///
+/// # tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap().block_on(async {
+/// let obs = dns::dot_query(
+///     "1.1.1.1",
+///     "example.com",
+///     DnsRecordType::A,
+///     Duration::from_secs(3),
+///     false,
+/// )
+/// .await;
+/// println!("addresses: {:?}", obs.records);
+/// # });
+/// ```
+pub async fn dot_query(
+    endpoint: &str,
+    host: &str,
+    record_type: DnsRecordType,
+    timeout: Duration,
+    insecure: bool,
+) -> DnsObservation {
+    let start = Instant::now();
+    let step = |kind: FailureKind, message: String| ProbeError { kind, message };
+    let base = DnsObservation {
+        hostname: host.to_string(),
+        resolver: ResolverKind::Dot(endpoint.to_string()),
+        record_type,
+        records: Vec::new(),
+        latency_ms: None,
+        error: None,
+    };
+    let fail = |kind, message| DnsObservation {
+        error: Some(step(kind, message)),
+        ..base.clone()
+    };
+
+    let (ehost, eport) = match parse_dot_endpoint(endpoint) {
+        Ok(p) => p,
+        Err(msg) => return fail(FailureKind::Other, msg),
+    };
+    let ip = match resolve_endpoint_host(&ehost, timeout).await {
+        Ok(ip) => ip,
+        Err(msg) => return fail(FailureKind::Dns, msg),
+    };
+    let query = match build_query(host, record_type) {
+        Ok(q) => q,
+        Err(msg) => return fail(FailureKind::Protocol, msg),
+    };
+
+    // DoT carries raw DNS over TLS (no ALPN, no HTTP): TCP connect, then a
+    // rustls handshake to the endpoint hostname, then length-prefixed framing.
+    let roots = crate::tls::roots();
+    let mode = if insecure {
+        crate::tls::TlsMode::Insecure
+    } else {
+        crate::tls::TlsMode::Roots(&roots)
+    };
+    let conn = match crate::tls::connect_to(SocketAddr::new(ip, eport), &ehost, &[], timeout, mode).await {
+        Ok(c) => c,
+        Err(f) => return DnsObservation { error: Some(f), ..base },
+    };
+    let mut stream = conn.stream;
+
+    // RFC 7858 §3.2: each DNS message is prefixed by a 2-byte length.
+    // The query id is fixed (0) by `build_query`; DoT responses must echo a
+    // matching id, but we validate structural correctness, not the id.
+    let Ok(frame_len) = u16::try_from(query.len()) else {
+        return fail(
+            FailureKind::Protocol,
+            format!(
+                "DoT query is too large ({} bytes) for a 2-byte length prefix",
+                query.len()
+            ),
+        );
+    };
+    let mut wire = Vec::with_capacity(2 + query.len());
+    wire.extend_from_slice(&frame_len.to_be_bytes());
+    wire.extend_from_slice(&query);
+    let write = tokio::time::timeout(timeout, tokio::io::AsyncWriteExt::write_all(&mut stream, &wire)).await;
+    match write {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => return fail(FailureKind::Dns, format!("DoT write to {endpoint} failed: {e}")),
+        Err(_elapsed) => {
+            return fail(
+                FailureKind::Timeout,
+                format!("DoT write to {endpoint} timed out after {timeout:?}"),
+            )
+        }
+    }
+
+    // Read the 2-byte length prefix, then the response body.
+    let mut header = [0u8; 2];
+    let read = tokio::time::timeout(timeout, tokio::io::AsyncReadExt::read_exact(&mut stream, &mut header)).await;
+    match read {
+        Ok(Ok(_)) => {}
+        Ok(Err(e)) => return fail(FailureKind::Dns, format!("DoT read from {endpoint} failed: {e}")),
+        Err(_elapsed) => {
+            return fail(
+                FailureKind::Timeout,
+                format!("DoT read from {endpoint} timed out after {timeout:?}"),
+            )
+        }
+    }
+    let resp_len = u16::from_be_bytes(header) as usize;
+    if resp_len > DOT_MAX_LEN {
+        return fail(
+            FailureKind::Dns,
+            format!("DoT endpoint {endpoint} returned an oversized response ({resp_len} bytes)"),
+        );
+    }
+    let mut body = vec![0u8; resp_len];
+    let read = tokio::time::timeout(timeout, tokio::io::AsyncReadExt::read_exact(&mut stream, &mut body)).await;
+    match read {
+        Ok(Ok(_)) => {}
+        Ok(Err(e)) => {
+            return fail(
+                FailureKind::Dns,
+                format!("DoT response read from {endpoint} failed: {e}"),
+            )
+        }
+        Err(_elapsed) => {
+            return fail(
+                FailureKind::Timeout,
+                format!("DoT response from {endpoint} timed out after {timeout:?}"),
+            )
+        }
+    }
+
+    let parsed = match parse_dns_response(&body, record_type) {
+        Ok(p) => p,
+        Err(msg) => {
+            return fail(
+                FailureKind::Dns,
+                format!("DoT endpoint {endpoint} returned an invalid response: {msg}"),
+            )
+        }
+    };
+    if parsed.rcode != 0 {
+        return DnsObservation {
+            records: Vec::new(),
+            latency_ms: None,
+            error: Some(step(
+                FailureKind::Dns,
+                format!("DoT endpoint {endpoint} answered {}", rcode_name(parsed.rcode)),
+            )),
+            ..base
+        };
+    }
+
+    DnsObservation {
+        records: parsed.records,
+        latency_ms: Some(start.elapsed().as_millis() as u64),
+        ..base
+    }
+}
+
 /// Human-readable name for a common DNS response code (RFC 1035 §4.1.1).
 #[must_use]
 const fn rcode_name(rcode: u8) -> &'static str {
@@ -510,17 +685,17 @@ fn parse_doh_url(url: &str) -> Result<(String, u16, String), String> {
     Ok((host, port, path))
 }
 
-/// Resolve the `DoH` endpoint's hostname to one connectable address
+/// Resolve an encrypted-DNS endpoint's hostname to one connectable address
 /// (`IPv4` first), using the system resolver. `IP` literals pass through
 /// unchanged.
-async fn resolve_doh_host(host: &str, timeout: Duration) -> Result<IpAddr, String> {
+async fn resolve_endpoint_host(host: &str, timeout: Duration) -> Result<IpAddr, String> {
     if let Ok(ip) = host.parse::<IpAddr>() {
         return Ok(ip);
     }
     let resolver = TokioResolver::builder_tokio()
-        .map_err(|e| format!("could not build resolver for DoH endpoint host: {e}"))?
+        .map_err(|e| format!("could not build resolver for DNS endpoint host: {e}"))?
         .build()
-        .map_err(|e| format!("could not build resolver for DoH endpoint host: {e}"))?;
+        .map_err(|e| format!("could not build resolver for DNS endpoint host: {e}"))?;
     let wanted = |rec: &hickory_resolver::proto::rr::Record| match rec.data {
         RData::A(ip) => Some(IpAddr::from(*ip)),
         RData::AAAA(ip) => Some(IpAddr::from(*ip)),
@@ -537,8 +712,48 @@ async fn resolve_doh_host(host: &str, timeout: Duration) -> Result<IpAddr, Strin
         }
     }
     Err(format!(
-        "could not resolve DoH endpoint host {host:?} via the system resolver"
+        "could not resolve DNS endpoint host {host:?} via the system resolver"
     ))
+}
+
+/// Split a `host[:port]` `DoT` endpoint into (host, port), defaulting the port
+/// to 853 (RFC 7858). Bracketed IPv6 and host:port forms are accepted.
+fn parse_dot_endpoint(endpoint: &str) -> Result<(String, u16), String> {
+    if endpoint.is_empty() {
+        return Err("DoT endpoint must not be empty".to_string());
+    }
+    let (host, port) = if let Some(rest) = endpoint.strip_prefix('[') {
+        match rest.split_once(']') {
+            Some((addr, "")) => (addr.to_string(), 853),
+            Some((addr, port)) => {
+                let port = port
+                    .strip_prefix(':')
+                    .ok_or_else(|| format!("DoT endpoint {endpoint:?} has a malformed bracket authority"))?
+                    .parse::<u16>()
+                    .map_err(|_| format!("DoT endpoint {endpoint:?} has a non-numeric port"))?;
+                (addr.to_string(), port)
+            }
+            None => return Err(format!("DoT endpoint {endpoint:?} has an unterminated '['")),
+        }
+    } else if let Some((host, port)) = endpoint.rsplit_once(':') {
+        // Careful with bare IPv6 literals without brackets; those are not a
+        // valid endpoint here, so reject to avoid misparsing as host:port.
+        if host.contains(':') {
+            return Err(format!(
+                "DoT endpoint {endpoint:?} has an unbracketed IPv6 authority (use [addr]:port)"
+            ));
+        }
+        let port = port
+            .parse::<u16>()
+            .map_err(|_| format!("DoT endpoint {endpoint:?} has a non-numeric port"))?;
+        (host.to_string(), port)
+    } else {
+        (endpoint.to_string(), 853)
+    };
+    if host.is_empty() {
+        return Err(format!("DoT endpoint {endpoint:?} has an empty host"));
+    }
+    Ok((host, port))
 }
 
 /// Build a single-question DNS query message (RFC 1035 §4.1) with recursion
@@ -1029,6 +1244,24 @@ mod tests {
         assert_eq!(rcode_name(3), "NXDomain");
         assert_eq!(rcode_name(5), "Refused");
         assert_eq!(rcode_name(77), "UnknownError");
+    }
+
+    #[test]
+    fn dot_endpoint_is_parsed_into_host_port() {
+        assert_eq!(parse_dot_endpoint("1.1.1.1").unwrap(), ("1.1.1.1".to_string(), 853));
+        assert_eq!(
+            parse_dot_endpoint("8.8.8.8:8853").unwrap(),
+            ("8.8.8.8".to_string(), 8853)
+        );
+        assert_eq!(
+            parse_dot_endpoint("dns.google").unwrap(),
+            ("dns.google".to_string(), 853)
+        );
+        assert_eq!(parse_dot_endpoint("[::1]:8853").unwrap(), ("::1".to_string(), 8853));
+        assert!(parse_dot_endpoint("").is_err());
+        assert!(parse_dot_endpoint("::1").is_err(), "bare IPv6 needs brackets");
+        assert!(parse_dot_endpoint("[::1").is_err(), "unterminated bracket");
+        assert!(parse_dot_endpoint("host:notaport").is_err());
     }
 
     #[tokio::test]
