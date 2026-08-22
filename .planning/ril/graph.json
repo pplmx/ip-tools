@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-22T12:59:31+00:00",
+  "updated_at": "2026-08-22T13:22:24+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -947,6 +947,54 @@
       "touched_round": 0,
       "commit": "0e6af0d6bf309f4d42ef2afafa4d14e318d2635e",
       "summary": "--body @<file> reads the request body from a file and --body - reads it from stdin (literal unchanged) on http/http2/http3/probe/diagnose, via a shared parse_body helper; --body help updated. No public API change, no new dependency. 1 fixture-gated CLI test (@file + stdin each echoed back). 183 tests green, all gates clean, coverage 93.29%. commit 0e6af0d"
+    },
+    "DEC-014": {
+      "id": "DEC-014",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T13:10:10+00:00",
+      "updated_at": "2026-08-22T13:10:10+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-22): diagnose --csv. The (now multi-target) diagnose gives rich JSON and human output, but no compact spreadsheet-friendly table; ops want per-host diagnosis rows they can load into a sheet/dashboard. Add --csv emitting header + one row per diagnosis (host,severity,category,confidence,summary), hand-rolled CSV quoting (no new dependency), for single and multi-target sweeps; --strict/unresolved behavior unchanged.",
+      "alternatives_rejected": "--interface source-IP binding (touches tcp/tls/quinn bind paths, higher blast radius); route multi-target (privileged raw sockets, hard to test deterministically); --header @file/stdin (small DX follow-up, low value)"
+    },
+    "ISS-009": {
+      "id": "ISS-009",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T13:10:12+00:00",
+      "updated_at": "2026-08-22T13:22:24+00:00",
+      "touched_round": 0,
+      "summary": "diagnose (single or multi-target) outputs raw JSON and human text but no compact, spreadsheet-friendly table, so an operator cannot quickly load per-host diagnosis rows (host, severity, category, confidence, summary) into a sheet or dashboard.",
+      "severity": "low"
+    },
+    "TASK-015": {
+      "id": "TASK-015",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T13:10:16+00:00",
+      "updated_at": "2026-08-22T13:22:24+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.6,
+      "confidence": 1,
+      "effort": 0.35,
+      "unlock_factor": 1,
+      "summary": "Add diagnose --csv: emit a header + one row per diagnosis (host,severity,category,confidence,summary) with hand-rolled CSV quoting, for single and multi-target runs; json/csv/human are mutually exclusive; --strict/unresolved unchanged. Pinned by a fixture-gated CLI test parsing the CSV and checking per-host rows."
+    },
+    "CHG-009": {
+      "id": "CHG-009",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T13:22:24+00:00",
+      "updated_at": "2026-08-22T13:22:24+00:00",
+      "touched_round": 0,
+      "commit": "2f06ae44b95ef0f93403719c41544fcfd6af4227",
+      "summary": "diagnose --csv exports each host's verdicts as spreadsheet-friendly rows (host,severity,category,confidence,summary; RFC4180-style quoting), single and multi-target; csv/json/human mutually exclusive; hand-rolled, no new dependency. 1 fixture-gated CLI test. 184 tests green, all gates clean, coverage 93.31%. commit 2f06ae4"
     }
   },
   "edges": [
@@ -1561,6 +1609,36 @@
       "to": "ISS-008",
       "type": "resolves",
       "created_at": "2026-08-22T12:59:31+00:00"
+    },
+    {
+      "from": "ISS-009",
+      "to": "COMP-diagnose",
+      "type": "located_in",
+      "created_at": "2026-08-22T13:10:20+00:00"
+    },
+    {
+      "from": "TASK-015",
+      "to": "ISS-009",
+      "type": "addresses",
+      "created_at": "2026-08-22T13:10:20+00:00"
+    },
+    {
+      "from": "DEC-014",
+      "to": "TASK-015",
+      "type": "governs",
+      "created_at": "2026-08-22T13:10:20+00:00"
+    },
+    {
+      "from": "CHG-009",
+      "to": "TASK-015",
+      "type": "implements",
+      "created_at": "2026-08-22T13:22:24+00:00"
+    },
+    {
+      "from": "CHG-009",
+      "to": "ISS-009",
+      "type": "resolves",
+      "created_at": "2026-08-22T13:22:24+00:00"
     }
   ]
 }
