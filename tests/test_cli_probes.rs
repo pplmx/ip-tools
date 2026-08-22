@@ -748,15 +748,19 @@ fn route_strict_exits_nonzero_only_on_lost_hops() {
             "--strict",
         ])
         .assert();
-    let code = assert.get_output().status.code().unwrap_or(-999);
     let text = format!("{}\n{}", stdout(&assert), stderr(&assert));
     let lower = text.to_lowercase();
-    if code == 0 {
-        assert!(text.contains("Traceroute"), "expected traceroute output: {text}");
+    if lower.contains("icmp") || lower.contains("root") || lower.contains("linux") {
+        // Unprivileged or unsupported platform: the process must explain that
+        // it needs ICMP/root on Linux (which it just did in `text`).
     } else {
+        // The traceroute ran. It always prints the `Traceroute` header, even
+        // when every hop is lost — and `--strict` then exits non-zero with an
+        // "N route hop(s) lost" line (no ICMP/root mention). So a completed
+        // run must show the traceroute header to be a genuine run.
         assert!(
-            lower.contains("icmp") || lower.contains("root") || lower.contains("linux"),
-            "route must explain it needs ICMP/root (linux) or is unsupported: {text}"
+            text.contains("Traceroute"),
+            "route must either explain it needs ICMP/root or emit traceroute output: {text}"
         );
     }
 }
