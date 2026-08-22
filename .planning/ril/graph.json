@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-22T15:50:37+00:00",
+  "updated_at": "2026-08-22T15:57:09+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -1320,6 +1320,54 @@
       "touched_round": 0,
       "commit": "024168313f03d83b29155d0af776257512cf26fa",
       "summary": "route --csv emits a ttl,hostname,addr,rtt_ms,lost row per hop (lost hops empty hostname/addr/rtt with lost=1, RFC 4180 quoting); mutually exclusive with --json/human. Completes the CSV export pattern (diagnose/dns/probe already had it). Generalized the shared --csv help text. No public API change. Pinned by a renderer unit test. 195 tests green, clippy/fmt/doc clean, api-baseline unchanged."
+    },
+    "DEC-022": {
+      "id": "DEC-022",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T15:52:46+00:00",
+      "updated_at": "2026-08-22T15:52:46+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-22): per-observation CSV for the single-shot probe commands. probe --csv (DEC-018) established the CSV pattern and run_probe_flow already carries an optional whole-sweep csv_renderer (only probe supplies one). The single-shot per-address probes tcp/tls/http/http2/http3 — all multi-target fleet sweeps — still emit only human/JSON, so an operator cannot load a per-destination fleet table (TCP reachability + failure kind, TLS version/cipher/cert, HTTP status/protocol) into a spreadsheet. Add --csv to each, reusing the run_probe_flow csv_render hook: tcp rows (host,destination,success,latency_ms,failure), tls rows (+sni,version,cipher,alpn,subject,issuer,not_after_utc), http rows (host,destination,protocol,status,location,body_bytes,ttfb_ms,latency_ms,failure). json/csv/human mutually exclusive. Supersedes the narrow rejection of single-observation CSV in DEC-018 (that was vs probe --csv; fleet sweeps make per-observation rows valuable now). No public API change.",
+      "alternatives_rejected": "source-IP/interface binding (large blast radius); route multi-target (privileged, not deterministically testable); skipping CSV for single-shot probes (leaves the CSV capability incomplete across commands)"
+    },
+    "TASK-023": {
+      "id": "TASK-023",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T15:52:52+00:00",
+      "updated_at": "2026-08-22T15:57:09+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.4,
+      "unlock_factor": 1,
+      "summary": "Add --csv to tcp/tls/http/http2/http3 single-shot probe commands (multi-target fleet sweeps), reusing run_probe_flow csv_render: tcp (host,destination,success,latency_ms,failure), tls (+sni,version,cipher,alpn,subject,issuer,not_after_utc), http (host,destination,protocol,status,location,body_bytes,ttfb_ms,latency_ms,failure); json/csv/human exclusive. No public API change. Pinned by fixture-gated CLI tests."
+    },
+    "ISS-016": {
+      "id": "ISS-016",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T15:52:52+00:00",
+      "updated_at": "2026-08-22T15:57:09+00:00",
+      "touched_round": 0,
+      "severity": "low",
+      "summary": "tcp/tls/http/http2/http3 single-shot probes (multi-target fleet sweeps) emit only human/JSON, so per-destination outcomes (TCP reachability, TLS version/cipher, HTTP status) cannot be loaded into a spreadsheet."
+    },
+    "CHG-017": {
+      "id": "CHG-017",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T15:57:09+00:00",
+      "updated_at": "2026-08-22T15:57:09+00:00",
+      "touched_round": 0,
+      "commit": "dce56483e5078254201cd43360112803afdfc9ef",
+      "summary": "tcp/tls/http/http2/http3 gained --csv (run_probe_flow csv renderer, previously only probe): tcp rows (host,destination,success,latency_ms,failure), tls (+sni,version,cipher,alpn,subject,issuer,not_after_utc), http family (host,destination,protocol,status,location,body_bytes,ttfb_ms,latency_ms,failure). json/csv/human exclusive. Completes CSV export across every command. No public API change. Pinned: tcp --csv CLI test, http --csv fixture test, render_tls_csv unit test. 198 tests green, clippy/fmt/doc clean, api-baseline unchanged."
     }
   },
   "edges": [
@@ -2150,6 +2198,36 @@
       "to": "ISS-015",
       "type": "resolves",
       "created_at": "2026-08-22T15:50:37+00:00"
+    },
+    {
+      "from": "DEC-022",
+      "to": "TASK-023",
+      "type": "governs",
+      "created_at": "2026-08-22T15:52:52+00:00"
+    },
+    {
+      "from": "TASK-023",
+      "to": "ISS-016",
+      "type": "addresses",
+      "created_at": "2026-08-22T15:52:52+00:00"
+    },
+    {
+      "from": "ISS-016",
+      "to": "COMP-probe",
+      "type": "located_in",
+      "created_at": "2026-08-22T15:52:52+00:00"
+    },
+    {
+      "from": "CHG-017",
+      "to": "TASK-023",
+      "type": "implements",
+      "created_at": "2026-08-22T15:57:09+00:00"
+    },
+    {
+      "from": "CHG-017",
+      "to": "ISS-016",
+      "type": "resolves",
+      "created_at": "2026-08-22T15:57:09+00:00"
     }
   ]
 }
