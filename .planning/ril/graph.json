@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-22T14:53:03+00:00",
+  "updated_at": "2026-08-22T14:59:04+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -1091,6 +1091,54 @@
       "touched_round": 0,
       "commit": "30f22a12ee28e5003bf47812880d20086adf92f3",
       "summary": "HTTP probes (h1/h2/h3) now capture TTFB (HttpObservation.ttfb_ms: request-send to response headers), rendered as 'ttfb:' and carried in JSON, distinct from total latency. 1 fixture test asserts ttfb present and <= latency on all three. Public API note: HttpObservation gained ttfb_ms (api-baseline regenerated). 186 tests green, all gates clean, coverage 93.27%. commit 30f22a1"
+    },
+    "DEC-017": {
+      "id": "DEC-017",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T14:54:40+00:00",
+      "updated_at": "2026-08-22T14:54:40+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-22): dns --csv. diagnose already has --csv; the multi-target dns sweep (esp --count repeat) gives per-resolver/per-record-type latency stats that ops want in a spreadsheet. Add --csv to dns emitting a uniform row per (host,resolver,record_type): attempts,success_rate,latency_p50/p95/max,failures — single-shot rows are attempts=1, repeat rows use the aggregated stats. Hand-rolled CSV, no new dependency; json/csv/human mutually exclusive.",
+      "alternatives_rejected": "--interface/source-IP binding (touches tcp/tls/quinn bind + hickory dns, large blast radius, partial version would be inconsistent); route multi-target (privileged raw sockets, not deterministically testable); probe --csv (similar, can be a later follow-up)"
+    },
+    "ISS-012": {
+      "id": "ISS-012",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T14:54:42+00:00",
+      "updated_at": "2026-08-22T14:59:04+00:00",
+      "touched_round": 0,
+      "summary": "dns (including the multi-target --count sweep) emits JSON/human but no spreadsheet-friendly rows; per-resolver/per-record-type latency stats can't be loaded straight into a sheet/dashboard.",
+      "severity": "low"
+    },
+    "TASK-018": {
+      "id": "TASK-018",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T14:54:47+00:00",
+      "updated_at": "2026-08-22T14:59:04+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.35,
+      "unlock_factor": 1,
+      "summary": "Add dns --csv: a uniform row per (host,resolver,record_type) with attempts,success_rate,latency_p50/p95/max,failures (single-shot rows attempts=1; repeat rows use aggregated stats), for single and multi-target; json/csv/human mutually exclusive. Pinned by a CLI test on IP-literal + a repeat case."
+    },
+    "CHG-012": {
+      "id": "CHG-012",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T14:59:04+00:00",
+      "updated_at": "2026-08-22T14:59:04+00:00",
+      "touched_round": 0,
+      "commit": "52898b2661c5e83453c6e4e185953c32052016d4",
+      "summary": "dns --csv emits a uniform row per (host,resolver,record_type): attempts,success_rate,latency_p50/p95/max_ms,failures — single-shot rows attempts=1, --count repeat rows use aggregated stats; single and multi-target; csv/json/human mutually exclusive. No public API change, no new dep. 1 CLI test (two literals: header + per-host rows). 187 tests green, all gates clean, coverage 92.72%. commit 52898b2"
     }
   },
   "edges": [
@@ -1795,6 +1843,36 @@
       "to": "ISS-011",
       "type": "resolves",
       "created_at": "2026-08-22T14:53:03+00:00"
+    },
+    {
+      "from": "ISS-012",
+      "to": "COMP-dns",
+      "type": "located_in",
+      "created_at": "2026-08-22T14:54:51+00:00"
+    },
+    {
+      "from": "TASK-018",
+      "to": "ISS-012",
+      "type": "addresses",
+      "created_at": "2026-08-22T14:54:51+00:00"
+    },
+    {
+      "from": "DEC-017",
+      "to": "TASK-018",
+      "type": "governs",
+      "created_at": "2026-08-22T14:54:51+00:00"
+    },
+    {
+      "from": "CHG-012",
+      "to": "TASK-018",
+      "type": "implements",
+      "created_at": "2026-08-22T14:59:04+00:00"
+    },
+    {
+      "from": "CHG-012",
+      "to": "ISS-012",
+      "type": "resolves",
+      "created_at": "2026-08-22T14:59:04+00:00"
     }
   ]
 }
