@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-22T15:22:18+00:00",
+  "updated_at": "2026-08-22T15:23:49+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -429,10 +429,10 @@
     "ISS-cert-lifetime-invisible": {
       "id": "ISS-cert-lifetime-invisible",
       "type": "issue",
-      "status": "active",
-      "version": 1,
+      "status": "resolved",
+      "version": 2,
       "created_at": "2026-08-22T06:12:00+00:00",
-      "updated_at": "2026-08-22T06:12:00+00:00",
+      "updated_at": "2026-08-22T15:23:49+00:00",
       "touched_round": 0,
       "summary": "The TLS report prints the notAfter timestamp but never computes remaining lifetime, so an expiring or expired certificate is not flagged; ops monitoring cert expiry per endpoint requires manual date arithmetic on the raw timestamp",
       "severity": "low"
