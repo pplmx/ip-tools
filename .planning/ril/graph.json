@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-22T12:26:33+00:00",
+  "updated_at": "2026-08-22T12:59:31+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -899,6 +899,54 @@
       "touched_round": 0,
       "commit": "4927e16dc93eb3c47d7367d92fa187c758a8045e",
       "summary": "The per-address probe commands (tcp/tls/http/http2/http3/probe) accept multiple positional targets: run_probe_flow loops target resolution+probing, labels each host block in human output, emits a per-target JSON array for >1 host (single keeps flat array), aggregates --strict and unresolved-target failure across targets; probe closure gains a Clone bound. No public library API change. 1 fixture-gated CLI test (tcp on two loopbacks labels + 2-element array). 182 tests green, all gates clean, coverage 93.41%. commit 4927e16"
+    },
+    "DEC-013": {
+      "id": "DEC-013",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T12:56:02+00:00",
+      "updated_at": "2026-08-22T12:56:02+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-22): --body @file and --body - (stdin). --body shipped accepting a literal string, so large or JSON payloads must be shell-quoted inline. Let --body read from a file (@path) or stdin (-), so payloads can be piped/kept in files. Shared parse_body helper used by http/http2/http3/probe/diagnose; literal behavior unchanged. No new dependency (std fs + io only).",
+      "alternatives_rejected": "--interface source-IP binding (touches tcp/tls/quinn bind paths, higher blast radius); batch result export CSV/HTML (distinct but larger rendering surface); route multi-target (privileged raw sockets, hard to test deterministically)"
+    },
+    "ISS-008": {
+      "id": "ISS-008",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T12:56:07+00:00",
+      "updated_at": "2026-08-22T12:59:31+00:00",
+      "touched_round": 0,
+      "summary": "--body accepts only a literal string, so a large or JSON request body must be shell-quoted inline — there is no way to read the request body from a file or stdin, which is awkward for multi-line payloads or automated pipelines.",
+      "severity": "low"
+    },
+    "TASK-014": {
+      "id": "TASK-014",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T12:56:20+00:00",
+      "updated_at": "2026-08-22T12:59:31+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.3,
+      "unlock_factor": 1,
+      "summary": "Support --body @<file> and --body - (stdin) via a shared parse_body helper (literal unchanged) in http/http2/http3/probe/diagnose; update --body help text. Pinned by a fixture-gated CLI test: --body @file and --body - each reach the echo route and are echoed back."
+    },
+    "CHG-008": {
+      "id": "CHG-008",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T12:59:31+00:00",
+      "updated_at": "2026-08-22T12:59:31+00:00",
+      "touched_round": 0,
+      "commit": "0e6af0d6bf309f4d42ef2afafa4d14e318d2635e",
+      "summary": "--body @<file> reads the request body from a file and --body - reads it from stdin (literal unchanged) on http/http2/http3/probe/diagnose, via a shared parse_body helper; --body help updated. No public API change, no new dependency. 1 fixture-gated CLI test (@file + stdin each echoed back). 183 tests green, all gates clean, coverage 93.29%. commit 0e6af0d"
     }
   },
   "edges": [
@@ -1483,6 +1531,36 @@
       "to": "ISS-007",
       "type": "resolves",
       "created_at": "2026-08-22T12:26:33+00:00"
+    },
+    {
+      "from": "ISS-008",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-22T12:56:25+00:00"
+    },
+    {
+      "from": "TASK-014",
+      "to": "ISS-008",
+      "type": "addresses",
+      "created_at": "2026-08-22T12:56:25+00:00"
+    },
+    {
+      "from": "DEC-013",
+      "to": "TASK-014",
+      "type": "governs",
+      "created_at": "2026-08-22T12:56:25+00:00"
+    },
+    {
+      "from": "CHG-008",
+      "to": "TASK-014",
+      "type": "implements",
+      "created_at": "2026-08-22T12:59:31+00:00"
+    },
+    {
+      "from": "CHG-008",
+      "to": "ISS-008",
+      "type": "resolves",
+      "created_at": "2026-08-22T12:59:31+00:00"
     }
   ]
 }
