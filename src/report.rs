@@ -158,10 +158,36 @@ pub fn render_tls(observations: &[TlsObservation]) -> String {
         }
         if let Some(cert) = &obs.certificate {
             out.push_str(&format!("    cert : {}\n", render_cert(cert)));
+            let covers = if cert_covers_hostname(&obs.sni, &cert.sans) {
+                "yes"
+            } else {
+                "no"
+            };
+            out.push_str(&format!("    covers {}: {covers}\n", obs.sni));
         }
         out.push_str(&format!("    latency: {} ms\n", obs.latency_ms.unwrap_or(0)));
     }
     out
+}
+
+/// Whether any subject alternative name covers the presented hostname/`SNI`,
+/// with `RFC 6125`-style matching: an `IP`-literal `SNI` must match an
+/// `IPAddress` SAN exactly, and a DNS `SNI` matches a `DNSName` SAN
+/// case-insensitively, where a leading `*.` wildcard matches only a single
+/// left-most label.
+fn cert_covers_hostname(sni: &str, sans: &[String]) -> bool {
+    if let Ok(ip) = sni.parse::<std::net::IpAddr>() {
+        return sans.iter().any(|san| san.parse::<std::net::IpAddr>().ok() == Some(ip));
+    }
+    let sni_lower = sni.to_ascii_lowercase();
+    sans.iter().any(|san| {
+        let san_lower = san.to_ascii_lowercase();
+        // A `*.` SAN covers exactly one left-most label below the suffix.
+        san_lower.strip_prefix("*.").map_or_else(
+            || san_lower == sni_lower,
+            |wildcard| sni_lower.split_once('.').is_some_and(|(_, rest)| rest == wildcard),
+        )
+    })
 }
 
 /// Render a certificate summary compactly for the terminal, annotated with
@@ -1075,6 +1101,54 @@ mod tests {
             sans: Vec::new(),
         };
         assert_eq!(render_cert(&none), "CN=x issued by CN=y");
+    }
+
+    #[test]
+    fn cert_covers_hostname_matches_rfc6125_semantics() {
+        let sans = |s: &[&str]| s.iter().map(ToString::to_string).collect::<Vec<_>>();
+        // Exact DNS match.
+        assert!(cert_covers_hostname(
+            "example.com",
+            &sans(&["example.com", "www.example.com"])
+        ));
+        // Case-insensitive.
+        assert!(cert_covers_hostname("EXAMPLE.COM", &sans(&["example.com"])));
+        // Wildcard covers a single left-most label.
+        assert!(cert_covers_hostname("api.example.com", &sans(&["*.example.com"])));
+        // Wildcard does not cover multiple labels, nor the bare apex.
+        assert!(!cert_covers_hostname("a.b.example.com", &sans(&["*.example.com"])));
+        assert!(!cert_covers_hostname("example.com", &sans(&["*.example.com"])));
+        // IP-literal SNI matches an IP SAN exactly.
+        assert!(cert_covers_hostname("127.0.0.1", &sans(&["127.0.0.1"])));
+        assert!(!cert_covers_hostname("192.0.2.1", &sans(&["127.0.0.1"])));
+        // No match.
+        assert!(!cert_covers_hostname("other.example", &sans(&["example.com"])));
+    }
+
+    #[test]
+    fn render_tls_reports_cert_hostname_coverage_verdict() {
+        let covered = TlsObservation {
+            destination: "1.1.1.1:443".parse().unwrap(),
+            sni: "example.com".into(),
+            success: true,
+            version: Some("TLSv1.3".into()),
+            cipher: Some("TLS_AES_128_GCM_SHA256".into()),
+            alpn: None,
+            certificate: Some(CertificateSummary {
+                subject: "CN=example.com".into(),
+                issuer: "CN=CA".into(),
+                not_before_utc: None,
+                not_after_utc: None,
+                sans: vec!["example.com".into(), "127.0.0.1".into()],
+            }),
+            latency_ms: Some(7),
+            failure: None,
+        };
+        assert!(render_tls(std::slice::from_ref(&covered)).contains("covers example.com: yes"));
+
+        let mut mismatch = covered;
+        mismatch.sni = "attacker.example".into();
+        assert!(render_tls(std::slice::from_ref(&mismatch)).contains("covers attacker.example: no"));
     }
 
     /// RFC 3339 UTC string for the civil date `now + offset` days from today,

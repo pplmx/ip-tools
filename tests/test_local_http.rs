@@ -36,7 +36,7 @@ async fn tls_probe_handshakes_local_fixture() {
     assert_eq!(obs.version.as_deref(), Some("TLSv1.3"));
     // The self-signed fixture cert is generated with known SANs; the summary
     // must surface them so operators can see what the cert actually covers.
-    let cert = obs.certificate.expect("fixture presents a certificate");
+    let cert = obs.certificate.as_ref().expect("fixture presents a certificate");
     assert!(
         cert.sans.iter().any(|s| s == "localhost"),
         "expected localhost SAN on fixture cert: {cert:?}"
@@ -44,6 +44,11 @@ async fn tls_probe_handshakes_local_fixture() {
     assert!(
         cert.sans.iter().any(|s| s == "127.0.0.1"),
         "expected 127.0.0.1 SAN on fixture cert: {cert:?}"
+    );
+    // A probe presented as `localhost` gets an end-to-end coverage verdict.
+    assert!(
+        ip_tools::report::render_tls(std::slice::from_ref(&obs)).contains("covers localhost: yes"),
+        "fixture cert should be reported as covering the presented SNI"
     );
 }
 

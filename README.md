@@ -238,6 +238,13 @@ example.com, 127.0.0.1`), so you can see exactly which hostnames/IPs the
 certificate is valid for — and whether the host you probed is among them
 (searchable when you've a hostname that doesn't match, or a wildcard-only cert).
 
+The TLS report also gives an explicit **`covers <name>: yes/no`** verdict —
+whether the served certificate's SANs cover the hostname/SNI you presented
+(RFC 6125-style: exact or single-label wildcard for hostnames, exact match for
+IP literals). This surfaces a wrong-host or wildcard-mismatch certificate even
+under `--insecure`, where chain validation is skipped and the mismatch is
+otherwise silent.
+
 Example output:
 
 ```
