@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-22T09:52:55+00:00",
+  "updated_at": "2026-08-22T10:29:01+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -484,6 +484,69 @@
       "touched_round": 0,
       "commit": "afe6b9c8a2c42f1e477c51d7258741f28cdc28a8",
       "summary": "diagnose --method/--path/--header thread into collect_http_probes so the HTTP evidence phase is scoped to the request the user cares about (GET / no headers before). 3 flags plumbed through diagnose CLI + mod.rs default wiring; fixture-gated test proving a --header x-fixture-marker reaches the server through the full pipeline (202). 167 tests green, all gates clean. commit afe6b9c"
+    },
+    "DEC-007": {
+      "id": "DEC-007",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T10:13:03+00:00",
+      "updated_at": "2026-08-22T10:13:03+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-22): DNS-over-TLS (RFC 7858) transport. DoH (RFC 8484) is implemented but the TLS-over-853 DoT transport is missing, so the encrypted-DNS comparison story is incomplete. DoT is a first-class way to query a resolver over an encrypted, tamper-resistant channel and compare its answers against the system/custom/DoH paths side by side (the tool's signature 'compare resolvers to detect steering' capability). Add a repeatable --dot <host[:port]> flag + library dot_query reusing the in-tree rustls stack and the existing DNS wire builder/parser (build_query/parse_dns_response) so no new dependency is added (per DEC-002).",
+      "alternatives_rejected": "HTTP response-body content capture (sensible next milestone but crosses all three HTTP protocol implementations, larger diff, and body content can be binary/sensitive); batch/multi-host diagnose sweep (new input+aggregation surface, larger scope); DoH-only enhancements (narrower, leaves the TLS transport gap)"
+    },
+    "ISS-001": {
+      "id": "ISS-001",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T10:13:14+00:00",
+      "updated_at": "2026-08-22T10:29:01+00:00",
+      "touched_round": 0,
+      "summary": "DoH (RFC 8484) is implemented, but the DNS-over-TLS transport (RFC 7858, TLS on port 853 with a 2-byte length prefix) is missing: a user cannot query a resolver over a TLS-protected DNS channel and compare it against the system/custom/DoH paths. A resolver or path that is tampered with or blocked at the UDP/plain-TCP level (e.g. an ISP that intercepts port 53) is invisible because there is no encrypted-DNS counterpart to compare other than DoH, and DoT is widely deployed (1.1.1.1:853, 8.8.8.8:853, dns.google).",
+      "severity": "medium"
+    },
+    "TASK-001": {
+      "id": "TASK-001",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T10:13:18+00:00",
+      "updated_at": "2026-08-22T10:29:01+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.8,
+      "confidence": 1,
+      "effort": 0.5,
+      "unlock_factor": 1,
+      "summary": "library dns::dot_query(endpoint, host, record_type, timeout, insecure): open a TCP connection to the resolver, drive a rustls TLS handshake with the endpoint hostname as SNI (port 853 default), send the hand-rolled DNS wire query with the 2-byte length prefix (RFC 7858 framing), read the length-prefixed response, and parse it with the existing parse_dns_response. Model gains ResolverKind::Dot(String). No new dependency (reuses in-tree rustls + existing wire builder/parser)."
+    },
+    "TASK-002": {
+      "id": "TASK-002",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T10:13:21+00:00",
+      "updated_at": "2026-08-22T10:29:01+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.7,
+      "confidence": 1,
+      "effort": 0.3,
+      "unlock_factor": 1,
+      "summary": "dns --dot <host[:port]> repeatable flag (like --doh): thread through the dns subcommand single-shot and --count repeat paths, render ResolverKind::Dot rows in render_dns/render_dns_repeat, and document DoT alongside DoH in README. Fixture-gated integration test with an in-process TLS DoT server proving the query reaches it and the A record is parsed."
+    },
+    "CHG-001": {
+      "id": "CHG-001",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T10:28:40+00:00",
+      "updated_at": "2026-08-22T10:28:40+00:00",
+      "touched_round": 0,
+      "commit": "26926de3e269d6799942be222f8061bc3db96d6d",
+      "summary": "dns --dot HOST[:PORT] adds DNS-over-TLS (RFC 7858): library dns::dot_query (raw DNS inside TLS on 853, reusing in-tree rustls + existing wire builder/parser, zero new deps), ResolverKind::Dot, CLI --dot threaded through single-shot and --count repeat, report renders DoT rows (human + JSON). parse_dot_endpoint unit test + dot_query doc-test + 2 fixture-gated integration tests (raw query returns canned A/AAAA; --count 3 aggregates 100%). 171 tests green, all gates clean, coverage 93.32%. commit 26926de"
     }
   },
   "edges": [
@@ -708,6 +771,60 @@
       "to": "ISS-diagnose-no-request",
       "type": "resolves",
       "created_at": "2026-08-22T09:52:54+00:00"
+    },
+    {
+      "from": "ISS-001",
+      "to": "COMP-dns",
+      "type": "located_in",
+      "created_at": "2026-08-22T10:13:27+00:00"
+    },
+    {
+      "from": "TASK-001",
+      "to": "ISS-001",
+      "type": "addresses",
+      "created_at": "2026-08-22T10:13:27+00:00"
+    },
+    {
+      "from": "TASK-002",
+      "to": "ISS-001",
+      "type": "addresses",
+      "created_at": "2026-08-22T10:13:27+00:00"
+    },
+    {
+      "from": "TASK-002",
+      "to": "TASK-001",
+      "type": "depends_on",
+      "created_at": "2026-08-22T10:13:27+00:00"
+    },
+    {
+      "from": "DEC-007",
+      "to": "TASK-001",
+      "type": "governs",
+      "created_at": "2026-08-22T10:13:27+00:00"
+    },
+    {
+      "from": "DEC-007",
+      "to": "TASK-002",
+      "type": "governs",
+      "created_at": "2026-08-22T10:13:27+00:00"
+    },
+    {
+      "from": "CHG-001",
+      "to": "TASK-001",
+      "type": "implements",
+      "created_at": "2026-08-22T10:29:01+00:00"
+    },
+    {
+      "from": "CHG-001",
+      "to": "TASK-002",
+      "type": "implements",
+      "created_at": "2026-08-22T10:29:01+00:00"
+    },
+    {
+      "from": "CHG-001",
+      "to": "ISS-001",
+      "type": "resolves",
+      "created_at": "2026-08-22T10:29:01+00:00"
     }
   ]
 }
