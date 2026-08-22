@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-22T10:33:20+00:00",
+  "updated_at": "2026-08-22T10:48:01+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -584,6 +584,69 @@
       "touched_round": 0,
       "commit": "b0c5b8990a4a2e675f6558f4ecf3a9f1a5a65062",
       "summary": "diagnose --dot <endpoint>: folds DoT answers into the diagnostic pipeline's DNS evidence + probed address pool (mirrors --doh). Fixture-gated test proves the DoT-resolved record appears in evidence and the diagnosis renders. 172 tests green, all gates clean. commit b0c5b89"
+    },
+    "DEC-008": {
+      "id": "DEC-008",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T10:40:29+00:00",
+      "updated_at": "2026-08-22T10:40:29+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-22): HTTP response body content capture. The probes report status, headers and body size but discard the actual response body — yet the body is the decisive evidence for WHY an endpoint behaves as it does (a WAF block page, an auth/JSON error, a rate-limit message, a JS challenge, a captive-portal prompt). Capture a bounded, lossy-UTF8 textual snippet (first 1024 bytes) into HttpObservation and render it in the human report and JSON, completing the HTTP observation. The body is already read for sizing, so this costs no extra I/O and adds zero new dependencies; bounds and explicit truncation keep it safe on hostile/binary bodies.",
+      "alternatives_rejected": "batch/multi-host diagnose sweep (new input+aggregation surface, larger scope); a --body opt-in CLI flag (extra CLI+API churn when always-bounded capture costs nothing — curl-like tools surface the body); probe --protocol dns (already rejected by DEC-006: dns repeat is hostname-centric)"
+    },
+    "ISS-003": {
+      "id": "ISS-003",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T10:40:33+00:00",
+      "updated_at": "2026-08-22T10:48:00+00:00",
+      "touched_round": 0,
+      "summary": "The HTTP probes (h1/h2/h3) count response body bytes but throw the content away, so a user cannot see WHAT an endpoint actually returned — the body is the decisive evidence for a WAF block page, an auth/JSON error, a rate-limit message, a JS challenge, or a captive-portal prompt, none of which a status code alone reveals.",
+      "severity": "medium"
+    },
+    "TASK-004": {
+      "id": "TASK-004",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T10:40:36+00:00",
+      "updated_at": "2026-08-22T10:48:00+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.8,
+      "confidence": 1,
+      "effort": 0.4,
+      "unlock_factor": 1,
+      "summary": "Capture a bounded lossy-UTF8 textual snippet of the HTTP response body (first 1024 bytes, explicit … truncation) into HttpObservation.body_snippet across http/http2/http3, using the body already read for sizing. Add BODY_SNIPPET_BYTES + a shareable push/serialize helper in http_common.rs. No new CLI flag."
+    },
+    "TASK-005": {
+      "id": "TASK-005",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T10:40:39+00:00",
+      "updated_at": "2026-08-22T10:48:00+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.7,
+      "confidence": 1,
+      "effort": 0.3,
+      "unlock_factor": 1,
+      "summary": "Render HttpObservation.body_snippet in the human report (a body content line) and it already serializes into JSON; update README/CHANGELOG and add tests proving a small body ('ok') is captured and a multi-MiB body is truncated with …, proxied across h1/h2/h3."
+    },
+    "CHG-003": {
+      "id": "CHG-003",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T10:48:00+00:00",
+      "updated_at": "2026-08-22T10:48:00+00:00",
+      "touched_round": 0,
+      "commit": "5b68c6b617e5f92a656961b8700712ce51b59340",
+      "summary": "HttpObservation.body_snippet captures a bounded (1024-byte, lossy-UTF8, explicit …) textual snippet of the HTTP response body across h1/h2/h3 (reuses the body already read for sizing; zero new deps/flags); human report shows 'body content:' and --json carries it. Report unit test + 2 fixture-gated CLI tests (ok body captured in human+JSON; 2MiB truncated with …). 175 tests green, all gates clean, coverage 93.47%. commit 5b68c6b"
     }
   },
   "edges": [
@@ -898,6 +961,60 @@
       "to": "ISS-002",
       "type": "resolves",
       "created_at": "2026-08-22T10:33:20+00:00"
+    },
+    {
+      "from": "ISS-003",
+      "to": "COMP-http",
+      "type": "located_in",
+      "created_at": "2026-08-22T10:40:42+00:00"
+    },
+    {
+      "from": "TASK-004",
+      "to": "ISS-003",
+      "type": "addresses",
+      "created_at": "2026-08-22T10:40:42+00:00"
+    },
+    {
+      "from": "TASK-005",
+      "to": "ISS-003",
+      "type": "addresses",
+      "created_at": "2026-08-22T10:40:42+00:00"
+    },
+    {
+      "from": "TASK-005",
+      "to": "TASK-004",
+      "type": "depends_on",
+      "created_at": "2026-08-22T10:40:42+00:00"
+    },
+    {
+      "from": "DEC-008",
+      "to": "TASK-004",
+      "type": "governs",
+      "created_at": "2026-08-22T10:40:42+00:00"
+    },
+    {
+      "from": "DEC-008",
+      "to": "TASK-005",
+      "type": "governs",
+      "created_at": "2026-08-22T10:40:42+00:00"
+    },
+    {
+      "from": "CHG-003",
+      "to": "TASK-004",
+      "type": "implements",
+      "created_at": "2026-08-22T10:48:00+00:00"
+    },
+    {
+      "from": "CHG-003",
+      "to": "TASK-005",
+      "type": "implements",
+      "created_at": "2026-08-22T10:48:01+00:00"
+    },
+    {
+      "from": "CHG-003",
+      "to": "ISS-003",
+      "type": "resolves",
+      "created_at": "2026-08-22T10:48:01+00:00"
     }
   ]
 }
