@@ -85,12 +85,21 @@ pub mod ip_tools::model::dns
 pub enum ip_tools::model::dns::DnsRecord
 pub ip_tools::model::dns::DnsRecord::A(core::net::ip_addr::Ipv4Addr)
 pub ip_tools::model::dns::DnsRecord::Aaaa(core::net::ip_addr::Ipv6Addr)
+pub ip_tools::model::dns::DnsRecord::Caa
+pub ip_tools::model::dns::DnsRecord::Caa::flags: u8
+pub ip_tools::model::dns::DnsRecord::Caa::tag: alloc::string::String
+pub ip_tools::model::dns::DnsRecord::Caa::value: alloc::string::String
 pub ip_tools::model::dns::DnsRecord::Cname(alloc::string::String)
 pub ip_tools::model::dns::DnsRecord::Mx
 pub ip_tools::model::dns::DnsRecord::Mx::exchange: alloc::string::String
 pub ip_tools::model::dns::DnsRecord::Mx::preference: u16
 pub ip_tools::model::dns::DnsRecord::Ns(alloc::string::String)
 pub ip_tools::model::dns::DnsRecord::Soa(alloc::string::String)
+pub ip_tools::model::dns::DnsRecord::Srv
+pub ip_tools::model::dns::DnsRecord::Srv::port: u16
+pub ip_tools::model::dns::DnsRecord::Srv::priority: u16
+pub ip_tools::model::dns::DnsRecord::Srv::target: alloc::string::String
+pub ip_tools::model::dns::DnsRecord::Srv::weight: u16
 pub ip_tools::model::dns::DnsRecord::Txt(alloc::string::String)
 impl ip_tools::model::dns::DnsRecord
 pub const fn ip_tools::model::dns::DnsRecord::address(&self) -> core::option::Option<core::net::ip_addr::IpAddr>
@@ -101,10 +110,12 @@ pub fn ip_tools::model::dns::DnsRecord::serialize<S: serde_core::ser::Serializer
 pub enum ip_tools::model::dns::DnsRecordType
 pub ip_tools::model::dns::DnsRecordType::A
 pub ip_tools::model::dns::DnsRecordType::Aaaa
+pub ip_tools::model::dns::DnsRecordType::Caa
 pub ip_tools::model::dns::DnsRecordType::Cname
 pub ip_tools::model::dns::DnsRecordType::Mx
 pub ip_tools::model::dns::DnsRecordType::Ns
 pub ip_tools::model::dns::DnsRecordType::Soa
+pub ip_tools::model::dns::DnsRecordType::Srv
 pub ip_tools::model::dns::DnsRecordType::Txt
 impl core::fmt::Display for ip_tools::model::dns::DnsRecordType
 pub fn ip_tools::model::dns::DnsRecordType::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -222,12 +233,21 @@ pub ip_tools::model::DiagnosticCategory::Unknown
 pub enum ip_tools::model::DnsRecord
 pub ip_tools::model::DnsRecord::A(core::net::ip_addr::Ipv4Addr)
 pub ip_tools::model::DnsRecord::Aaaa(core::net::ip_addr::Ipv6Addr)
+pub ip_tools::model::DnsRecord::Caa
+pub ip_tools::model::DnsRecord::Caa::flags: u8
+pub ip_tools::model::DnsRecord::Caa::tag: alloc::string::String
+pub ip_tools::model::DnsRecord::Caa::value: alloc::string::String
 pub ip_tools::model::DnsRecord::Cname(alloc::string::String)
 pub ip_tools::model::DnsRecord::Mx
 pub ip_tools::model::DnsRecord::Mx::exchange: alloc::string::String
 pub ip_tools::model::DnsRecord::Mx::preference: u16
 pub ip_tools::model::DnsRecord::Ns(alloc::string::String)
 pub ip_tools::model::DnsRecord::Soa(alloc::string::String)
+pub ip_tools::model::DnsRecord::Srv
+pub ip_tools::model::DnsRecord::Srv::port: u16
+pub ip_tools::model::DnsRecord::Srv::priority: u16
+pub ip_tools::model::DnsRecord::Srv::target: alloc::string::String
+pub ip_tools::model::DnsRecord::Srv::weight: u16
 pub ip_tools::model::DnsRecord::Txt(alloc::string::String)
 impl ip_tools::model::dns::DnsRecord
 pub const fn ip_tools::model::dns::DnsRecord::address(&self) -> core::option::Option<core::net::ip_addr::IpAddr>
@@ -238,10 +258,12 @@ pub fn ip_tools::model::dns::DnsRecord::serialize<S: serde_core::ser::Serializer
 pub enum ip_tools::model::DnsRecordType
 pub ip_tools::model::DnsRecordType::A
 pub ip_tools::model::DnsRecordType::Aaaa
+pub ip_tools::model::DnsRecordType::Caa
 pub ip_tools::model::DnsRecordType::Cname
 pub ip_tools::model::DnsRecordType::Mx
 pub ip_tools::model::DnsRecordType::Ns
 pub ip_tools::model::DnsRecordType::Soa
+pub ip_tools::model::DnsRecordType::Srv
 pub ip_tools::model::DnsRecordType::Txt
 impl core::fmt::Display for ip_tools::model::dns::DnsRecordType
 pub fn ip_tools::model::dns::DnsRecordType::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -435,12 +457,21 @@ pub ip_tools::DiagnosticCategory::Unknown
 pub enum ip_tools::DnsRecord
 pub ip_tools::DnsRecord::A(core::net::ip_addr::Ipv4Addr)
 pub ip_tools::DnsRecord::Aaaa(core::net::ip_addr::Ipv6Addr)
+pub ip_tools::DnsRecord::Caa
+pub ip_tools::DnsRecord::Caa::flags: u8
+pub ip_tools::DnsRecord::Caa::tag: alloc::string::String
+pub ip_tools::DnsRecord::Caa::value: alloc::string::String
 pub ip_tools::DnsRecord::Cname(alloc::string::String)
 pub ip_tools::DnsRecord::Mx
 pub ip_tools::DnsRecord::Mx::exchange: alloc::string::String
 pub ip_tools::DnsRecord::Mx::preference: u16
 pub ip_tools::DnsRecord::Ns(alloc::string::String)
 pub ip_tools::DnsRecord::Soa(alloc::string::String)
+pub ip_tools::DnsRecord::Srv
+pub ip_tools::DnsRecord::Srv::port: u16
+pub ip_tools::DnsRecord::Srv::priority: u16
+pub ip_tools::DnsRecord::Srv::target: alloc::string::String
+pub ip_tools::DnsRecord::Srv::weight: u16
 pub ip_tools::DnsRecord::Txt(alloc::string::String)
 impl ip_tools::model::dns::DnsRecord
 pub const fn ip_tools::model::dns::DnsRecord::address(&self) -> core::option::Option<core::net::ip_addr::IpAddr>
@@ -451,10 +482,12 @@ pub fn ip_tools::model::dns::DnsRecord::serialize<S: serde_core::ser::Serializer
 pub enum ip_tools::DnsRecordType
 pub ip_tools::DnsRecordType::A
 pub ip_tools::DnsRecordType::Aaaa
+pub ip_tools::DnsRecordType::Caa
 pub ip_tools::DnsRecordType::Cname
 pub ip_tools::DnsRecordType::Mx
 pub ip_tools::DnsRecordType::Ns
 pub ip_tools::DnsRecordType::Soa
+pub ip_tools::DnsRecordType::Srv
 pub ip_tools::DnsRecordType::Txt
 impl core::fmt::Display for ip_tools::model::dns::DnsRecordType
 pub fn ip_tools::model::dns::DnsRecordType::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result

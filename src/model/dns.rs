@@ -36,6 +36,10 @@ pub enum DnsRecordType {
     Ns,
     /// Start-of-authority record.
     Soa,
+    /// Certification Authority Authorization record.
+    Caa,
+    /// Service (SRV) record.
+    Srv,
 }
 
 impl std::fmt::Display for DnsRecordType {
@@ -48,6 +52,8 @@ impl std::fmt::Display for DnsRecordType {
             Self::Txt => "TXT",
             Self::Ns => "NS",
             Self::Soa => "SOA",
+            Self::Caa => "CAA",
+            Self::Srv => "SRV",
         })
     }
 }
@@ -73,6 +79,15 @@ pub enum DnsRecord {
     Ns(String),
     /// Start-of-authority fields, space-joined (SOA).
     Soa(String),
+    /// Certification Authority Authorization: flags, tag and value (CAA).
+    Caa { flags: u8, tag: String, value: String },
+    /// Service endpoint: priority, weight, port and target hostname (SRV).
+    Srv {
+        priority: u16,
+        weight: u16,
+        port: u16,
+        target: String,
+    },
 }
 
 impl DnsRecord {
@@ -96,6 +111,13 @@ impl std::fmt::Display for DnsRecord {
             Self::Mx { preference, exchange } => write!(f, "{preference} {exchange}"),
             Self::Txt(text) => write!(f, "{text:?}"),
             Self::Soa(s) => write!(f, "{s}"),
+            Self::Caa { flags, tag, value } => write!(f, "{flags} {tag} {value}"),
+            Self::Srv {
+                priority,
+                weight,
+                port,
+                target,
+            } => write!(f, "{priority} {weight} {port} {target}"),
         }
     }
 }

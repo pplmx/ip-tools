@@ -91,11 +91,13 @@ const fn rt_label(rt: DnsRecordType) -> &'static str {
         DnsRecordType::Txt => "TXT",
         DnsRecordType::Ns => "NS",
         DnsRecordType::Soa => "SOA",
+        DnsRecordType::Caa => "CAA",
+        DnsRecordType::Srv => "SRV",
     }
 }
 
 /// Canonical order in which DNS record types are rendered.
-const ALL_DNS_RECORD_TYPES: [DnsRecordType; 7] = [
+const ALL_DNS_RECORD_TYPES: [DnsRecordType; 9] = [
     DnsRecordType::A,
     DnsRecordType::Aaaa,
     DnsRecordType::Cname,
@@ -103,6 +105,8 @@ const ALL_DNS_RECORD_TYPES: [DnsRecordType; 7] = [
     DnsRecordType::Txt,
     DnsRecordType::Ns,
     DnsRecordType::Soa,
+    DnsRecordType::Caa,
+    DnsRecordType::Srv,
 ];
 
 /// Render TCP observations as human text.
@@ -580,6 +584,40 @@ mod tests {
             out.contains("\"v=spf1 include:spf.example ~all\""),
             "TXT record missing: {out}"
         );
+    }
+
+    #[test]
+    fn render_dns_shows_caa_and_srv() {
+        let caa = DnsObservation {
+            hostname: "example.com".into(),
+            resolver: ResolverKind::System,
+            record_type: DnsRecordType::Caa,
+            records: vec![DnsRecord::Caa {
+                flags: 0,
+                tag: "issue".into(),
+                value: "letsencrypt.org".into(),
+            }],
+            latency_ms: Some(4),
+            error: None,
+        };
+        let srv = DnsObservation {
+            hostname: "_sip._tcp.example.com".into(),
+            resolver: ResolverKind::System,
+            record_type: DnsRecordType::Srv,
+            records: vec![DnsRecord::Srv {
+                priority: 1,
+                weight: 2,
+                port: 5060,
+                target: "sip.example.com".into(),
+            }],
+            latency_ms: Some(4),
+            error: None,
+        };
+        let out = render_dns("example.com", &[caa, srv]);
+        assert!(out.contains("CAA"), "CAA row missing: {out}");
+        assert!(out.contains("0 issue letsencrypt.org"), "CAA record missing: {out}");
+        assert!(out.contains("SRV"), "SRV row missing: {out}");
+        assert!(out.contains("1 2 5060 sip.example.com"), "SRV record missing: {out}");
     }
 
     #[test]

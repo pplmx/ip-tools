@@ -85,10 +85,11 @@ and `--count` repeat rows use the aggregated latency stats — so a DNS sweep
 loads into a spreadsheet.
 
 By default `dns` queries `A` and `AAAA`. `--record-type TYPE` queries a single
-specific type — `A`, `AAAA`, `CNAME`, `MX`, `TXT`, `NS` or `SOA` — so you can
-inspect mail routing (`MX`), `SPF`/`DKIM` (`TXT`), aliasing (`CNAME`), or
-authority (`NS`/`SOA`) the same way you check addresses. `--ipv6` is the
-shorthand for `--record-type AAAA`; the two conflict.
+specific type — `A`, `AAAA`, `CNAME`, `MX`, `TXT`, `NS`, `SOA`, `CAA` or `SRV`
+— so you can inspect mail routing (`MX`), `SPF`/`DKIM` (`TXT`), aliasing
+(`CNAME`), authority (`NS`/`SOA`), which CAs may issue certs (`CAA`), or
+service endpoints like SIP/XMPP/LDAP (`SRV`) the same way you check addresses.
+`--ipv6` is the shorthand for `--record-type AAAA`; the two conflict.
 
 An IP-literal target is shorthand for "this is already an address": `dns
 1.1.1.1` reports the literal as its own `A` record (and a clean NODATA-style

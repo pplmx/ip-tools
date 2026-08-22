@@ -255,6 +255,8 @@ async fn resolver_lookup(
         DnsRecordType::Txt => RecordType::TXT,
         DnsRecordType::Ns => RecordType::NS,
         DnsRecordType::Soa => RecordType::SOA,
+        DnsRecordType::Caa => RecordType::CAA,
+        DnsRecordType::Srv => RecordType::SRV,
     };
     let lookup = resolver.lookup(host, rt).await?;
     Ok(lookup
@@ -289,6 +291,20 @@ fn record_from_rdata(record_type: DnsRecordType, rdata: &RData) -> Option<DnsRec
             "{} {} serial {} refresh {} retry {} expire {} minimum {}",
             soa.mname, soa.rname, soa.serial, soa.refresh, soa.retry, soa.expire, soa.minimum
         ))),
+        (DnsRecordType::Caa, RData::CAA(caa)) => {
+            let flags = (u8::from(caa.issuer_critical) << 7) | caa.reserved_flags;
+            Some(DnsRecord::Caa {
+                flags,
+                tag: caa.tag.clone(),
+                value: String::from_utf8_lossy(&caa.value).into_owned(),
+            })
+        }
+        (DnsRecordType::Srv, RData::SRV(srv)) => Some(DnsRecord::Srv {
+            priority: srv.priority,
+            weight: srv.weight,
+            port: srv.port,
+            target: srv.target.to_string(),
+        }),
         _ => None,
     }
 }
@@ -811,6 +827,8 @@ fn build_query(host: &str, record_type: DnsRecordType) -> Result<Vec<u8>, String
         DnsRecordType::Txt => 16,
         DnsRecordType::Ns => 2,
         DnsRecordType::Soa => 6,
+        DnsRecordType::Caa => 257,
+        DnsRecordType::Srv => 33,
     };
     out.extend_from_slice(&qtype.to_be_bytes());
     out.extend_from_slice(&1u16.to_be_bytes()); // CLASS IN
@@ -892,6 +910,29 @@ fn parse_dns_response(bytes: &[u8], want: DnsRecordType) -> Result<ParsedDnsResp
                     field(3),
                     field(4)
                 )))
+            }
+            257 if want == DnsRecordType::Caa && rdlen >= 2 => {
+                let flags = rdata[0];
+                let tag_len = usize::from(rdata[1]);
+                let tag_end = 2 + tag_len;
+                if tag_end > rdata.len() {
+                    return Err("truncated caa rdata".to_string());
+                }
+                let tag = String::from_utf8_lossy(&rdata[2..tag_end]).into_owned();
+                let value = String::from_utf8_lossy(&rdata[tag_end..]).into_owned();
+                Some(DnsRecord::Caa { flags, tag, value })
+            }
+            33 if want == DnsRecordType::Srv && rdlen >= 6 => {
+                let priority = u16::from_be_bytes([rdata[0], rdata[1]]);
+                let weight = u16::from_be_bytes([rdata[2], rdata[3]]);
+                let port = u16::from_be_bytes([rdata[4], rdata[5]]);
+                let (target, _) = read_name(bytes, rdata_start + 6)?;
+                Some(DnsRecord::Srv {
+                    priority,
+                    weight,
+                    port,
+                    target,
+                })
             }
             _ => None, // other record types / mismatched queries are ignored
         };
@@ -1462,6 +1503,36 @@ mod tests {
             vec![DnsRecord::Soa(
                 "host.example host.example serial 2 refresh 3 retry 4 expire 5 minimum 6".into()
             )]
+        );
+    }
+
+    #[test]
+    fn parse_dns_response_decodes_caa_and_srv() {
+        // CAA (257): flags + tag-length + tag + value.
+        let mut caa = vec![0u8, 5];
+        caa.extend_from_slice(b"issue");
+        caa.extend_from_slice(b"letsencrypt.org");
+        let parsed = parse_dns_response(&response_with(&[(257, caa)]), DnsRecordType::Caa).unwrap();
+        assert_eq!(
+            parsed.records,
+            vec![DnsRecord::Caa {
+                flags: 0,
+                tag: "issue".into(),
+                value: "letsencrypt.org".into()
+            }]
+        );
+
+        // SRV (33): priority + weight + port + target name.
+        let srv = vec![0, 1, 0, 2, 0x1F, 0x90, 0xC0, 0x0C];
+        let parsed = parse_dns_response(&response_with(&[(33, srv)]), DnsRecordType::Srv).unwrap();
+        assert_eq!(
+            parsed.records,
+            vec![DnsRecord::Srv {
+                priority: 1,
+                weight: 2,
+                port: 8080,
+                target: "host.example".into()
+            }]
         );
     }
 

@@ -312,6 +312,27 @@ fn dns_cli_record_type_selects_a_single_record_type() {
         "--record-type CNAME must not show A: {out}"
     );
 
+    // CAA and SRV are accepted record types (the A-only responder returns no
+    // answers for them, but the query runs cleanly).
+    for rt in ["CAA", "SRV"] {
+        let out = stdout(
+            &cmd()
+                .args([
+                    "dns",
+                    "host.example",
+                    "--server",
+                    &server.to_string(),
+                    "--record-type",
+                    rt,
+                    "--timeout",
+                    "1200",
+                ])
+                .assert()
+                .success(),
+        );
+        assert!(!out.contains("192.0.2.77"), "--record-type {rt} must not show A: {out}");
+    }
+
     // Unknown and conflicting values are rejected.
     cmd()
         .args([

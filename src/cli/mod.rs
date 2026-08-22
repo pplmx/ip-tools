@@ -401,7 +401,7 @@ fn dns_record_type_arg() -> Arg {
         .long("record-type")
         .value_name("TYPE")
         .conflicts_with("ipv6")
-        .help("query a single record type (A, AAAA, CNAME, MX, TXT, NS, SOA); default both A and AAAA")
+        .help("query a single record type (A, AAAA, CNAME, MX, TXT, NS, SOA, CAA, SRV); default both A and AAAA")
 }
 
 fn positional_target(help: &'static str) -> Arg {
