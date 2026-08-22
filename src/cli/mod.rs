@@ -313,9 +313,9 @@ fn header_arg() -> Arg {
 fn body_arg() -> Arg {
     Arg::new("body")
         .long("body")
-        .value_name("TEXT")
+        .value_name("TEXT|@FILE|-")
         .action(ArgAction::Set)
-        .help("HTTP request body to send verbatim (e.g. --body '{\"key\":1}' for a POST/API endpoint)")
+        .help("HTTP request body to send verbatim; '--body @file' reads a file, '--body -' reads stdin")
 }
 
 /// Shared `--insecure` argument (skip TLS/QUIC certificate validation).
@@ -676,6 +676,29 @@ pub fn parse_custom_headers(sub_m: &ArgMatches) -> Result<Vec<(String, String)>,
         }
     }
     Ok(headers)
+}
+
+/// Resolve the `--body` value into request-body bytes: `-` reads all of
+/// stdin, a leading `@` reads the named file, and anything else is the literal
+/// body text.
+pub fn parse_body(sub_m: &ArgMatches) -> Result<Option<Vec<u8>>, String> {
+    let Some(raw) = sub_m.get_one::<String>("body") else {
+        return Ok(None);
+    };
+    if raw == "-" {
+        let mut buf = Vec::new();
+        std::io::Read::read_to_end(&mut std::io::stdin(), &mut buf)
+            .map_err(|e| format!("could not read request body from stdin: {e}"))?;
+        return Ok(Some(buf));
+    }
+    if let Some(path) = raw.strip_prefix('@') {
+        if path.is_empty() {
+            return Err("--body @<file> requires a file path after '@'".to_string());
+        }
+        let bytes = std::fs::read(path).map_err(|e| format!("could not read request body file {path:?}: {e}"))?;
+        return Ok(Some(bytes));
+    }
+    Ok(Some(raw.as_bytes().to_vec()))
 }
 
 /// Output structure for `get --json`.

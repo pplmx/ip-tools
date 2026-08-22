@@ -1061,6 +1061,75 @@ fn http_cli_sends_request_body_through_echo() {
 }
 
 #[test]
+fn http_cli_body_reads_from_file_and_stdin() {
+    // `--body @<file>` reads the request body from a file and `--body -` reads
+    // it from stdin — both must reach the echo route and be echoed back.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let addr = fixture.tcp_addr().to_string();
+
+    let path = std::env::temp_dir().join(format!("ip-tools-body-test-{}.txt", std::process::id()));
+    std::fs::write(&path, b"file-body-9d2c").expect("write body file");
+    let file_arg = format!("@{}", path.display());
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "http",
+            &addr,
+            "--sni",
+            "echo.invalid",
+            "--body",
+            &file_arg,
+            "--insecure",
+            "--timeout",
+            "2000",
+        ])
+        .output()
+        .expect("run http --body @file");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "http --body @file should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.contains("file-body-9d2c"),
+        "the file body must reach the server and be echoed back: {stdout}"
+    );
+    let _ = std::fs::remove_file(&path);
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "http",
+            &addr,
+            "--sni",
+            "echo.invalid",
+            "--body",
+            "-",
+            "--insecure",
+            "--timeout",
+            "2000",
+        ])
+        .write_stdin("stdin-body-4ab1")
+        .output()
+        .expect("run http --body -");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "http --body - should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.contains("stdin-body-4ab1"),
+        "the stdin body must reach the server and be echoed back: {stdout}"
+    );
+}
+
+#[test]
 fn diagnose_cli_sends_request_body_through_echo() {
     // `diagnose --body` threads the body into the HTTP evidence phase; the
     // echo route's response must carry it in the JSON evidence.

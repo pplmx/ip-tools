@@ -285,7 +285,9 @@ sent).
 endpoint — a JSON payload, form data, or any health check that requires a
 body — can be probed truthfully. Content is sent with an explicit
 `content-length`; content-type is not set automatically, so add a
-`--header 'content-type: ...'` when the endpoint needs one.
+`--header 'content-type: ...'` when the endpoint needs one. `--body @file`
+reads the request body from a file (for large or JSON payloads without shell
+quoting), and `--body -` reads it from stdin — useful for piping a payload in.
 
 The probes also record the **response headers** (bounded to the first 24):
 the `--json` observation carries every header, and the human report shows the

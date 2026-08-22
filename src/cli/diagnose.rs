@@ -66,7 +66,13 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let body: Option<Vec<u8>> = sub_m.get_one::<String>("body").map(|s| s.as_bytes().to_vec());
+    let body = match super::parse_body(sub_m) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("Error: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
     let custom_servers = match super::parse_custom_servers(sub_m) {
         Ok(v) => v,
         Err(e) => {

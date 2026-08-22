@@ -20,7 +20,13 @@ pub(super) async fn run_http2(sub_m: &ArgMatches) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let body: Option<Vec<u8>> = sub_m.get_one::<String>("body").map(|s| s.as_bytes().to_vec());
+    let body = match super::parse_body(sub_m) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("Error: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
     run_probe_flow(
         sub_m,
         render_http,
