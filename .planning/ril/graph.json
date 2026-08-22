@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-22T06:04:32+00:00",
+  "updated_at": "2026-08-22T06:12:00+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -410,6 +410,32 @@
       "touched_round": 0,
       "commit": "fa72849ff635687202b05a106ac01075a2a6c8bf",
       "summary": "dns --count N aggregates per-resolver/per-record-type latency + failure stats via DnsClient::resolve_repeat / dns::aggregate_repeat / DnsRepeatResult; --doh looped; --count 1 default stays single-shot; fake-resolver unit test + 2 CLI tests; api-baseline regenerated"
+    },
+    "TASK-cert-expiry": {
+      "id": "TASK-cert-expiry",
+      "type": "task",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T06:12:00+00:00",
+      "updated_at": "2026-08-22T06:12:00+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.7,
+      "confidence": 1.0,
+      "effort": 0.3,
+      "unlock_factor": 1.0,
+      "summary": "tls report surfaces days-until-expiry / expired for the peer certificate (renderer-only, no API churn): the notAfter date is shown but never the actionable remaining-lifetime signal, so a cert expiring in 3 days is invisible without manual date arithmetic"
+    },
+    "ISS-cert-lifetime-invisible": {
+      "id": "ISS-cert-lifetime-invisible",
+      "type": "issue",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T06:12:00+00:00",
+      "updated_at": "2026-08-22T06:12:00+00:00",
+      "touched_round": 0,
+      "summary": "The TLS report prints the notAfter timestamp but never computes remaining lifetime, so an expiring or expired certificate is not flagged; ops monitoring cert expiry per endpoint requires manual date arithmetic on the raw timestamp",
+      "severity": "low"
     }
   },
   "edges": [
@@ -574,6 +600,24 @@
       "to": "ISS-dns-repeat-missing",
       "type": "resolves",
       "created_at": "2026-08-22T06:04:32+00:00"
+    },
+    {
+      "from": "ISS-cert-lifetime-invisible",
+      "to": "COMP-tls",
+      "type": "located_in",
+      "created_at": "2026-08-22T06:12:00+00:00"
+    },
+    {
+      "from": "TASK-cert-expiry",
+      "to": "ISS-cert-lifetime-invisible",
+      "type": "addresses",
+      "created_at": "2026-08-22T06:12:00+00:00"
+    },
+    {
+      "from": "DEC-005",
+      "to": "TASK-cert-expiry",
+      "type": "governs",
+      "created_at": "2026-08-22T06:12:00+00:00"
     }
   ]
 }

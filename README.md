@@ -165,6 +165,11 @@ certificate validation — useful for self-signed or private-PKI endpoints.
 Signatures on the wire are still verified; only the certificate chain check is
 skipped.
 
+The certificate row also annotates the remaining lifetime when it is
+actionable: `(expires in N days)` within 30 days, or `(expired)` once past
+`notAfter` — an expiring certificate is invisible in a raw timestamp, so the
+report makes it explicit.
+
 Example output:
 
 ```

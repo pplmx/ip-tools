@@ -142,7 +142,10 @@ pub fn render_tls(observations: &[TlsObservation]) -> String {
     out
 }
 
-/// Render a certificate summary compactly for the terminal.
+/// Render a certificate summary compactly for the terminal, annotated with
+/// the remaining lifetime when it is actionable: `expired`, `expires in N
+/// day(s)` within [`RENDER_CERT_EXPIRY_WINDOW_DAYS`], or nothing for a
+/// comfortably-far expiry.
 fn render_cert(cert: &CertificateSummary) -> String {
     let valid = match (&cert.not_after_utc, &cert.not_before_utc) {
         (Some(a), Some(b)) => format!("valid {}..{}", b.trim_end_matches('Z'), a.trim_end_matches('Z')),
@@ -153,7 +156,53 @@ fn render_cert(cert: &CertificateSummary) -> String {
     } else {
         format!(" ({valid})")
     };
-    format!("{} issued by {}{}", cert.subject, cert.issuer, valid)
+    let lifetime = cert
+        .not_after_utc
+        .as_deref()
+        .and_then(days_until_from_rfc3339)
+        .map_or_else(String::new, |days| {
+            if days < 0 {
+                " (expired)".to_string()
+            } else if days <= RENDER_CERT_EXPIRY_WINDOW_DAYS {
+                format!(" (expires in {days} day{})", if days == 1 { "" } else { "s" })
+            } else {
+                String::new()
+            }
+        });
+    format!("{} issued by {}{}{}", cert.subject, cert.issuer, valid, lifetime)
+}
+
+/// Number of days before expiry the certificate report flags as expiring.
+const RENDER_CERT_EXPIRY_WINDOW_DAYS: i64 = 30;
+
+/// Days from today until the date encoded in an RFC 3339 UTC timestamp
+/// (`YYYY-MM-DDTHH:MM:SSZ`); negative when that date is already past.
+/// `None` when the string is not recognizably that shape.
+fn days_until_from_rfc3339(rfc3339: &str) -> Option<i64> {
+    let date = rfc3339.get(0..10)?;
+    let (y, mo, d) = (date.get(0..4)?, date.get(5..7)?, date.get(8..10)?);
+    let (year, month, day): (i64, i64, i64) = (y.parse().ok()?, mo.parse().ok()?, d.parse().ok()?);
+    let now_days = i64::try_from(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()?
+            .as_secs()
+            / 86_400,
+    )
+    .ok()?;
+    Some(days_from_civil(year, month, day) - now_days)
+}
+
+/// Days since 1970-01-01 for a proleptic-Gregorian civil date (Hinnant's
+/// algorithm, the inverse of `tls.rs format_utc`).
+const fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y.rem_euclid(400);
+    let mp = if m > 2 { m - 3 } else { m + 9 };
+    let doy = (153 * mp + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + doe - 719_468
 }
 
 /// Render HTTPS/HTTP observations as human text.
@@ -773,5 +822,93 @@ mod tests {
         // An empty collection still serializes as `[]` (not null or absent).
         let empty: Vec<u64> = Vec::new();
         assert_eq!(to_json(&empty), "[]");
+    }
+
+    #[test]
+    fn days_from_civil_inverts_known_dates() {
+        // 1970-01-01 is epoch day 0.
+        assert_eq!(days_from_civil(1970, 1, 1), 0);
+        // 2000-01-01 is 10957 days after the epoch (canonical Hinnant value);
+        // the next day is 10958.
+        assert_eq!(days_from_civil(2000, 1, 1), 10_957);
+        assert_eq!(days_from_civil(2000, 1, 2), 10_958);
+        // Later dates are larger day counts.
+        assert!(days_from_civil(2026, 7, 29) > days_from_civil(2026, 7, 1));
+    }
+
+    #[test]
+    fn days_until_measures_expiry_relative_to_today() {
+        // The epoch reference date is far in the past.
+        assert!(days_until_from_rfc3339("1970-01-01T00:00:00Z").is_some_and(|d| d < -1000));
+
+        // A timestamp built from `today + 5` must read as exactly 5 days out —
+        // the same `days_from_civil` the production code uses makes the
+        // round-trip exact with no time-of-day skew.
+        let now_days = i64::try_from(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("epoch")
+                .as_secs()
+                / 86_400,
+        )
+        .expect("days fit i64");
+        let (y, m, d) = civil_from_days(now_days + 5);
+        let rfc = format!("{y:04}-{m:02}-{d:02}T00:00:00Z");
+        assert_eq!(days_until_from_rfc3339(&rfc), Some(5), "5 days out: {rfc}");
+
+        // Malformed input is rejected, not partially parsed.
+        assert_eq!(days_until_from_rfc3339("garbage"), None);
+        assert_eq!(days_until_from_rfc3339("not-a-date"), None);
+    }
+
+    #[test]
+    fn render_cert_annotates_expiry_lifetime() {
+        let cert = |days: i64| CertificateSummary {
+            subject: "CN=x".into(),
+            issuer: "CN=y".into(),
+            not_before_utc: Some("2026-01-01T00:00:00Z".into()),
+            not_after_utc: Some(days_out_rfc3339(days)),
+        };
+        // Far future: no lifetime annotation.
+        let far = render_cert(&cert(400));
+        assert!(!far.contains("expires in"), "far expiry has no annotation: {far}");
+        assert!(!far.contains("expired"), "far expiry has no annotation: {far}");
+        // Near expiry: annotated.
+        let near = render_cert(&cert(5));
+        assert!(near.contains("expires in 5 days"), "near expiry annotated: {near}");
+        // Already expired: annotated.
+        let past = render_cert(&cert(-3));
+        assert!(past.contains("expired"), "expired annotated: {past}");
+    }
+
+    /// RFC 3339 UTC string for the civil date `now + offset` days from today,
+    /// used to build deterministic expiry timestamps in tests.
+    fn days_out_rfc3339(offset: i64) -> String {
+        let now_days = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("epoch")
+            .as_secs()
+            / 86_400;
+        let (y, m, d) = civil_from_days(i64::try_from(now_days).expect("days fit i64") + offset);
+        format!("{y:04}-{m:02}-{d:02}T00:00:00Z")
+    }
+
+    /// Civil (y, m, d) for a day count since the epoch (Hinnant's algorithm,
+    /// the inverse of the production `days_from_civil`).
+    fn civil_from_days(days: i64) -> (i64, u32, u32) {
+        let z = days + 719_468;
+        let era = z.div_euclid(146_097);
+        let doe = z.rem_euclid(146_097);
+        let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+        let y = yoe + era * 400;
+        let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+        let mp = (5 * doy + 2) / 153;
+        let d = doy - (153 * mp + 2) / 5 + 1;
+        let m = if mp < 10 { mp + 3 } else { mp - 9 };
+        (
+            if m <= 2 { y + 1 } else { y },
+            u32::try_from(m).expect("month"),
+            u32::try_from(d).expect("day"),
+        )
     }
 }
