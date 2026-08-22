@@ -161,7 +161,8 @@ fn parser() -> ArgMatches {
                         .help("probes per hop"),
                 )
                 .arg(strict_arg())
-                .arg(timeout_arg()),
+                .arg(timeout_arg())
+                .arg(csv_arg()),
         )
         .subcommand(probe_command(
             "diagnose",
@@ -353,7 +354,7 @@ fn csv_arg() -> Arg {
     Arg::new("csv")
         .long("csv")
         .action(ArgAction::SetTrue)
-        .help("output diagnosis rows as CSV (host,severity,category,confidence,summary)")
+        .help("output the results as CSV rows instead of human text")
 }
 
 /// Shared `--insecure` argument (skip TLS/QUIC certificate validation).

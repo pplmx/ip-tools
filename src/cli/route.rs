@@ -5,6 +5,7 @@ use clap::ArgMatches;
 use ip_tools::report::{render_route, to_json};
 use ip_tools::route as ip_route;
 use ip_tools::target::Target;
+use ip_tools::RouteHop;
 use ip_tools::TracerouteConfig;
 use std::process::ExitCode;
 use std::time::Duration;
@@ -13,6 +14,7 @@ use std::time::Duration;
 /// traceroute off the async runtime, then reverse-resolves router names.
 pub(super) async fn run_route(sub_m: &ArgMatches) -> ExitCode {
     let json = sub_m.get_flag("json");
+    let csv = sub_m.get_flag("csv");
     let target_str = sub_m.get_one::<String>("target").expect("required target");
     let max_hops = *sub_m.get_one::<u8>("max-hops").expect("max-hops has default");
     let probes_per_hop = *sub_m
@@ -85,7 +87,9 @@ pub(super) async fn run_route(sub_m: &ArgMatches) -> ExitCode {
         0
     };
 
-    if json {
+    if csv {
+        print!("{}", render_route_csv(&hops));
+    } else if json {
         println!("{}", to_json(&hops));
     } else {
         print!("{}", render_route(&hops));
@@ -95,5 +99,83 @@ pub(super) async fn run_route(sub_m: &ArgMatches) -> ExitCode {
         ExitCode::FAILURE
     } else {
         ExitCode::SUCCESS
+    }
+}
+
+/// Render a traceroute path as CSV: a header then one row per hop, with
+/// empty fields for lost hops or missing hostnames (RFC 4180 quoting).
+fn render_route_csv(hops: &[RouteHop]) -> String {
+    let mut out = String::from("ttl,hostname,addr,rtt_ms,lost\n");
+    for h in hops {
+        out.push_str(&h.ttl.to_string());
+        out.push(',');
+        out.push_str(&csv_field(h.hostname.as_deref().unwrap_or("")));
+        out.push(',');
+        out.push_str(&csv_field(h.addr.map_or_else(String::new, |a| a.to_string()).as_str()));
+        out.push(',');
+        out.push_str(&csv_field(
+            h.rtt_ms.map_or_else(String::new, |ms| ms.to_string()).as_str(),
+        ));
+        out.push(',');
+        out.push_str(if h.lost { "1" } else { "0" });
+        out.push('\n');
+    }
+    out
+}
+
+/// Quote a CSV field when it contains a comma, quote, or newline (RFC 4180).
+fn csv_field(value: &str) -> String {
+    if value.contains(',') || value.contains('"') || value.contains('\n') {
+        format!("\"{}\"", value.replace('"', "\"\""))
+    } else {
+        value.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn render_route_csv_emits_one_row_per_hop() {
+        let hops = [
+            RouteHop {
+                ttl: 1,
+                addr: Some("192.0.2.1".parse().unwrap()),
+                hostname: Some("r1.example.com".into()),
+                rtt_ms: Some(3),
+                lost: false,
+            },
+            RouteHop {
+                ttl: 2,
+                addr: None,
+                hostname: None,
+                rtt_ms: None,
+                lost: true,
+            },
+            RouteHop {
+                ttl: 3,
+                addr: Some("192.0.2.3".parse().unwrap()),
+                hostname: None,
+                rtt_ms: Some(12),
+                lost: false,
+            },
+        ];
+        let out = render_route_csv(&hops);
+        let mut lines = out.lines();
+        assert_eq!(lines.next(), Some("ttl,hostname,addr,rtt_ms,lost"));
+        // Reachable hop: full row, not lost.
+        assert_eq!(lines.next(), Some("1,r1.example.com,192.0.2.1,3,0"));
+        // Lost hop: empty hostname/addr/rtt, lost=1.
+        assert_eq!(lines.next(), Some("2,,,,1"));
+        assert_eq!(lines.next(), Some("3,,192.0.2.3,12,0"));
+        assert!(lines.next().is_none());
+    }
+
+    #[test]
+    fn csv_field_quotes_and_doubles_embedded_quotes() {
+        assert_eq!(csv_field("a,b"), "\"a,b\"");
+        assert_eq!(csv_field("say \"hi\""), "\"say \"\"hi\"\"\"");
+        assert_eq!(csv_field("plain"), "plain");
     }
 }

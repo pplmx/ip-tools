@@ -474,6 +474,7 @@ Trace the network path (Linux, requires root/`CAP_NET_RAW`):
 ```shell
 ip-tools route example.com
 ip-tools route 8.8.8.8 --max-hops 20 --probes-per-hop 3 --timeout 700
+ip-tools route example.com --csv      # hop-by-hop rows for a path spreadsheet
 ```
 
 Example output:
@@ -488,6 +489,11 @@ Traceroute
 
 A missing hop (`*`) is recorded as lost but not over-interpreted: routers
 frequently deprioritize or filter TTL-expired responses.
+
+`--csv` emits a `ttl,hostname,addr,rtt_ms,lost` row per hop (lost hops keep
+empty hostname/address/RTT and `lost=1`), so a traceroute path loads into a
+spreadsheet for path analysis; `--csv`/`--json`/human output are mutually
+exclusive.
 
 ### Repeated probes
 
