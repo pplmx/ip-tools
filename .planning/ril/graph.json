@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-22T11:50:51+00:00",
+  "updated_at": "2026-08-22T12:11:25+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -773,6 +773,69 @@
       "touched_round": 0,
       "commit": "af58b14c9cef6179015f5a19ab04feb1a8893663",
       "summary": "diagnose accepts multiple positional targets (fleet/health sweep): each host runs the full probe+engine pipeline sequentially (extracted into diagnose_one); human output renders every host; >1 target emits a JSON array (single stays object); --strict aggregates across hosts; unresolved hosts print their own error and fail the run. No public API change. 2 fixture-gated CLI tests (array + strict). 180 tests green, all gates clean, coverage 93.39%. commit af58b14"
+    },
+    "DEC-011": {
+      "id": "DEC-011",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T12:08:57+00:00",
+      "updated_at": "2026-08-22T12:08:57+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-22): multi-target dns (DNS health sweep). diagnose already accepts many targets, but dns — the cheapest layer to sweep — still takes a single hostname, so an operator checking N domains' resolution must shell-loop. Extend dns to accept multiple positional targets, run system/+--server/+--doh/+--dot resolution (single-shot or --count repeat) per host, render every host, emit a per-target JSON array for >1 host (single keeps the flat array), and aggregate --strict across targets. No new dependency; per-target logic factored into dns_compute; single-target behavior/output unchanged.",
+      "alternatives_rejected": "extending every per-address probe subcommand (tcp/tls/http/http2/http3/probe) to multiple targets (larger shared run_probe_flow refactor); --interface source-IP binding (touches tcp/tls/quinn bind paths, higher blast radius); --body @file/stdin (small follow-up to --body)"
+    },
+    "ISS-006": {
+      "id": "ISS-006",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T12:09:06+00:00",
+      "updated_at": "2026-08-22T12:11:25+00:00",
+      "touched_round": 0,
+      "summary": "dns accepts a single hostname, so there is no way to run a DNS health sweep over many domains in one invocation: an operator must shell-loop, cannot get a per-target JSON corpus or one aggregated --strict exit for the cheapest layer to check.",
+      "severity": "medium"
+    },
+    "TASK-010": {
+      "id": "TASK-010",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T12:10:40+00:00",
+      "updated_at": "2026-08-22T12:11:25+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.8,
+      "confidence": 1,
+      "effort": 0.55,
+      "unlock_factor": 1,
+      "summary": "Make dns accept multiple positional targets: run system/+--server/+--doh/+--dot resolution (single-shot or --count repeat) per host via a dns_compute helper, render every host, emit a per-target JSON array for >1 host (single keeps the flat array), and aggregate --strict across targets. IP-literal targets keep their no-resolver short-circuit."
+    },
+    "TASK-011": {
+      "id": "TASK-011",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T12:10:47+00:00",
+      "updated_at": "2026-08-22T12:11:25+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.7,
+      "confidence": 1,
+      "effort": 0.3,
+      "unlock_factor": 1,
+      "summary": "Tests + docs: a CLI test resolving two IP-literal targets proving each report renders and --json yields a 2-element per-target array; README/CHANGELOG updates for multi-target dns."
+    },
+    "CHG-006": {
+      "id": "CHG-006",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T12:11:25+00:00",
+      "updated_at": "2026-08-22T12:11:25+00:00",
+      "touched_round": 0,
+      "commit": "237cfc1a02859178bd561783319f971bedc90df7",
+      "summary": "dns accepts multiple positional targets (DNS health sweep): per-host system/+--server/+--doh/+--dot resolution (single-shot or --count repeat) via dns_compute; every host renders; >1 target emits a per-target JSON array (single keeps flat array); --strict aggregates failures across targets; IP literals keep the no-resolver short-circuit. No public API change. 1 fixture-free CLI test (two literals render + 2-element array). 181 tests green, all gates clean, coverage 93.39%. commit 237cfc1"
     }
   },
   "edges": [
@@ -1249,6 +1312,60 @@
       "to": "ISS-005",
       "type": "resolves",
       "created_at": "2026-08-22T11:50:51+00:00"
+    },
+    {
+      "from": "ISS-006",
+      "to": "COMP-dns",
+      "type": "located_in",
+      "created_at": "2026-08-22T12:10:53+00:00"
+    },
+    {
+      "from": "TASK-010",
+      "to": "ISS-006",
+      "type": "addresses",
+      "created_at": "2026-08-22T12:10:53+00:00"
+    },
+    {
+      "from": "TASK-011",
+      "to": "ISS-006",
+      "type": "addresses",
+      "created_at": "2026-08-22T12:10:53+00:00"
+    },
+    {
+      "from": "TASK-011",
+      "to": "TASK-010",
+      "type": "depends_on",
+      "created_at": "2026-08-22T12:10:53+00:00"
+    },
+    {
+      "from": "DEC-011",
+      "to": "TASK-010",
+      "type": "governs",
+      "created_at": "2026-08-22T12:10:53+00:00"
+    },
+    {
+      "from": "DEC-011",
+      "to": "TASK-011",
+      "type": "governs",
+      "created_at": "2026-08-22T12:10:53+00:00"
+    },
+    {
+      "from": "CHG-006",
+      "to": "TASK-010",
+      "type": "implements",
+      "created_at": "2026-08-22T12:11:25+00:00"
+    },
+    {
+      "from": "CHG-006",
+      "to": "TASK-011",
+      "type": "implements",
+      "created_at": "2026-08-22T12:11:25+00:00"
+    },
+    {
+      "from": "CHG-006",
+      "to": "ISS-006",
+      "type": "resolves",
+      "created_at": "2026-08-22T12:11:25+00:00"
     }
   ]
 }
