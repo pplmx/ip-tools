@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-22T14:59:04+00:00",
+  "updated_at": "2026-08-22T15:13:43+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -1139,6 +1139,54 @@
       "touched_round": 0,
       "commit": "52898b2661c5e83453c6e4e185953c32052016d4",
       "summary": "dns --csv emits a uniform row per (host,resolver,record_type): attempts,success_rate,latency_p50/p95/max_ms,failures — single-shot rows attempts=1, --count repeat rows use aggregated stats; single and multi-target; csv/json/human mutually exclusive. No public API change, no new dep. 1 CLI test (two literals: header + per-host rows). 187 tests green, all gates clean, coverage 92.72%. commit 52898b2"
+    },
+    "DEC-018": {
+      "id": "DEC-018",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T15:00:39+00:00",
+      "updated_at": "2026-08-22T15:00:39+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-22): probe --csv. diagnose and dns already have --csv; the multi-target probe --count sweep reports per-address attempts/success_rate/latency percentiles — ideal for a connectivity-health spreadsheet. Add --csv to probe emitting one row per (destination): attempts,success_rate,latency_p50/p95/max_ms,jitter_ms,failures. run_probe_flow gains an optional csv renderer (only probe supplies one, so only probe defines --csv); json/csv/human mutually exclusive. No new dependency.",
+      "alternatives_rejected": "--interface/source-IP binding (touches tcp/tls/quinn bind + hickory dns, large blast radius, partial version inconsistent); route multi-target (privileged raw sockets, not deterministically testable); tcp/tls/http single-observation CSV (each is one row; less useful than the repeated-probe latency stats)"
+    },
+    "ISS-013": {
+      "id": "ISS-013",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T15:00:41+00:00",
+      "updated_at": "2026-08-22T15:13:43+00:00",
+      "touched_round": 0,
+      "summary": "probe --count reports per-address latency statistics (attempts, success rate, p50/p95/max, jitter, failures) but only as JSON/human text, so a connectivity-health sweep can't be loaded straight into a spreadsheet.",
+      "severity": "low"
+    },
+    "TASK-019": {
+      "id": "TASK-019",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T15:07:51+00:00",
+      "updated_at": "2026-08-22T15:13:43+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.35,
+      "unlock_factor": 1,
+      "summary": "Add probe --csv: one row per (host,destination) with attempts,success_rate,latency_p50/p95/max_ms,jitter_ms,failures for single and multi-target repeated-probe sweeps (--count latency stats); json/csv/human mutually exclusive. run_probe_flow gains an optional csv renderer (only probe supplies one); no new dependency. Pinned by a probe --csv CLI test."
+    },
+    "CHG-013": {
+      "id": "CHG-013",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T15:13:40+00:00",
+      "updated_at": "2026-08-22T15:13:40+00:00",
+      "touched_round": 0,
+      "commit": "01da33a5c78341977d31a219a8139eb88d652803",
+      "summary": "probe --csv emits one row per (host,destination): attempts,success_rate,latency_p50/p95/max_ms,jitter_ms,failures from the --count aggregation, single and multi-target; json/csv/human mutually exclusive (csv wins). No public API change, no new dep. 1 fixture-gated CLI test (header + 3/3 success row). 187 tests green, clippy/fmt/doc clean."
     }
   },
   "edges": [
@@ -1873,6 +1921,36 @@
       "to": "ISS-012",
       "type": "resolves",
       "created_at": "2026-08-22T14:59:04+00:00"
+    },
+    {
+      "from": "ISS-013",
+      "to": "COMP-probe",
+      "type": "located_in",
+      "created_at": "2026-08-22T15:07:54+00:00"
+    },
+    {
+      "from": "DEC-018",
+      "to": "TASK-019",
+      "type": "governs",
+      "created_at": "2026-08-22T15:07:54+00:00"
+    },
+    {
+      "from": "TASK-019",
+      "to": "ISS-013",
+      "type": "addresses",
+      "created_at": "2026-08-22T15:07:54+00:00"
+    },
+    {
+      "from": "CHG-013",
+      "to": "TASK-019",
+      "type": "implements",
+      "created_at": "2026-08-22T15:13:43+00:00"
+    },
+    {
+      "from": "CHG-013",
+      "to": "ISS-013",
+      "type": "resolves",
+      "created_at": "2026-08-22T15:13:43+00:00"
     }
   ]
 }
