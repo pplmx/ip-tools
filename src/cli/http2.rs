@@ -32,7 +32,7 @@ pub(super) async fn run_http2(sub_m: &ArgMatches) -> ExitCode {
         render_http,
         |obs: &HttpObservation| obs.destination,
         |obs: &HttpObservation| obs.failure.is_some(),
-        None,
+        Some(super::http::render_http_csv),
         move |host, dest, timeout| {
             let method = method.clone();
             let path = path.clone();

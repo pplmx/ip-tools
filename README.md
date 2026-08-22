@@ -188,6 +188,13 @@ is resolved and probed in turn. Human output labels each host block; `--json`
 emits a per-target array for more than one host; `--strict` aggregates failed
 probes across all targets.
 
+`--csv` exports a fleet sweep to a spreadsheet: `tcp` rows carry
+`host,destination,success,latency_ms,failure`; `tls` adds the handshake details
+(version/cipher/ALPN/certificate subject/issuer/expiry); `http`/`http2`/`http3`
+carry the response `protocol,status,location,body_bytes,ttfb_ms,latency_ms`.
+`probe --csv` instead reports the aggregated `--count` latency statistics, and
+`--csv`/`--json`/human output are mutually exclusive on every command.
+
 On a dual-stack host, `--ipv4` probes only the IPv4 addresses and `--ipv6` only
 the IPv6 addresses of each target (mutually exclusive). This avoids
 broken-family timeouts and lets you test one family in isolation — for example

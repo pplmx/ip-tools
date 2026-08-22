@@ -117,6 +117,25 @@ fn tcp_cli_reports_pass_and_json() {
 }
 
 #[test]
+fn tcp_cli_csv_export_renders_rows() {
+    // `tcp --csv` emits a header + one row per destination with reachability,
+    // latency and failure kind — a fleet TCP sweep loads into a spreadsheet.
+    let addr = local_tcp_listener();
+    let out = stdout(
+        &cmd()
+            .args(["tcp", &addr.to_string(), "--csv", "--timeout", "800"])
+            .assert()
+            .success(),
+    );
+    let mut lines = out.lines();
+    assert_eq!(lines.next(), Some("host,destination,success,latency_ms,failure"));
+    assert!(
+        lines.any(|l| l.starts_with(&format!("127.0.0.1,{addr},1,"))),
+        "expected a reachable row for {addr}: {out}"
+    );
+}
+
+#[test]
 fn tls_cli_reports_failure_against_plain_listener() {
     let addr = local_tcp_listener();
     let out = stdout(

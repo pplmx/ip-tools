@@ -70,12 +70,19 @@ fn parser() -> ArgMatches {
         .subcommand(probe_command(
             "tcp",
             "test TCP connectivity to a host:port across its addresses",
-            &[strict_arg(), ipv4_arg(), ipv6_arg()],
+            &[strict_arg(), ipv4_arg(), ipv6_arg(), csv_arg()],
         ))
         .subcommand(probe_command(
             "tls",
             "perform TLS handshake to a host:port across its addresses",
-            &[insecure_arg(), strict_arg(), sni_arg(), ipv4_arg(), ipv6_arg()],
+            &[
+                insecure_arg(),
+                strict_arg(),
+                sni_arg(),
+                ipv4_arg(),
+                ipv6_arg(),
+                csv_arg(),
+            ],
         ))
         .subcommand(probe_command(
             "http",
@@ -90,6 +97,7 @@ fn parser() -> ArgMatches {
                 body_arg(),
                 ipv4_arg(),
                 ipv6_arg(),
+                csv_arg(),
             ],
         ))
         .subcommand(probe_command(
@@ -123,6 +131,7 @@ fn parser() -> ArgMatches {
                 body_arg(),
                 ipv4_arg(),
                 ipv6_arg(),
+                csv_arg(),
             ],
         ))
         .subcommand(probe_command(
@@ -138,6 +147,7 @@ fn parser() -> ArgMatches {
                 body_arg(),
                 ipv4_arg(),
                 ipv6_arg(),
+                csv_arg(),
             ],
         ))
         .subcommand(

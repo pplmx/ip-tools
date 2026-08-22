@@ -1036,6 +1036,41 @@ fn probe_cli_csv_export_renders_rows() {
 }
 
 #[test]
+fn http_cli_csv_export_renders_status_rows() {
+    // `http --csv` (and http2/http3) emit a header + one row per destination
+    // with the response status/protocol — an HTTP fleet sweep loads into a
+    // spreadsheet.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let addr = fixture.tcp_addr().to_string();
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args(["http", &addr, "--insecure", "--csv", "--timeout", "2000"])
+        .output()
+        .expect("run http --csv");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "http --csv should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let mut lines = stdout.lines();
+    assert_eq!(
+        lines.next(),
+        Some("host,destination,protocol,status,location,body_bytes,ttfb_ms,latency_ms,failure"),
+        "CSV header: {stdout}"
+    );
+    assert!(
+        lines.any(|l| l.starts_with("127.0.0.1,") && l.contains(",200,")),
+        "expected a row with status 200: {stdout}"
+    );
+}
+
+#[test]
 fn http_cli_insecure_probes_self_signed_fixture() {
     // End-to-end: the real binary with --insecure must talk to the self-signed
     // fixture over HTTP/2 (http2 tcp listener) without a certificate error.

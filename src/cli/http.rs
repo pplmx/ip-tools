@@ -32,7 +32,7 @@ pub(super) async fn run_http(sub_m: &ArgMatches) -> ExitCode {
         render_http,
         |obs: &HttpObservation| obs.destination,
         |obs: &HttpObservation| obs.failure.is_some(),
-        None,
+        Some(render_http_csv),
         move |host, dest, timeout| {
             let method = method.clone();
             let path = path.clone();
@@ -49,4 +49,49 @@ pub(super) async fn run_http(sub_m: &ArgMatches) -> ExitCode {
         },
     )
     .await
+}
+
+/// Render an HTTP family fleet sweep as CSV: a header then one row per
+/// destination, with the response status/protocol/TTFB when present. Shared
+/// by `http`, `http2` and `http3`.
+pub(super) fn render_http_csv(per_target: &[(String, Vec<HttpObservation>)]) -> String {
+    let mut out = String::from("host,destination,protocol,status,location,body_bytes,ttfb_ms,latency_ms,failure\n");
+    for (host, results) in per_target {
+        for o in results {
+            out.push_str(&csv_field(host));
+            out.push(',');
+            out.push_str(&csv_field(&o.destination.to_string()));
+            out.push(',');
+            out.push_str(&csv_field(o.protocol.as_deref().unwrap_or("")));
+            out.push(',');
+            out.push_str(&csv_field(&opt(o.status.map(u64::from))));
+            out.push(',');
+            out.push_str(&csv_field(o.location.as_deref().unwrap_or("")));
+            out.push(',');
+            out.push_str(&csv_field(&opt(o.body_bytes)));
+            out.push(',');
+            out.push_str(&csv_field(&opt(o.ttfb_ms)));
+            out.push(',');
+            out.push_str(&csv_field(&opt(o.latency_ms)));
+            out.push(',');
+            out.push_str(&csv_field(
+                &o.failure.as_ref().map_or_else(String::new, |e| e.kind.to_string()),
+            ));
+            out.push('\n');
+        }
+    }
+    out
+}
+
+fn opt(v: Option<u64>) -> String {
+    v.map_or_else(String::new, |x| x.to_string())
+}
+
+/// Quote a CSV field when it contains a comma, quote, or newline (RFC 4180).
+fn csv_field(value: &str) -> String {
+    if value.contains(',') || value.contains('"') || value.contains('\n') {
+        format!("\"{}\"", value.replace('"', "\"\""))
+    } else {
+        value.to_string()
+    }
 }

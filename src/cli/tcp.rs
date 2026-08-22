@@ -15,8 +15,43 @@ pub(super) async fn run_tcp(sub_m: &ArgMatches) -> ExitCode {
         render_tcp,
         |obs: &TcpObservation| obs.destination,
         |obs: &TcpObservation| !obs.success,
-        None,
+        Some(render_tcp_csv),
         |_host, dest, timeout| async move { ip_tcp::probe(dest, timeout).await },
     )
     .await
+}
+
+/// Render a TCP fleet sweep as CSV: a header then one row per destination.
+fn render_tcp_csv(per_target: &[(String, Vec<TcpObservation>)]) -> String {
+    let mut out = String::from("host,destination,success,latency_ms,failure\n");
+    for (host, results) in per_target {
+        for o in results {
+            out.push_str(&csv_field(host));
+            out.push(',');
+            out.push_str(&csv_field(&o.destination.to_string()));
+            out.push(',');
+            out.push(if o.success { '1' } else { '0' });
+            out.push(',');
+            out.push_str(&csv_field(&opt(o.latency_ms)));
+            out.push(',');
+            out.push_str(&csv_field(
+                &o.failure.as_ref().map_or_else(String::new, |e| e.kind.to_string()),
+            ));
+            out.push('\n');
+        }
+    }
+    out
+}
+
+fn opt(v: Option<u64>) -> String {
+    v.map_or_else(String::new, |x| x.to_string())
+}
+
+/// Quote a CSV field when it contains a comma, quote, or newline (RFC 4180).
+fn csv_field(value: &str) -> String {
+    if value.contains(',') || value.contains('"') || value.contains('\n') {
+        format!("\"{}\"", value.replace('"', "\"\""))
+    } else {
+        value.to_string()
+    }
 }
