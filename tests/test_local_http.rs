@@ -1169,6 +1169,38 @@ fn diagnose_cli_sends_request_body_through_echo() {
 }
 
 #[test]
+fn diagnose_cli_csv_export_renders_diagnosis_rows() {
+    // `diagnose --csv` emits a header + one row per diagnosis for a host,
+    // so a sweep's verdicts load straight into a spreadsheet.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let addr = fixture.tcp_addr().to_string();
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args(["diagnose", &addr, "--insecure", "--csv", "--timeout", "1500"])
+        .output()
+        .expect("run diagnose --csv");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "diagnose --csv should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let mut lines = stdout.lines();
+    assert_eq!(
+        lines.next(),
+        Some("host,severity,category,confidence,summary"),
+        "CSV header: {stdout}"
+    );
+    let some_row = lines.any(|l| l.starts_with("127.0.0.1,"));
+    assert!(some_row, "expected a per-host diagnosis row: {stdout}");
+}
+
+#[test]
 fn diagnose_cli_multiple_targets_render_each_and_emit_json_array() {
     // `diagnose` accepts multiple targets (a fleet sweep): each host runs the
     // full pipeline, human output shows every host's report, and `--json`

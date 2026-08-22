@@ -30,6 +30,7 @@ use std::time::Duration;
 #[allow(clippy::too_many_lines)] // orchestration: parse, loop hosts, render
 pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
     let json = sub_m.get_flag("json");
+    let csv = sub_m.get_flag("csv");
     let insecure = sub_m.get_flag("insecure");
     let timeout_ms = *sub_m.get_one::<u64>("timeout").expect("timeout has default");
     let concurrency = *sub_m.get_one::<usize>("concurrency").expect("concurrency has default");
@@ -125,7 +126,9 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
         0
     };
 
-    if json {
+    if csv {
+        print!("{}", render_csv(&reports));
+    } else if json {
         if reports.len() == 1 {
             println!("{}", to_json(&reports[0]));
         } else {
@@ -300,6 +303,39 @@ impl DiagnoseReport {
         out.push_str(&render_diagnoses(&self.diagnoses));
         out
     }
+}
+
+/// Escape a single CSV field: quote it when it contains a comma, quote, or
+/// newline, doubling embedded quotes (RFC 4180).
+fn csv_field(value: &str) -> String {
+    if value.contains(',') || value.contains('"') || value.contains('\n') {
+        format!("\"{}\"", value.replace('"', "\"\""))
+    } else {
+        value.to_string()
+    }
+}
+
+/// Render every diagnosis across every report as CSV rows: a header line then
+/// one `host,severity,category,confidence,summary` row per diagnosis. A host
+/// with several verdicts (e.g. IP-literal two-family rows) yields several
+/// rows, so a spreadsheet can pivot on `host`.
+fn render_csv(reports: &[DiagnoseReport]) -> String {
+    let mut out = String::from("host,severity,category,confidence,summary\n");
+    for report in reports {
+        for d in &report.diagnoses {
+            out.push_str(&csv_field(&report.target));
+            out.push(',');
+            out.push_str(&csv_field(&format!("{:?}", d.severity)));
+            out.push(',');
+            out.push_str(&csv_field(&format!("{:?}", d.category)));
+            out.push(',');
+            out.push_str(&csv_field(&format!("{:?}", d.confidence)));
+            out.push(',');
+            out.push_str(&csv_field(&d.summary));
+            out.push('\n');
+        }
+    }
+    out
 }
 
 /// Probe HTTP/1.1, HTTP/2 and HTTP/3 for every address, concatenated.

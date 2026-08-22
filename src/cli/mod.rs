@@ -165,6 +165,7 @@ fn parser() -> ArgMatches {
                 path_arg(),
                 header_arg(),
                 body_arg(),
+                csv_arg(),
             ],
         ))
         .get_matches()
@@ -316,6 +317,14 @@ fn body_arg() -> Arg {
         .value_name("TEXT|@FILE|-")
         .action(ArgAction::Set)
         .help("HTTP request body to send verbatim; '--body @file' reads a file, '--body -' reads stdin")
+}
+
+/// `--csv` argument for `diagnose`: emit per-diagnosis rows in CSV.
+fn csv_arg() -> Arg {
+    Arg::new("csv")
+        .long("csv")
+        .action(ArgAction::SetTrue)
+        .help("output diagnosis rows as CSV (host,severity,category,confidence,summary)")
 }
 
 /// Shared `--insecure` argument (skip TLS/QUIC certificate validation).

@@ -389,11 +389,14 @@ full pipeline per host sequentially:
 ```shell
 ip-tools diagnose a.example b.example c.example
 ip-tools diagnose a.example b.example --json      # one array of per-host reports
+ip-tools diagnose a.example b.example --csv       # spreadsheet-friendly rows per diagnosis
 ```
 
 Human output renders every host's evidence + verdicts; `--json` emits the
 existing single-report object for one host and a JSON array for more than one;
-`--strict` exits non-zero if **any** host raised an anomaly.
+`--csv` emits a `host,severity,category,confidence,summary` row per diagnosis
+(a single host still gets one row per verdict); `--strict` exits non-zero if
+**any** host raised an anomaly.
 
 Example output (on a host whose IPv6 has no route — the IPv4 path works, the
 IPv6 and QUIC paths fail locally):
