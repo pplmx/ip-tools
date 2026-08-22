@@ -303,9 +303,9 @@ fn path_arg() -> Arg {
 fn header_arg() -> Arg {
     Arg::new("header")
         .long("header")
-        .value_name("NAME:VALUE")
+        .value_name("NAME:VALUE|@FILE|-")
         .action(ArgAction::Append)
-        .help("extra HTTP request header, e.g. --header 'authorization: Bearer abc' (repeatable)")
+        .help("extra HTTP request header; '--header @file' reads NAME:VALUE lines from a file, '--header -' reads them from stdin (repeatable)")
 }
 
 /// `--body` argument: an HTTP request body to send (e.g. for POST/PUT/API
@@ -665,23 +665,56 @@ pub fn parse_custom_servers(sub_m: &ArgMatches) -> Result<Vec<SocketAddr>, Strin
     Ok(servers)
 }
 
-/// Parse repeatable `--header` values (`NAME:VALUE`) into (name, value) pairs
-/// ready for the HTTP probes.
+/// Parse one `NAME:VALUE` header line into a (name, value) pair.
+fn parse_header_line(line: &str) -> Result<(String, String), String> {
+    let Some((name, value)) = line.split_once(':') else {
+        return Err(format!(
+            "invalid header {line:?}; expected NAME:VALUE, e.g. --header 'authorization: Bearer abc'"
+        ));
+    };
+    let name = name.trim();
+    let value = value.trim();
+    if name.is_empty() {
+        return Err(format!("invalid header {line:?}; the name must not be empty"));
+    }
+    Ok((name.to_string(), value.to_string()))
+}
+
+/// Append every non-empty header line of `text` (from a file or stdin) to
+/// `headers`, failing on a malformed line.
+fn push_header_lines(headers: &mut Vec<(String, String)>, text: &str, source: &str) -> Result<(), String> {
+    for line in text.lines() {
+        let line = line.trim();
+        if !line.is_empty() {
+            headers.push(parse_header_line(line).map_err(|e| format!("{e} (from {source})"))?);
+        }
+    }
+    Ok(())
+}
+
+/// Parse repeatable `--header` values into (name, value) pairs ready for the
+/// HTTP probes. A value equal to `-` reads header lines from stdin and a value
+/// prefixed with `@` reads them from a file (`NAME:VALUE` per line); anything
+/// else is a single inline `NAME:VALUE` header.
 pub fn parse_custom_headers(sub_m: &ArgMatches) -> Result<Vec<(String, String)>, String> {
     let mut headers = Vec::new();
     if let Some(values) = sub_m.get_many::<String>("header") {
         for raw in values {
-            let Some((name, value)) = raw.split_once(':') else {
-                return Err(format!(
-                    "invalid header {raw:?}; expected NAME:VALUE, e.g. --header 'authorization: Bearer abc'"
-                ));
-            };
-            let name = name.trim();
-            let value = value.trim();
-            if name.is_empty() {
-                return Err(format!("invalid header {raw:?}; the name must not be empty"));
+            if raw == "-" {
+                let mut text = String::new();
+                std::io::Read::read_to_string(&mut std::io::stdin(), &mut text)
+                    .map_err(|e| format!("could not read headers from stdin: {e}"))?;
+                push_header_lines(&mut headers, &text, "stdin")?;
+            } else if let Some(path) = raw.strip_prefix('@') {
+                if path.is_empty() {
+                    return Err("--header @<file> requires a file path after '@'".to_string());
+                }
+                let text =
+                    std::fs::read_to_string(path).map_err(|e| format!("could not read header file {path:?}: {e}"))?;
+                push_header_lines(&mut headers, &text, &format!("file {path:?}"))?;
+            } else {
+                headers.push(parse_header_line(raw)?);
             }
-            headers.push((name.to_string(), value.to_string()));
         }
     }
     Ok(headers)

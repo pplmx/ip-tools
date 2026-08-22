@@ -1578,6 +1578,73 @@ fn http_cli_header_reaches_server_on_the_wire() {
 }
 
 #[test]
+fn http_cli_header_reads_from_file_and_stdin() {
+    // `--header @<file>` and `--header -` (stdin) read NAME:VALUE lines; the
+    // marker line still answers 202, proving those headers reach the server.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let addr = fixture.tcp_addr().to_string();
+
+    let path = std::env::temp_dir().join(format!("ip-tools-header-test-{}.txt", std::process::id()));
+    std::fs::write(&path, b"x-fixture-marker: present\n").expect("write header file");
+    let file_arg = format!("@{}", path.display());
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "http",
+            &addr,
+            "--header",
+            &file_arg,
+            "--insecure",
+            "--json",
+            "--timeout",
+            "2000",
+        ])
+        .output()
+        .expect("run http --header @file");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "http --header @file should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.contains("\"status\": 202"),
+        "the file header must reach the server (202 expected): {stdout}"
+    );
+    let _ = std::fs::remove_file(&path);
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "http",
+            &addr,
+            "--header",
+            "-",
+            "--insecure",
+            "--json",
+            "--timeout",
+            "2000",
+        ])
+        .write_stdin("x-fixture-marker: present\n")
+        .output()
+        .expect("run http --header -");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "http --header - should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.contains("\"status\": 202"),
+        "the stdin header must reach the server (202 expected): {stdout}"
+    );
+}
+
+#[test]
 fn http_cli_rejects_malformed_header() {
     // A `--header` without `NAME:VALUE` (or with an empty name) is a caller
     // mistake and must fail with a clear error, not be silently dropped.

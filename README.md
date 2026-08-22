@@ -278,7 +278,9 @@ observed. The report shows the path when it is not `/`.
 `--header NAME:VALUE` (repeatable) sends an extra request header verbatim on
 every protocol — an `authorization`, `cookie`, or any header an endpoint
 requires to answer truthfully (the `user-agent`/`accept` defaults are always
-sent).
+sent). `--header @file` reads `NAME:VALUE` lines from a file and `--header -`
+reads them from stdin, so a common set of headers can be reused without shell
+escaping (`-` consumes all of stdin — don't combine with `--body -`).
 
 `--body <TEXT>` sends a request body verbatim (also on `http2`, `http3`,
 `probe --protocol http|http2|http3` and `diagnose`), so a `POST`/`PUT`/API
