@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-22T15:44:54+00:00",
+  "updated_at": "2026-08-22T15:45:32+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -1261,6 +1261,17 @@
       "touched_round": 0,
       "commit": "288f1df767b2a6e1da66bc5f9d037e1f53def026",
       "summary": "dns --record-type TYPE queries CNAME/MX/TXT/NS/SOA in addition to A/AAAA (default A+AAAA, --ipv6 stays AAAA shorthand; conflict). DnsObservation.records became a typed Vec<DnsRecord> serializing as plain strings; DnsRecordType gains CNAME/MX/TXT/NS/SOA. hickory lookups decode the new types; DoH/DoT wire parser decodes names/compression-pointers, MX pref+name, TXT strings, SOA fields. diagnostics/report/cli updated; api-baseline regenerated (public API change). Pinned: wire-parser unit tests (CNAME/NS/MX/TXT/SOA), record_from_rdata test, MX/TXT render test, CLI test. 193 tests green, clippy/fmt/doc clean."
+    },
+    "DEC-020": {
+      "id": "DEC-020",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T15:45:32+00:00",
+      "updated_at": "2026-08-22T15:45:32+00:00",
+      "touched_round": 0,
+      "rationale": "converged-idle (2026-08-22): quality convergence and the feature-evolution backlog are both complete. 0 active task/issue nodes; the last core-feature milestone (TASK-021 dns --record-type, CHG-015) is resolved and verified (193 tests green, clippy/fmt/doc clean, api-baseline matches). Remaining candidate work is either already rejected (source-IP/interface binding = large blast radius; route multi-target = privileged, not deterministically testable; per-probe single-observation CSV = low value) or blocked by the environment (public-API-changing work needs cargo public-api, which does not run here without pinning RUSTUP_TOOLCHAIN=nightly). Per §10/§11.5 the loop parks rather than churning idle verification commits.",
+      "alternatives_rejected": "source-IP/interface binding; route multi-target; tcp/tls/http single-observation CSV; inventing low-value option-patches to keep committing"
     }
   },
   "edges": [
