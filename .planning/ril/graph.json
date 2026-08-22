@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-22T00:11:28+00:00",
+  "updated_at": "2026-08-22T01:11:31+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -329,10 +329,10 @@
     "TASK-http-headers": {
       "id": "TASK-http-headers",
       "type": "task",
-      "status": "active",
-      "version": 1,
+      "status": "resolved",
+      "version": 2,
       "created_at": "2026-08-22T00:11:28+00:00",
-      "updated_at": "2026-08-22T00:11:28+00:00",
+      "updated_at": "2026-08-22T01:11:31+00:00",
       "touched_round": 0,
       "category": "core-feature",
       "severity": 0.75,
@@ -351,6 +351,17 @@
       "touched_round": 0,
       "summary": "The HTTP probes discard the response headers entirely; a user cannot see which server/CDN/proxy answered, how it caches, or what cookies/set-cookie were set — core evidence for network diagnosis (identifying a WAF, a CDN hit, a proxy hop)",
       "severity": "medium"
+    },
+    "CHG-http-headers": {
+      "id": "CHG-http-headers",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T01:11:31+00:00",
+      "updated_at": "2026-08-22T01:11:31+00:00",
+      "touched_round": 0,
+      "commit": "4c7849d8d84c123e18fb27d2da2a1f5587bea2c1",
+      "summary": "HttpObservation.headers captures bounded response headers; JSON carries all, human report shows diagnostic subset; fixture sends server: ip-tools-fixture; tests prove TCP+QUIC capture; api-baseline regenerated (headers field)"
     }
   },
   "edges": [
@@ -467,6 +478,18 @@
       "to": "TASK-http-headers",
       "type": "governs",
       "created_at": "2026-08-22T00:11:28+00:00"
+    },
+    {
+      "from": "CHG-http-headers",
+      "to": "TASK-http-headers",
+      "type": "implements",
+      "created_at": "2026-08-22T01:11:31+00:00"
+    },
+    {
+      "from": "CHG-http-headers",
+      "to": "ISS-headers-not-observed",
+      "type": "resolves",
+      "created_at": "2026-08-22T01:11:31+00:00"
     }
   ]
 }
