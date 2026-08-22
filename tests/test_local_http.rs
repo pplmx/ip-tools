@@ -796,6 +796,37 @@ fn dns_cli_multiple_targets_render_each_and_emit_json_array() {
 }
 
 #[test]
+fn dns_cli_csv_export_renders_rows() {
+    // `dns --csv` emits a header + one row per (host,resolver,record_type)
+    // across every target, so a DNS health sweep loads into a spreadsheet.
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args(["dns", "1.1.1.1", "8.8.8.8", "--csv"])
+        .output()
+        .expect("run multi-target dns --csv");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "multi-target dns --csv should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let mut lines = stdout.lines();
+    assert_eq!(
+        lines.next(),
+        Some("host,resolver,record_type,attempts,success_rate,latency_p50_ms,latency_p95_ms,latency_max_ms,failures"),
+        "CSV header: {stdout}"
+    );
+    assert!(
+        stdout.lines().any(|l| l.starts_with("1.1.1.1,system,A,1,1.0000")),
+        "expected an A row for 1.1.1.1: {stdout}"
+    );
+    assert!(
+        stdout.lines().any(|l| l.starts_with("8.8.8.8,")),
+        "expected rows for 8.8.8.8: {stdout}"
+    );
+}
+
+#[test]
 fn tcp_cli_multiple_targets_produce_per_target_array() {
     // The per-address probe commands (`tcp`, etc.) accept multiple targets
     // too: each is resolved and probed, human output labels each host block,

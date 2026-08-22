@@ -63,7 +63,8 @@ fn parser() -> ArgMatches {
                 .arg(record_type_arg())
                 .arg(dns_count_arg())
                 .arg(strict_arg())
-                .arg(timeout_arg()),
+                .arg(timeout_arg())
+                .arg(csv_arg()),
         )
         .subcommand(probe_command(
             "tcp",

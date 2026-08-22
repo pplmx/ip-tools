@@ -17,6 +17,7 @@ use std::time::Duration;
 #[allow(clippy::too_many_lines)] // orchestration: parse, loop hosts, render
 pub(super) async fn run_dns(sub_m: &ArgMatches) -> ExitCode {
     let json = sub_m.get_flag("json");
+    let csv = sub_m.get_flag("csv");
     let strict = sub_m.get_flag("strict");
     let timeout_ms = *sub_m.get_one::<u64>("timeout").expect("timeout has default");
     let timeout = Duration::from_millis(timeout_ms);
@@ -77,7 +78,9 @@ pub(super) async fn run_dns(sub_m: &ArgMatches) -> ExitCode {
         );
     }
 
-    if json {
+    if csv {
+        print!("{}", render_dns_csv(&outputs));
+    } else if json {
         if outputs.len() == 1 {
             let o = &outputs[0];
             if o.repeat {
@@ -253,6 +256,87 @@ async fn encrypted_repeat(
         out.push(aggregate_repeat(&bucket, rt, count));
     }
     out
+}
+
+/// Render every DNS row across every target as CSV: a header then one
+/// `host,resolver,record_type,attempts,success_rate,latency_p50_ms,latency_p95_ms,latency_max_ms,failures`
+/// row per (resolver, record type). Single-shot rows are attempts=1; repeat
+/// rows use the aggregated latency statistics.
+fn render_dns_csv(outputs: &[TargetDns]) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::from(
+        "host,resolver,record_type,attempts,success_rate,latency_p50_ms,latency_p95_ms,latency_max_ms,failures\n",
+    );
+    for o in outputs {
+        if o.repeat {
+            for r in &o.results {
+                out.push_str(&csv_field(&o.host));
+                out.push(',');
+                out.push_str(&csv_field(&resolver_label(&r.resolver)));
+                out.push(',');
+                out.push_str(&csv_field(&r.record_type.to_string()));
+                out.push(',');
+                out.push_str(&r.attempts.to_string());
+                out.push(',');
+                let _ = write!(out, "{:.4}", r.success_rate());
+                out.push(',');
+                out.push_str(&opt64(r.latency.p50));
+                out.push(',');
+                out.push_str(&opt64(r.latency.p95));
+                out.push(',');
+                out.push_str(&opt64(r.latency.max));
+                out.push(',');
+                out.push_str(&r.failures.to_string());
+                out.push('\n');
+            }
+        } else {
+            for obs in &o.observations {
+                out.push_str(&csv_field(&o.host));
+                out.push(',');
+                out.push_str(&csv_field(&resolver_label(&obs.resolver)));
+                out.push(',');
+                out.push_str(&csv_field(&obs.record_type.to_string()));
+                out.push(',');
+                out.push('1');
+                out.push(',');
+                out.push_str(if obs.error.is_none() { "1.0000" } else { "0.0000" });
+                out.push(',');
+                out.push_str(&opt64(obs.latency_ms));
+                out.push(',');
+                out.push_str(&opt64(obs.latency_ms));
+                out.push(',');
+                out.push_str(&opt64(obs.latency_ms));
+                out.push(',');
+                out.push(if obs.error.is_some() { '1' } else { '0' });
+                out.push('\n');
+            }
+        }
+    }
+    out
+}
+
+/// Format an optional millisecond value as an empty field or its value.
+fn opt64(v: Option<u64>) -> String {
+    v.map_or_else(String::new, |x| x.to_string())
+}
+
+/// Human label for a resolver, matching the report renderer.
+fn resolver_label(r: &ResolverKind) -> String {
+    match r {
+        ResolverKind::System => "system".to_string(),
+        ResolverKind::Custom(addr) => addr.to_string(),
+        ResolverKind::Doh(endpoint) => endpoint.clone(),
+        ResolverKind::Dot(endpoint) => format!("{endpoint} (DoT)"),
+    }
+}
+
+/// Quote a CSV field when it contains a comma, quote, or newline (RFC 4180).
+fn csv_field(value: &str) -> String {
+    if value.contains(',') || value.contains('"') || value.contains('\n') {
+        format!("\"{}\"", value.replace('"', "\"\""))
+    } else {
+        value.to_string()
+    }
 }
 
 /// Observations for an IP-literal target: the literal is its own record for
