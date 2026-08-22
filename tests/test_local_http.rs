@@ -96,6 +96,66 @@ async fn http3_probe_gets_200_from_local_fixture() {
     assert_eq!(obs.protocol.as_deref(), Some("HTTP/3"), "expected HTTP/3: {obs:?}");
 }
 
+// --- TTFB (time-to-first-byte) ---------------------------------------------
+
+/// Every HTTP-family probe must capture TTFB (request-send to response
+/// headers): on success `ttfb_ms` is present and <= the total latency.
+#[tokio::test(flavor = "multi_thread")]
+async fn http_probes_capture_ttfb() {
+    let fixture = FixtureServer::start().await;
+
+    let h1 = http::probe_with_roots(
+        fixture.tcp_addr(),
+        "localhost",
+        "GET",
+        "/",
+        &[],
+        None,
+        timeout(),
+        &fixture.roots,
+    )
+    .await;
+    assert!(h1.ttfb_ms.is_some(), "http1 must capture ttfb: {h1:?}");
+    assert!(
+        h1.ttfb_ms <= h1.latency_ms,
+        "ttfb must not exceed total latency: {h1:?}"
+    );
+
+    let h2 = http2::probe_with_roots(
+        fixture.tcp_addr(),
+        "localhost",
+        "GET",
+        "/",
+        &[],
+        None,
+        timeout(),
+        &fixture.roots,
+    )
+    .await;
+    assert!(h2.ttfb_ms.is_some(), "http2 must capture ttfb: {h2:?}");
+    assert!(
+        h2.ttfb_ms <= h2.latency_ms,
+        "ttfb must not exceed total latency: {h2:?}"
+    );
+
+    let h3 = http3::probe_with_roots(
+        fixture.udp_addr(),
+        "localhost",
+        "GET",
+        "/",
+        &[],
+        None,
+        timeout(),
+        &fixture.roots,
+    )
+    .await;
+    assert!(h3.ttfb_ms.is_some(), "http3 must capture ttfb: {h3:?}");
+    assert!(
+        h3.ttfb_ms <= h3.latency_ms,
+        "ttfb must not exceed total latency: {h3:?}"
+    );
+}
+
 // --- request body sending (`--body`) ---------------------------------------
 
 /// The `echo.invalid` route echoes the request body back. Probing it with a

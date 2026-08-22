@@ -212,6 +212,7 @@ mod tests {
             headers: Vec::new(),
             body_bytes: Some(status.map_or(0, |_| 100)),
             body_snippet: None,
+            ttfb_ms: None,
             latency_ms: status.map(|_| 20),
             failure: failure.map(|m| ProbeError {
                 kind: FailureKind::Http,
@@ -316,6 +317,7 @@ mod tests {
             headers: Vec::new(),
             body_bytes: None,
             body_snippet: None,
+            ttfb_ms: None,
             latency_ms: None,
             failure: Some(ProbeError {
                 kind,
@@ -390,6 +392,7 @@ mod tests {
             headers: Vec::new(),
             body_bytes: None,
             body_snippet: None,
+            ttfb_ms: None,
             latency_ms: None,
             failure: Some(ProbeError {
                 kind: FailureKind::Timeout,
@@ -507,6 +510,7 @@ mod tests {
             headers: Vec::new(),
             body_bytes: None, // headers received, body never completed
             body_snippet: None,
+            ttfb_ms: None,
             latency_ms: Some(30),
             failure: None,
         };

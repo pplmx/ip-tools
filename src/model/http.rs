@@ -45,6 +45,11 @@ pub struct HttpObservation {
     pub body_snippet: Option<String>,
     /// Overall latency (TLS + HTTP) in milliseconds on success.
     pub latency_ms: Option<u64>,
+    /// Time-to-first-byte: milliseconds from sending the request to receiving
+    /// the response headers. `None` when no headers arrived (an HTTP-layer
+    /// failure before any response). Carried in `--json` and shown in the
+    /// human report; separates server response latency from body transfer.
+    pub ttfb_ms: Option<u64>,
     /// Classified failure mode and context, when not successful.
     pub failure: Option<ProbeError>,
 }
@@ -66,6 +71,7 @@ impl HttpObservation {
             body_bytes: None,
             body_snippet: None,
             latency_ms: None,
+            ttfb_ms: None,
             failure: None,
         }
     }

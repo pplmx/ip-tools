@@ -288,6 +288,9 @@ pub fn render_http(observations: &[HttpObservation]) -> String {
             out.push('\n');
         }
         out.push_str(&format!("    latency: {} ms\n", obs.latency_ms.unwrap_or(0)));
+        if let Some(ttfb) = obs.ttfb_ms {
+            out.push_str(&format!("    ttfb:    {ttfb} ms\n"));
+        }
     }
     out
 }
@@ -606,6 +609,7 @@ mod tests {
             headers: Vec::new(),
             body_bytes: Some(1234),
             body_snippet: None,
+            ttfb_ms: None,
             latency_ms: Some(30),
             failure: None,
         };
@@ -621,6 +625,7 @@ mod tests {
             headers: Vec::new(),
             body_bytes: None,
             body_snippet: None,
+            ttfb_ms: None,
             latency_ms: None,
             failure: Some(ProbeError {
                 kind: FailureKind::Http,
@@ -639,6 +644,7 @@ mod tests {
             headers: Vec::new(),
             body_bytes: None,
             body_snippet: None,
+            ttfb_ms: None,
             latency_ms: Some(1),
             failure: None,
         };
@@ -656,6 +662,7 @@ mod tests {
             headers: Vec::new(),
             body_bytes: None,
             body_snippet: None,
+            ttfb_ms: None,
             latency_ms: None,
             failure: None,
         };
@@ -692,6 +699,7 @@ mod tests {
             headers: Vec::new(),
             body_bytes: Some(2),
             body_snippet: Some("ok".into()),
+            ttfb_ms: None,
             latency_ms: Some(10),
             failure: None,
         };
@@ -713,6 +721,7 @@ mod tests {
             headers: Vec::new(),
             body_bytes: Some(2048),
             body_snippet: Some("xxxx…".into()),
+            ttfb_ms: None,
             latency_ms: Some(10),
             failure: None,
         };

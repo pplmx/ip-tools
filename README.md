@@ -319,7 +319,13 @@ HTTPS
     body: 559 bytes
     body content: <html>...
     latency: 899 ms
+    ttfb:    734 ms
 ```
+
+The HTTP probes also report **TTFB** (time-to-first-byte): the time from
+sending the request to receiving the response headers, separate from the total
+latency — so a slow server response is distinct from a slow body transfer.
+`--json` carries it as `ttfb_ms`.
 
 ### HTTP/2
 

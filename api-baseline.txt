@@ -124,6 +124,7 @@ pub ip_tools::model::http::HttpObservation::path: alloc::string::String
 pub ip_tools::model::http::HttpObservation::protocol: core::option::Option<alloc::string::String>
 pub ip_tools::model::http::HttpObservation::status: core::option::Option<u16>
 pub ip_tools::model::http::HttpObservation::tls: core::option::Option<ip_tools::model::tls::TlsObservation>
+pub ip_tools::model::http::HttpObservation::ttfb_ms: core::option::Option<u64>
 pub mod ip_tools::model::latency
 pub struct ip_tools::model::latency::LatencyStats
 impl ip_tools::model::latency::LatencyStats
@@ -279,6 +280,7 @@ pub ip_tools::model::HttpObservation::path: alloc::string::String
 pub ip_tools::model::HttpObservation::protocol: core::option::Option<alloc::string::String>
 pub ip_tools::model::HttpObservation::status: core::option::Option<u16>
 pub ip_tools::model::HttpObservation::tls: core::option::Option<ip_tools::model::tls::TlsObservation>
+pub ip_tools::model::HttpObservation::ttfb_ms: core::option::Option<u64>
 pub struct ip_tools::model::LatencyStats
 impl ip_tools::model::latency::LatencyStats
 pub const fn ip_tools::model::latency::LatencyStats::count(&self) -> usize
@@ -467,6 +469,7 @@ pub ip_tools::HttpObservation::path: alloc::string::String
 pub ip_tools::HttpObservation::protocol: core::option::Option<alloc::string::String>
 pub ip_tools::HttpObservation::status: core::option::Option<u16>
 pub ip_tools::HttpObservation::tls: core::option::Option<ip_tools::model::tls::TlsObservation>
+pub ip_tools::HttpObservation::ttfb_ms: core::option::Option<u64>
 pub struct ip_tools::LatencyStats
 impl ip_tools::model::latency::LatencyStats
 pub const fn ip_tools::model::latency::LatencyStats::count(&self) -> usize

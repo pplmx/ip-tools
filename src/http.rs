@@ -171,6 +171,8 @@ async fn probe_impl(
         }
     };
 
+    // TTFB: time from sending the request to receiving the response headers.
+    let ttfb_start = Instant::now();
     let response = match tokio::time::timeout(timeout, sender.send_request(request)).await {
         Ok(Ok(r)) => r,
         Ok(Err(e)) => return base.with_failure(http_error("http request", &e)),
@@ -181,6 +183,7 @@ async fn probe_impl(
             });
         }
     };
+    let ttfb_ms = Some(ttfb_start.elapsed().as_millis() as u64);
 
     // 4. Read a bounded amount of the response body. `ended` distinguishes a
     // body that completed (end-of-stream reached, or the cap) from one that
@@ -230,6 +233,7 @@ async fn probe_impl(
         body_bytes,
         body_snippet,
         latency_ms: Some(start.elapsed().as_millis() as u64),
+        ttfb_ms,
         ..base
     }
 }

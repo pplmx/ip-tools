@@ -160,6 +160,7 @@ async fn probe_impl(
     // ResponseFuture then resolves to the response. With a body we keep the
     // stream open (end_of_stream=false), push the bytes via SendStream, then
     // finish with trailers (END_STREAM). Without a body we end immediately.
+    let ttfb_start = Instant::now();
     let (response_future, mut send_stream) = match send_request.send_request(request, body.is_none()) {
         Ok(pair) => pair,
         Err(e) => return base.with_failure(http_error("http/2 request", &e)),
@@ -182,6 +183,7 @@ async fn probe_impl(
             });
         }
     };
+    let ttfb_ms = Some(ttfb_start.elapsed().as_millis() as u64);
 
     let status = response.status().as_u16();
     let location = response
@@ -229,6 +231,7 @@ async fn probe_impl(
         body_bytes: ended.then_some(bytes_read),
         body_snippet,
         latency_ms: Some(start.elapsed().as_millis() as u64),
+        ttfb_ms,
         ..base
     }
 }

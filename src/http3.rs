@@ -206,6 +206,8 @@ async fn probe_impl(
         Err(e) => return base.with_failure(failure(FailureKind::Protocol, format!("could not build request: {e}"))),
     };
 
+    // TTFB: time from sending the request to receiving the response headers.
+    let ttfb_start = Instant::now();
     let mut req_stream = match tokio::time::timeout(timeout, send_request.send_request(request)).await {
         Ok(Ok(s)) => s,
         Ok(Err(e)) => return base.with_failure(failure(FailureKind::Http, format!("http/3 request failed: {e}"))),
@@ -216,6 +218,7 @@ async fn probe_impl(
             ));
         }
     };
+    let ttfb_ms = Some(ttfb_start.elapsed().as_millis() as u64);
     // A request body is pushed on the request stream as a DATA frame before
     // the stream is finished.
     if let Some(bytes) = body {
@@ -289,6 +292,7 @@ async fn probe_impl(
         body_bytes: ended.then_some(bytes_read),
         body_snippet,
         latency_ms: Some(start.elapsed().as_millis() as u64),
+        ttfb_ms,
         ..base
     }
 }
