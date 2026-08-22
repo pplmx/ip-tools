@@ -11,6 +11,7 @@
 #![cfg(feature = "test-server")]
 #![allow(clippy::module_name_repetitions)]
 
+use bytes::Buf;
 use rustls::RootCertStore;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -160,6 +161,9 @@ enum FixtureRoute {
     Redirect,
     LargeBody,
     StalledBody,
+    /// Echo the request body back verbatim, to prove a `--body` reached the
+    /// server on the wire.
+    BodyEcho,
     /// Accept the HTTP/3 request but never send a response (a hung server).
     Quiesce,
     /// A custom request header (`x-fixture-marker: present`) was sent; answers
@@ -192,6 +196,7 @@ fn route_for(req: &hyper::Request<impl Sized>) -> FixtureRoute {
         "redirect.invalid" => FixtureRoute::Redirect,
         "big.invalid" => FixtureRoute::LargeBody,
         "stall.invalid" => FixtureRoute::StalledBody,
+        "echo.invalid" => FixtureRoute::BodyEcho,
         "quiesce.invalid" => FixtureRoute::Quiesce,
         _ => FixtureRoute::Normal,
     }
@@ -294,6 +299,19 @@ async fn run_tcp_server(listener: tokio::net::TcpListener, acceptor: tokio_rustl
                             .body(http_body_util::Full::new(bytes::Bytes::from_static(b"marker")).boxed())
                             .expect("static marker response"),
                     ),
+                    FixtureRoute::BodyEcho => {
+                        // Read the request body and echo it back, proving a
+                        // `--body` actually reached the server on the wire.
+                        let body = http_body_util::BodyExt::collect(req.into_body()).await;
+                        let bytes = body.map(http_body_util::Collected::to_bytes).unwrap_or_default();
+                        Ok::<_, std::convert::Infallible>(
+                            hyper::Response::builder()
+                                .status(200)
+                                .header("content-type", "text/plain")
+                                .body(http_body_util::Full::new(bytes).boxed())
+                                .expect("static echo response"),
+                        )
+                    }
                     FixtureRoute::Normal => {
                         // A `server` response header lets tests assert that
                         // response headers are recorded on the wire.
@@ -431,6 +449,22 @@ async fn serve_quic_connection(incoming: quinn::Incoming) {
                 }
                 let _ = stream.send_data(bytes::Bytes::from_static(b"partial")).await;
                 std::future::pending::<()>().await;
+            }
+            FixtureRoute::BodyEcho => {
+                // Echo the request body back verbatim, proving a `--body`
+                // reached the QUIC server on the wire.
+                let mut received = Vec::new();
+                while let Ok(Some(chunk)) = stream.recv_data().await {
+                    received.extend_from_slice(chunk.chunk());
+                }
+                let response = hyper::Response::builder().status(200).body(()).expect("status 200");
+                if stream.send_response(response).await.is_err() {
+                    return;
+                }
+                if stream.send_data(bytes::Bytes::from(received)).await.is_err() {
+                    return;
+                }
+                let _ = stream.finish().await;
             }
             FixtureRoute::Normal => {
                 // A `server` response header lets tests assert that response

@@ -85,6 +85,7 @@ fn parser() -> ArgMatches {
                 sni_arg(),
                 path_arg(),
                 header_arg(),
+                body_arg(),
             ],
         ))
         .subcommand(probe_command(
@@ -99,6 +100,7 @@ fn parser() -> ArgMatches {
                 sni_arg(),
                 path_arg(),
                 header_arg(),
+                body_arg(),
             ],
         ))
         .subcommand(probe_command(
@@ -111,6 +113,7 @@ fn parser() -> ArgMatches {
                 sni_arg(),
                 path_arg(),
                 header_arg(),
+                body_arg(),
             ],
         ))
         .subcommand(probe_command(
@@ -123,6 +126,7 @@ fn parser() -> ArgMatches {
                 sni_arg(),
                 path_arg(),
                 header_arg(),
+                body_arg(),
             ],
         ))
         .subcommand(
@@ -160,6 +164,7 @@ fn parser() -> ArgMatches {
                 method_arg(),
                 path_arg(),
                 header_arg(),
+                body_arg(),
             ],
         ))
         .get_matches()
@@ -299,6 +304,17 @@ fn header_arg() -> Arg {
         .value_name("NAME:VALUE")
         .action(ArgAction::Append)
         .help("extra HTTP request header, e.g. --header 'authorization: Bearer abc' (repeatable)")
+}
+
+/// `--body` argument: an HTTP request body to send (e.g. for POST/PUT/API
+/// endpoints that require one). Content-type is not set automatically; add a
+/// `--header 'content-type: ...'` when needed.
+fn body_arg() -> Arg {
+    Arg::new("body")
+        .long("body")
+        .value_name("TEXT")
+        .action(ArgAction::Set)
+        .help("HTTP request body to send verbatim (e.g. --body '{\"key\":1}' for a POST/API endpoint)")
 }
 
 /// Shared `--insecure` argument (skip TLS/QUIC certificate validation).

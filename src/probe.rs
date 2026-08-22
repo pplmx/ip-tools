@@ -100,15 +100,16 @@ pub async fn http_repeat(
     method: &str,
     path: &str,
     headers: &[(&str, &str)],
+    body: Option<&[u8]>,
     attempts: usize,
     timeout: Duration,
     insecure: bool,
 ) -> ProbeResult {
     repeat_impl(destination, attempts, || async {
         let obs = if insecure {
-            crate::http::probe_insecure(destination, host, method, path, headers, timeout).await
+            crate::http::probe_insecure(destination, host, method, path, headers, body, timeout).await
         } else {
-            crate::http::probe(destination, host, method, path, headers, timeout).await
+            crate::http::probe(destination, host, method, path, headers, body, timeout).await
         };
         http_outcome(obs)
     })
@@ -127,7 +128,7 @@ pub async fn http_repeat(
 ///
 /// # tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap().block_on(async {
 /// let addr: SocketAddr = "1.1.1.1:443".parse().unwrap();
-/// let r = probe::http2_repeat(addr, "1.1.1.1", "HEAD", "/", &[], 5, Duration::from_secs(3), false).await;
+/// let r = probe::http2_repeat(addr, "1.1.1.1", "HEAD", "/", &[], None, 5, Duration::from_secs(3), false).await;
 /// println!("http2 success rate: {:.0}%", r.success_rate * 100.0);
 /// # });
 /// ```
@@ -138,15 +139,16 @@ pub async fn http2_repeat(
     method: &str,
     path: &str,
     headers: &[(&str, &str)],
+    body: Option<&[u8]>,
     attempts: usize,
     timeout: Duration,
     insecure: bool,
 ) -> ProbeResult {
     repeat_impl(destination, attempts, || async {
         let obs = if insecure {
-            crate::http2::probe_insecure(destination, host, method, path, headers, timeout).await
+            crate::http2::probe_insecure(destination, host, method, path, headers, body, timeout).await
         } else {
-            crate::http2::probe(destination, host, method, path, headers, timeout).await
+            crate::http2::probe(destination, host, method, path, headers, body, timeout).await
         };
         http_outcome(obs)
     })
@@ -163,15 +165,16 @@ pub async fn http3_repeat(
     method: &str,
     path: &str,
     headers: &[(&str, &str)],
+    body: Option<&[u8]>,
     attempts: usize,
     timeout: Duration,
     insecure: bool,
 ) -> ProbeResult {
     repeat_impl(destination, attempts, || async {
         let obs = if insecure {
-            crate::http3::probe_insecure(destination, host, method, path, headers, timeout).await
+            crate::http3::probe_insecure(destination, host, method, path, headers, body, timeout).await
         } else {
-            crate::http3::probe(destination, host, method, path, headers, timeout).await
+            crate::http3::probe(destination, host, method, path, headers, body, timeout).await
         };
         http_outcome(obs)
     })

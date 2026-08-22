@@ -57,6 +57,7 @@ pub async fn probe(
     method: &str,
     path: &str,
     headers: &[(&str, &str)],
+    body: Option<&[u8]>,
     timeout: Duration,
 ) -> HttpObservation {
     probe_impl(
@@ -65,6 +66,7 @@ pub async fn probe(
         method,
         path,
         headers,
+        body,
         timeout,
         crate::tls::TlsMode::Roots(&crate::tls::roots()),
     )
@@ -72,12 +74,14 @@ pub async fn probe(
 }
 
 /// [`probe`] trusting an explicit root store, for verifying QUIC fixtures.
+#[allow(clippy::too_many_arguments)] // destination/host/method/path/headers/body/timeout/roots
 pub async fn probe_with_roots(
     destination: SocketAddr,
     host: &str,
     method: &str,
     path: &str,
     headers: &[(&str, &str)],
+    body: Option<&[u8]>,
     timeout: Duration,
     roots: &rustls::RootCertStore,
 ) -> HttpObservation {
@@ -87,6 +91,7 @@ pub async fn probe_with_roots(
         method,
         path,
         headers,
+        body,
         timeout,
         crate::tls::TlsMode::Roots(roots),
     )
@@ -100,6 +105,7 @@ pub async fn probe_insecure(
     method: &str,
     path: &str,
     headers: &[(&str, &str)],
+    body: Option<&[u8]>,
     timeout: Duration,
 ) -> HttpObservation {
     probe_impl(
@@ -108,6 +114,7 @@ pub async fn probe_insecure(
         method,
         path,
         headers,
+        body,
         timeout,
         crate::tls::TlsMode::Insecure,
     )
@@ -115,12 +122,14 @@ pub async fn probe_insecure(
 }
 
 /// Shared probe body for the given trust mode.
+#[allow(clippy::too_many_arguments)]
 async fn probe_impl(
     destination: SocketAddr,
     host: &str,
     method: &str,
     path: &str,
     headers: &[(&str, &str)],
+    body: Option<&[u8]>,
     timeout: Duration,
     mode: crate::tls::TlsMode<'_>,
 ) -> HttpObservation {
@@ -187,6 +196,11 @@ async fn probe_impl(
     for (name, value) in headers {
         builder = builder.header(*name, *value);
     }
+    // A request body is announced with an explicit content-length.
+    let builder = match body {
+        Some(bytes) => builder.header("content-length", bytes.len().to_string()),
+        None => builder,
+    };
     let request = match builder.body(()) {
         Ok(r) => r,
         Err(e) => return base.with_failure(failure(FailureKind::Protocol, format!("could not build request: {e}"))),
@@ -202,6 +216,22 @@ async fn probe_impl(
             ));
         }
     };
+    // A request body is pushed on the request stream as a DATA frame before
+    // the stream is finished.
+    if let Some(bytes) = body {
+        match tokio::time::timeout(timeout, req_stream.send_data(bytes::Bytes::copy_from_slice(bytes))).await {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => {
+                return base.with_failure(failure(FailureKind::Http, format!("http/3 body send failed: {e}")))
+            }
+            Err(_) => {
+                return base.with_failure(failure(
+                    FailureKind::Timeout,
+                    format!("http/3 body send to {destination} timed out after {timeout:?}"),
+                ))
+            }
+        }
+    }
     let _ = tokio::time::timeout(timeout, req_stream.finish()).await;
 
     let response = match tokio::time::timeout(timeout, req_stream.recv_response()).await {

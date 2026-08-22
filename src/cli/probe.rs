@@ -34,6 +34,7 @@ pub(super) async fn run_probe(sub_m: &ArgMatches) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    let body: Option<Vec<u8>> = sub_m.get_one::<String>("body").map(|s| s.as_bytes().to_vec());
     run_probe_flow(
         sub_m,
         render_probe,
@@ -44,20 +45,52 @@ pub(super) async fn run_probe(sub_m: &ArgMatches) -> ExitCode {
             let path = path.clone();
             let protocol = protocol.clone();
             let headers = headers.clone();
+            let body = body.clone();
             async move {
                 let header_refs: Vec<(&str, &str)> = headers.iter().map(|(n, v)| (n.as_str(), v.as_str())).collect();
                 match protocol.as_str() {
                     "tls" => ip_probe::tls_repeat(dest, &host, count, timeout, insecure).await,
                     "http" => {
-                        ip_probe::http_repeat(dest, &host, &method, &path, &header_refs, count, timeout, insecure).await
+                        ip_probe::http_repeat(
+                            dest,
+                            &host,
+                            &method,
+                            &path,
+                            &header_refs,
+                            body.as_deref(),
+                            count,
+                            timeout,
+                            insecure,
+                        )
+                        .await
                     }
                     "http2" => {
-                        ip_probe::http2_repeat(dest, &host, &method, &path, &header_refs, count, timeout, insecure)
-                            .await
+                        ip_probe::http2_repeat(
+                            dest,
+                            &host,
+                            &method,
+                            &path,
+                            &header_refs,
+                            body.as_deref(),
+                            count,
+                            timeout,
+                            insecure,
+                        )
+                        .await
                     }
                     "http3" => {
-                        ip_probe::http3_repeat(dest, &host, &method, &path, &header_refs, count, timeout, insecure)
-                            .await
+                        ip_probe::http3_repeat(
+                            dest,
+                            &host,
+                            &method,
+                            &path,
+                            &header_refs,
+                            body.as_deref(),
+                            count,
+                            timeout,
+                            insecure,
+                        )
+                        .await
                     }
                     _ => ip_probe::tcp_repeat(dest, count, timeout).await,
                 }

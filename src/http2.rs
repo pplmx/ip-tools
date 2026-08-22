@@ -25,6 +25,7 @@ pub async fn probe(
     method: &str,
     path: &str,
     headers: &[(&str, &str)],
+    body: Option<&[u8]>,
     timeout: Duration,
 ) -> HttpObservation {
     probe_impl(
@@ -33,6 +34,7 @@ pub async fn probe(
         method,
         path,
         headers,
+        body,
         timeout,
         crate::tls::TlsMode::Roots(&crate::tls::roots()),
     )
@@ -40,12 +42,14 @@ pub async fn probe(
 }
 
 /// [`probe`] trusting an explicit root store, for verifying TLS fixtures.
+#[allow(clippy::too_many_arguments)] // destination/host/method/path/headers/body/timeout/roots
 pub async fn probe_with_roots(
     destination: SocketAddr,
     host: &str,
     method: &str,
     path: &str,
     headers: &[(&str, &str)],
+    body: Option<&[u8]>,
     timeout: Duration,
     roots: &rustls::RootCertStore,
 ) -> HttpObservation {
@@ -55,6 +59,7 @@ pub async fn probe_with_roots(
         method,
         path,
         headers,
+        body,
         timeout,
         crate::tls::TlsMode::Roots(roots),
     )
@@ -68,6 +73,7 @@ pub async fn probe_insecure(
     method: &str,
     path: &str,
     headers: &[(&str, &str)],
+    body: Option<&[u8]>,
     timeout: Duration,
 ) -> HttpObservation {
     probe_impl(
@@ -76,6 +82,7 @@ pub async fn probe_insecure(
         method,
         path,
         headers,
+        body,
         timeout,
         crate::tls::TlsMode::Insecure,
     )
@@ -83,12 +90,14 @@ pub async fn probe_insecure(
 }
 
 /// Shared probe body for the given trust mode.
+#[allow(clippy::too_many_arguments)]
 async fn probe_impl(
     destination: SocketAddr,
     host: &str,
     method: &str,
     path: &str,
     headers: &[(&str, &str)],
+    body: Option<&[u8]>,
     timeout: Duration,
     mode: crate::tls::TlsMode<'_>,
 ) -> HttpObservation {
@@ -132,6 +141,11 @@ async fn probe_impl(
     for (name, value) in headers {
         builder = builder.header(*name, *value);
     }
+    // A request body is announced with an explicit content-length.
+    let builder = match body {
+        Some(bytes) => builder.header("content-length", bytes.len().to_string()),
+        None => builder,
+    };
     let request = match builder.body(()) {
         Ok(r) => r,
         Err(e) => {
@@ -143,13 +157,21 @@ async fn probe_impl(
     };
 
     // send_request() returns (ResponseFuture, SendStream) synchronously; the
-    // ResponseFuture then resolves to the response.
-    // Body-less request: mark end-of-stream so the server responds (an open
-    // stream would make it wait for request data).
-    let (response_future, _send_stream) = match send_request.send_request(request, true) {
+    // ResponseFuture then resolves to the response. With a body we keep the
+    // stream open (end_of_stream=false), push the bytes via SendStream, then
+    // finish with trailers (END_STREAM). Without a body we end immediately.
+    let (response_future, mut send_stream) = match send_request.send_request(request, body.is_none()) {
         Ok(pair) => pair,
         Err(e) => return base.with_failure(http_error("http/2 request", &e)),
     };
+    if let Some(bytes) = body {
+        if let Err(e) = send_stream.send_data(bytes::Bytes::copy_from_slice(bytes), false) {
+            return base.with_failure(http_error("http/2 body send", &e));
+        }
+        if let Err(e) = send_stream.send_trailers(hyper::HeaderMap::new()) {
+            return base.with_failure(http_error("http/2 body finish", &e));
+        }
+    }
     let response = match tokio::time::timeout(timeout, response_future).await {
         Ok(Ok(resp)) => resp,
         Ok(Err(e)) => return base.with_failure(http_error("http/2 response", &e)),

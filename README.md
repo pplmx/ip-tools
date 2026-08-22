@@ -241,10 +241,11 @@ ip-tools diagnose example.com --method HEAD --header 'authorization: Bearer abc1
 ```
 
 `diagnose` accepts the same request-control flags as the HTTP probes —
-`--method`, `--path`, `--header` (plus `--sni` above) — so the HTTP evidence
-the engine reasons over can be scoped to a specific request: a `/healthz`
-behind a WAF, an authenticated endpoint, or a HEAD-only route. The rest of
-the pipeline (DNS/TCP/TLS/repeated) is unaffected.
+`--method`, `--path`, `--header`, `--body` (plus `--sni` above) — so the HTTP
+evidence the engine reasons over can be scoped to a specific request: a
+`/healthz` behind a WAF, an authenticated endpoint, a HEAD-only route, or a
+`POST`/API endpoint that requires a body. The rest of the pipeline
+(DNS/TCP/TLS/repeated) is unaffected.
 
 Issue a single request over TLS to each address (redirects not followed):
 
@@ -252,6 +253,7 @@ Issue a single request over TLS to each address (redirects not followed):
 ip-tools http example.com
 ip-tools http example.com --method HEAD
 ip-tools http example.com --path /healthz
+ip-tools http example.com --method POST --body '{"key":"value"}' --header 'content-type: application/json'
 ip-tools http example.com --header 'authorization: Bearer abc123'
 ip-tools http example.com --path /private --header 'cookie: session=xyz'
 ```
@@ -265,6 +267,13 @@ observed. The report shows the path when it is not `/`.
 every protocol — an `authorization`, `cookie`, or any header an endpoint
 requires to answer truthfully (the `user-agent`/`accept` defaults are always
 sent).
+
+`--body <TEXT>` sends a request body verbatim (also on `http2`, `http3`,
+`probe --protocol http|http2|http3` and `diagnose`), so a `POST`/`PUT`/API
+endpoint — a JSON payload, form data, or any health check that requires a
+body — can be probed truthfully. Content is sent with an explicit
+`content-length`; content-type is not set automatically, so add a
+`--header 'content-type: ...'` when the endpoint needs one.
 
 The probes also record the **response headers** (bounded to the first 24):
 the `--json` observation carries every header, and the human report shows the

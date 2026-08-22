@@ -11,7 +11,7 @@ use crate::http_common::{
 };
 use crate::model::http::HttpObservation;
 use crate::model::{FailureKind, ProbeError};
-use http_body_util::{BodyExt, Empty};
+use http_body_util::BodyExt;
 use hyper_util::rt::TokioIo;
 use std::net::SocketAddr;
 use std::time::{Duration, Instant};
@@ -29,6 +29,7 @@ pub async fn probe(
     method: &str,
     path: &str,
     headers: &[(&str, &str)],
+    body: Option<&[u8]>,
     timeout: Duration,
 ) -> HttpObservation {
     probe_impl(
@@ -37,6 +38,7 @@ pub async fn probe(
         method,
         path,
         headers,
+        body,
         timeout,
         crate::tls::TlsMode::Roots(&crate::tls::roots()),
     )
@@ -44,12 +46,14 @@ pub async fn probe(
 }
 
 /// [`probe`] trusting an explicit root store, for verifying TLS fixtures.
+#[allow(clippy::too_many_arguments)] // destination/host/method/path/headers/body/timeout/roots
 pub async fn probe_with_roots(
     destination: SocketAddr,
     host: &str,
     method: &str,
     path: &str,
     headers: &[(&str, &str)],
+    body: Option<&[u8]>,
     timeout: Duration,
     roots: &rustls::RootCertStore,
 ) -> HttpObservation {
@@ -59,6 +63,7 @@ pub async fn probe_with_roots(
         method,
         path,
         headers,
+        body,
         timeout,
         crate::tls::TlsMode::Roots(roots),
     )
@@ -72,6 +77,7 @@ pub async fn probe_insecure(
     method: &str,
     path: &str,
     headers: &[(&str, &str)],
+    body: Option<&[u8]>,
     timeout: Duration,
 ) -> HttpObservation {
     probe_impl(
@@ -80,6 +86,7 @@ pub async fn probe_insecure(
         method,
         path,
         headers,
+        body,
         timeout,
         crate::tls::TlsMode::Insecure,
     )
@@ -87,12 +94,14 @@ pub async fn probe_insecure(
 }
 
 /// Shared probe body for the given trust mode.
+#[allow(clippy::too_many_arguments)]
 async fn probe_impl(
     destination: SocketAddr,
     host: &str,
     method: &str,
     path: &str,
     headers: &[(&str, &str)],
+    body: Option<&[u8]>,
     timeout: Duration,
     mode: crate::tls::TlsMode<'_>,
 ) -> HttpObservation {
@@ -141,7 +150,18 @@ async fn probe_impl(
     for (name, value) in headers {
         builder = builder.header(*name, *value);
     }
-    let request = match builder.body(Empty::<hyper::body::Bytes>::new()) {
+    // A request body is sent with an explicit content-length. When there is
+    // no body (the default GET), keep the body-less `Empty` so nothing extra
+    // (a `content-length: 0` / chunked terminator) is emitted on the wire.
+    // Both are boxed to a shared `BoxBody` so the request type is uniform.
+    if let Some(bytes) = body {
+        builder = builder.header("content-length", bytes.len().to_string());
+    }
+    let request_body = body.map_or_else(
+        || http_body_util::Empty::<bytes::Bytes>::new().boxed(),
+        |bytes| http_body_util::Full::new(bytes::Bytes::copy_from_slice(bytes)).boxed(),
+    );
+    let request = match builder.body(request_body) {
         Ok(r) => r,
         Err(e) => {
             return base.with_failure(ProbeError {

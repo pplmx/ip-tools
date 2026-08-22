@@ -45,6 +45,7 @@ async fn http1_probe_gets_200_from_local_fixture() {
         "GET",
         "/",
         &[],
+        None,
         timeout(),
         &fixture.roots,
     )
@@ -63,6 +64,7 @@ async fn http2_probe_gets_200_from_local_fixture() {
         "GET",
         "/",
         &[],
+        None,
         timeout(),
         &fixture.roots,
     )
@@ -84,6 +86,7 @@ async fn http3_probe_gets_200_from_local_fixture() {
         "GET",
         "/",
         &[],
+        None,
         timeout(),
         &fixture.roots,
     )
@@ -91,6 +94,65 @@ async fn http3_probe_gets_200_from_local_fixture() {
     assert!(obs.failure.is_none(), "http3 probe failed: {:?}", obs.failure);
     assert_eq!(obs.status, Some(200), "expected 200 over QUIC: {obs:?}");
     assert_eq!(obs.protocol.as_deref(), Some("HTTP/3"), "expected HTTP/3: {obs:?}");
+}
+
+// --- request body sending (`--body`) ---------------------------------------
+
+/// The `echo.invalid` route echoes the request body back. Probing it with a
+/// body and asserting the echoed bytes appear in the response proves a request
+/// body was sent on the wire on each protocol (h1/h2/h3).
+#[tokio::test(flavor = "multi_thread")]
+async fn http_probes_send_request_body_through_echo() {
+    let fixture = FixtureServer::start().await;
+    let marker = b"body-marker-7f3a";
+
+    let h1 = http::probe_insecure(
+        fixture.tcp_addr(),
+        "echo.invalid",
+        "POST",
+        "/",
+        &[],
+        Some(marker),
+        timeout(),
+    )
+    .await;
+    assert!(h1.failure.is_none(), "h1 body probe: {h1:?}");
+    assert!(
+        h1.body_snippet.as_deref().unwrap_or("").contains("body-marker-7f3a"),
+        "h1 must echo the request body: {h1:?}"
+    );
+
+    let h2 = http2::probe_insecure(
+        fixture.tcp_addr(),
+        "echo.invalid",
+        "POST",
+        "/",
+        &[],
+        Some(marker),
+        timeout(),
+    )
+    .await;
+    assert!(h2.failure.is_none(), "h2 body probe: {h2:?}");
+    assert!(
+        h2.body_snippet.as_deref().unwrap_or("").contains("body-marker-7f3a"),
+        "h2 must echo the request body: {h2:?}"
+    );
+
+    let h3 = http3::probe_insecure(
+        fixture.udp_addr(),
+        "echo.invalid",
+        "POST",
+        "/",
+        &[],
+        Some(marker),
+        timeout(),
+    )
+    .await;
+    assert!(h3.failure.is_none(), "h3 body probe: {h3:?}");
+    assert!(
+        h3.body_snippet.as_deref().unwrap_or("").contains("body-marker-7f3a"),
+        "h3 must echo the request body: {h3:?}"
+    );
 }
 
 // --- --insecure (no certificate validation) ---------------------------------
@@ -123,12 +185,12 @@ async fn default_verification_rejects_self_signed_but_insecure_accepts() {
 #[tokio::test(flavor = "multi_thread")]
 async fn http_probes_work_insecure_against_self_signed_fixture() {
     let fixture = FixtureServer::start().await;
-    let h1 = http::probe_insecure(fixture.tcp_addr(), "localhost", "GET", "/", &[], timeout()).await;
+    let h1 = http::probe_insecure(fixture.tcp_addr(), "localhost", "GET", "/", &[], None, timeout()).await;
     assert_eq!(h1.status, Some(200), "http1 insecure: {h1:?}");
-    let h2 = http2::probe_insecure(fixture.tcp_addr(), "localhost", "GET", "/", &[], timeout()).await;
+    let h2 = http2::probe_insecure(fixture.tcp_addr(), "localhost", "GET", "/", &[], None, timeout()).await;
     assert_eq!(h2.status, Some(200), "http2 insecure: {h2:?}");
     assert_eq!(h2.protocol.as_deref(), Some("HTTP/2"));
-    let h3 = http3::probe_insecure(fixture.udp_addr(), "localhost", "GET", "/", &[], timeout()).await;
+    let h3 = http3::probe_insecure(fixture.udp_addr(), "localhost", "GET", "/", &[], None, timeout()).await;
     assert_eq!(h3.status, Some(200), "http3 insecure: {h3:?}");
     assert_eq!(h3.protocol.as_deref(), Some("HTTP/3"));
 }
@@ -147,7 +209,7 @@ const MAX_BODY_BYTES: u64 = 1024 * 1024;
 async fn http_probes_record_302_location_instead_of_following() {
     let fixture = FixtureServer::start().await;
 
-    let h1 = http::probe_insecure(fixture.tcp_addr(), "redirect.invalid", "GET", "/", &[], timeout()).await;
+    let h1 = http::probe_insecure(fixture.tcp_addr(), "redirect.invalid", "GET", "/", &[], None, timeout()).await;
     assert!(h1.failure.is_none(), "http1 redirect probe: {h1:?}");
     assert_eq!(h1.status, Some(302), "http1 must record the 302: {h1:?}");
     assert_eq!(
@@ -156,7 +218,7 @@ async fn http_probes_record_302_location_instead_of_following() {
         "http1 must record the Location, not chase it: {h1:?}"
     );
 
-    let h2 = http2::probe_insecure(fixture.tcp_addr(), "redirect.invalid", "GET", "/", &[], timeout()).await;
+    let h2 = http2::probe_insecure(fixture.tcp_addr(), "redirect.invalid", "GET", "/", &[], None, timeout()).await;
     assert!(h2.failure.is_none(), "http2 redirect probe: {h2:?}");
     assert_eq!(h2.status, Some(302), "http2 must record the 302: {h2:?}");
     assert_eq!(
@@ -165,7 +227,7 @@ async fn http_probes_record_302_location_instead_of_following() {
         "http2 must record the Location, not chase it: {h2:?}"
     );
 
-    let h3 = http3::probe_insecure(fixture.udp_addr(), "redirect.invalid", "GET", "/", &[], timeout()).await;
+    let h3 = http3::probe_insecure(fixture.udp_addr(), "redirect.invalid", "GET", "/", &[], None, timeout()).await;
     assert!(h3.failure.is_none(), "http3 redirect probe: {h3:?}");
     assert_eq!(h3.status, Some(302), "http3 must record the 302: {h3:?}");
     assert_eq!(
@@ -181,7 +243,7 @@ async fn http_probes_cap_oversized_response_bodies() {
 
     // Each probe must stop at the 1 MiB cap instead of buffering the whole
     // 2 MiB body.
-    let h1 = http::probe_insecure(fixture.tcp_addr(), "big.invalid", "GET", "/", &[], timeout()).await;
+    let h1 = http::probe_insecure(fixture.tcp_addr(), "big.invalid", "GET", "/", &[], None, timeout()).await;
     assert!(h1.failure.is_none(), "http1 big-body probe: {h1:?}");
     assert_eq!(h1.status, Some(200), "http1 big-body probe: {h1:?}");
     assert!(
@@ -189,7 +251,7 @@ async fn http_probes_cap_oversized_response_bodies() {
         "http1 must cap the body at {MAX_BODY_BYTES} bytes, got {h1:?}"
     );
 
-    let h2 = http2::probe_insecure(fixture.tcp_addr(), "big.invalid", "GET", "/", &[], timeout()).await;
+    let h2 = http2::probe_insecure(fixture.tcp_addr(), "big.invalid", "GET", "/", &[], None, timeout()).await;
     assert!(h2.failure.is_none(), "http2 big-body probe: {h2:?}");
     assert_eq!(h2.status, Some(200), "http2 big-body probe: {h2:?}");
     assert!(
@@ -197,7 +259,7 @@ async fn http_probes_cap_oversized_response_bodies() {
         "http2 must cap the body at {MAX_BODY_BYTES} bytes, got {h2:?}"
     );
 
-    let h3 = http3::probe_insecure(fixture.udp_addr(), "big.invalid", "GET", "/", &[], timeout()).await;
+    let h3 = http3::probe_insecure(fixture.udp_addr(), "big.invalid", "GET", "/", &[], None, timeout()).await;
     assert!(h3.failure.is_none(), "http3 big-body probe: {h3:?}");
     assert_eq!(h3.status, Some(200), "http3 big-body probe: {h3:?}");
     assert!(
@@ -211,7 +273,7 @@ async fn http_probes_cap_oversized_response_bodies() {
 #[tokio::test(flavor = "multi_thread")]
 async fn http3_capped_body_is_still_sized() {
     let fixture = FixtureServer::start().await;
-    let h3 = http3::probe_insecure(fixture.udp_addr(), "big.invalid", "GET", "/", &[], timeout()).await;
+    let h3 = http3::probe_insecure(fixture.udp_addr(), "big.invalid", "GET", "/", &[], None, timeout()).await;
     let bytes = h3.body_bytes.expect("http3 body bytes present");
     assert!(
         bytes > MAX_BODY_BYTES - 128 * 1024,
@@ -228,7 +290,7 @@ async fn stalled_body_reports_incomplete_for_all_protocols() {
     let fixture = FixtureServer::start().await;
     let stall = Duration::from_secs(2);
 
-    let h1 = http::probe_insecure(fixture.tcp_addr(), "stall.invalid", "GET", "/", &[], stall).await;
+    let h1 = http::probe_insecure(fixture.tcp_addr(), "stall.invalid", "GET", "/", &[], None, stall).await;
     assert_eq!(h1.status, Some(200), "http1 headers received: {h1:?}");
     assert!(
         h1.failure.is_none(),
@@ -239,7 +301,7 @@ async fn stalled_body_reports_incomplete_for_all_protocols() {
         "http1 must report a stalled body as incomplete: {h1:?}"
     );
 
-    let h2 = http2::probe_insecure(fixture.tcp_addr(), "stall.invalid", "GET", "/", &[], stall).await;
+    let h2 = http2::probe_insecure(fixture.tcp_addr(), "stall.invalid", "GET", "/", &[], None, stall).await;
     assert_eq!(h2.status, Some(200), "http2 headers received: {h2:?}");
     assert!(
         h2.failure.is_none(),
@@ -250,7 +312,7 @@ async fn stalled_body_reports_incomplete_for_all_protocols() {
         "http2 must report a stalled body as incomplete: {h2:?}"
     );
 
-    let h3 = http3::probe_insecure(fixture.udp_addr(), "stall.invalid", "GET", "/", &[], stall).await;
+    let h3 = http3::probe_insecure(fixture.udp_addr(), "stall.invalid", "GET", "/", &[], None, stall).await;
     assert_eq!(h3.status, Some(200), "http3 headers received: {h3:?}");
     assert!(
         h3.failure.is_none(),
@@ -274,6 +336,7 @@ async fn http3_probe_times_out_when_server_never_responds() {
         "GET",
         "/",
         &[],
+        None,
         Duration::from_millis(600),
     )
     .await;
@@ -300,6 +363,7 @@ async fn http3_probe_times_out_when_quic_handshake_never_reaches_h3() {
         "GET",
         "/",
         &[],
+        None,
         Duration::from_millis(600),
         &fixture.roots,
     )
@@ -328,11 +392,44 @@ async fn http3_probe_times_out_when_quic_handshake_never_reaches_h3() {
 async fn http_repeat_against_fixture_aggregates_all_protocols() {
     let fixture = FixtureServer::start().await;
     let c = 3usize;
-    let h1 = probe::http_repeat(fixture.tcp_addr(), "localhost", "GET", "/", &[], c, timeout(), true).await;
+    let h1 = probe::http_repeat(
+        fixture.tcp_addr(),
+        "localhost",
+        "GET",
+        "/",
+        &[],
+        None,
+        c,
+        timeout(),
+        true,
+    )
+    .await;
     assert_eq!(h1.successes, c, "http1 repeat should be all-success: {h1:?}");
-    let h2 = probe::http2_repeat(fixture.tcp_addr(), "localhost", "GET", "/", &[], c, timeout(), true).await;
+    let h2 = probe::http2_repeat(
+        fixture.tcp_addr(),
+        "localhost",
+        "GET",
+        "/",
+        &[],
+        None,
+        c,
+        timeout(),
+        true,
+    )
+    .await;
     assert_eq!(h2.successes, c, "http2 repeat should be all-success: {h2:?}");
-    let h3 = probe::http3_repeat(fixture.udp_addr(), "localhost", "GET", "/", &[], c, timeout(), true).await;
+    let h3 = probe::http3_repeat(
+        fixture.udp_addr(),
+        "localhost",
+        "GET",
+        "/",
+        &[],
+        None,
+        c,
+        timeout(),
+        true,
+    )
+    .await;
     assert_eq!(h3.successes, c, "http3 repeat should be all-success: {h3:?}");
     assert_eq!(h3.latency.count, c, "http3 repeat should yield latency samples");
     assert!(h3.failure_counts.is_empty());
@@ -367,7 +464,7 @@ async fn http3_probe_times_out_against_silent_udp_socket() {
     let sock = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind silent udp");
     let addr = sock.local_addr().expect("silent udp addr");
 
-    let obs = http3::probe(addr, "localhost", "GET", "/", &[], Duration::from_millis(600)).await;
+    let obs = http3::probe(addr, "localhost", "GET", "/", &[], None, Duration::from_millis(600)).await;
     assert!(obs.failure.is_some(), "silent UDP must not report success: {obs:?}");
     let failure = obs.failure.as_ref().expect("expected a timeout failure");
     assert_eq!(
@@ -393,7 +490,7 @@ async fn http3_probe_fails_against_closed_udp_port() {
     };
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
 
-    let obs = http3::probe(addr, "localhost", "GET", "/", &[], Duration::from_millis(800)).await;
+    let obs = http3::probe(addr, "localhost", "GET", "/", &[], None, Duration::from_millis(800)).await;
     assert_eq!(
         obs.protocol.as_deref(),
         Some("HTTP/3"),
@@ -431,7 +528,7 @@ async fn tls_and_http_probe_time_out_when_server_never_responds() {
         "expected a TLS handshake timeout: {obs:?}"
     );
 
-    let obs = http::probe(addr, "localhost", "GET", "/", &[], Duration::from_millis(500)).await;
+    let obs = http::probe(addr, "localhost", "GET", "/", &[], None, Duration::from_millis(500)).await;
     assert_eq!(
         obs.failure.as_ref().map(|f| f.kind),
         Some(ip_tools::FailureKind::Timeout),
@@ -822,6 +919,83 @@ fn http_cli_truncates_large_body_snippet() {
     assert!(
         snippet_line.ends_with('…'),
         "large body snippet must be truncated with …: {stdout}"
+    );
+}
+
+#[test]
+fn http_cli_sends_request_body_through_echo() {
+    // `--body` must reach the server on the wire: the `echo.invalid` fixture
+    // echoes the request body back, and the probe's body snippet shows it.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let addr = fixture.tcp_addr().to_string();
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "http",
+            &addr,
+            "--sni",
+            "echo.invalid",
+            "--body",
+            "cli-body-7fa3",
+            "--insecure",
+            "--timeout",
+            "2000",
+        ])
+        .output()
+        .expect("run http --body");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "http --body should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.contains("cli-body-7fa3"),
+        "the --body must reach the server and be echoed back: {stdout}"
+    );
+}
+
+#[test]
+fn diagnose_cli_sends_request_body_through_echo() {
+    // `diagnose --body` threads the body into the HTTP evidence phase; the
+    // echo route's response must carry it in the JSON evidence.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let addr = fixture.tcp_addr().to_string();
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "diagnose",
+            &addr,
+            "--sni",
+            "echo.invalid",
+            "--body",
+            "diag-body-5c1",
+            "--insecure",
+            "--json",
+            "--timeout",
+            "2000",
+        ])
+        .output()
+        .expect("run diagnose --body --json");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "diagnose --body should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.contains("diag-body-5c1"),
+        "the --body must appear in the diagnose HTTP evidence: {stdout}"
     );
 }
 
