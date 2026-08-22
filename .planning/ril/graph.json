@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-21T19:54:47+00:00",
+  "updated_at": "2026-08-21T22:13:37+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -255,10 +255,10 @@
     "TASK-path-http": {
       "id": "TASK-path-http",
       "type": "task",
-      "status": "active",
-      "version": 1,
+      "status": "resolved",
+      "version": 2,
       "created_at": "2026-08-21T19:54:47+00:00",
-      "updated_at": "2026-08-21T19:54:47+00:00",
+      "updated_at": "2026-08-21T22:13:37+00:00",
       "touched_round": 0,
       "category": "core-feature",
       "severity": 0.8,
@@ -292,6 +292,17 @@
       "effort": 0.4,
       "unlock_factor": 1.0,
       "summary": "--header NAME:VALUE (repeatable) on http/http2/http3/probe to send custom request headers (e.g. Authorization, User-Agent, cookie) — currently the probes hard-code user-agent/accept and allow no request customization"
+    },
+    "CHG-path-http": {
+      "id": "CHG-path-http",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-21T22:13:37+00:00",
+      "updated_at": "2026-08-21T22:13:37+00:00",
+      "touched_round": 0,
+      "commit": "1d1ec94d7036ecde47443887218276e47b41929b",
+      "summary": "--path <path> on http/http2/http3 + probe --protocol http*; HttpObservation.path; human report shows non-default path; api-baseline regenerated (probe fns gained a path arg); 2 fixture-gated tests proving wire routing"
     }
   },
   "edges": [
@@ -354,6 +365,18 @@
       "to": "ISS-path-hardcoded",
       "type": "addresses",
       "created_at": "2026-08-21T19:54:47+00:00"
+    },
+    {
+      "from": "CHG-path-http",
+      "to": "TASK-path-http",
+      "type": "implements",
+      "created_at": "2026-08-21T22:13:37+00:00"
+    },
+    {
+      "from": "CHG-path-http",
+      "to": "ISS-path-hardcoded",
+      "type": "resolves",
+      "created_at": "2026-08-21T22:13:37+00:00"
     }
   ]
 }

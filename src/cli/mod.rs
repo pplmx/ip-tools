@@ -76,7 +76,14 @@ fn parser() -> ArgMatches {
         .subcommand(probe_command(
             "http",
             "perform an HTTPS/HTTP1.1 request to a host:port across its addresses",
-            &[method_arg(), insecure_arg(), strict_arg(), sni_arg(), path_arg()],
+            &[
+                method_arg(),
+                insecure_arg(),
+                strict_arg(),
+                sni_arg(),
+                path_arg(),
+                header_arg(),
+            ],
         ))
         .subcommand(probe_command(
             "probe",
@@ -89,17 +96,32 @@ fn parser() -> ArgMatches {
                 insecure_arg(),
                 sni_arg(),
                 path_arg(),
+                header_arg(),
             ],
         ))
         .subcommand(probe_command(
             "http2",
             "perform an HTTPS/HTTP2 request to a host:port across its addresses",
-            &[method_arg(), insecure_arg(), strict_arg(), sni_arg(), path_arg()],
+            &[
+                method_arg(),
+                insecure_arg(),
+                strict_arg(),
+                sni_arg(),
+                path_arg(),
+                header_arg(),
+            ],
         ))
         .subcommand(probe_command(
             "http3",
             "perform an HTTPS/HTTP3 (QUIC) request to a host:port across its addresses",
-            &[method_arg(), insecure_arg(), strict_arg(), sni_arg(), path_arg()],
+            &[
+                method_arg(),
+                insecure_arg(),
+                strict_arg(),
+                sni_arg(),
+                path_arg(),
+                header_arg(),
+            ],
         ))
         .subcommand(
             Command::new("route")
@@ -237,6 +259,15 @@ fn path_arg() -> Arg {
         .value_name("PATH")
         .default_value("/")
         .help("HTTP request path to probe")
+}
+
+/// `--header` argument: an extra HTTP request header (repeatable).
+fn header_arg() -> Arg {
+    Arg::new("header")
+        .long("header")
+        .value_name("NAME:VALUE")
+        .action(ArgAction::Append)
+        .help("extra HTTP request header, e.g. --header 'authorization: Bearer abc' (repeatable)")
 }
 
 /// Shared `--insecure` argument (skip TLS/QUIC certificate validation).
@@ -541,6 +572,28 @@ pub fn parse_custom_servers(sub_m: &ArgMatches) -> Result<Vec<SocketAddr>, Strin
         }
     }
     Ok(servers)
+}
+
+/// Parse repeatable `--header` values (`NAME:VALUE`) into (name, value) pairs
+/// ready for the HTTP probes.
+pub fn parse_custom_headers(sub_m: &ArgMatches) -> Result<Vec<(String, String)>, String> {
+    let mut headers = Vec::new();
+    if let Some(values) = sub_m.get_many::<String>("header") {
+        for raw in values {
+            let Some((name, value)) = raw.split_once(':') else {
+                return Err(format!(
+                    "invalid header {raw:?}; expected NAME:VALUE, e.g. --header 'authorization: Bearer abc'"
+                ));
+            };
+            let name = name.trim();
+            let value = value.trim();
+            if name.is_empty() {
+                return Err(format!("invalid header {raw:?}; the name must not be empty"));
+            }
+            headers.push((name.to_string(), value.to_string()));
+        }
+    }
+    Ok(headers)
 }
 
 /// Output structure for `get --json`.

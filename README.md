@@ -210,12 +210,19 @@ Issue a single request over TLS to each address (redirects not followed):
 ip-tools http example.com
 ip-tools http example.com --method HEAD
 ip-tools http example.com --path /healthz
+ip-tools http example.com --header 'authorization: Bearer abc123'
+ip-tools http example.com --path /private --header 'cookie: session=xyz'
 ```
 
 `--path` requests a specific resource instead of the default `/` (also on
 `http2`, `http3` and `probe --protocol http|http2|http3`), so path-dependent
 behavior — a WAF rule, a CDN cache key, a per-endpoint route — can be
 observed. The report shows the path when it is not `/`.
+
+`--header NAME:VALUE` (repeatable) sends an extra request header verbatim on
+every protocol — an `authorization`, `cookie`, or any header an endpoint
+requires to answer truthfully (the `user-agent`/`accept` defaults are always
+sent).
 
 Example output:
 

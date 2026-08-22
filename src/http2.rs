@@ -14,12 +14,14 @@ use std::time::{Duration, Instant};
 /// Perform a single HTTPS/HTTP/2 request to `destination` (connecting to its
 /// IP) presenting `host` as SNI, bounded by `timeout`.
 ///
-/// `path` is the request target (e.g. `/`, `/healthz`).
+/// `path` is the request target (e.g. `/`, `/healthz`). Extra `headers`
+/// (each `name`, `value`) are sent verbatim on the request.
 pub async fn probe(
     destination: SocketAddr,
     host: &str,
     method: &str,
     path: &str,
+    headers: &[(&str, &str)],
     timeout: Duration,
 ) -> HttpObservation {
     probe_impl(
@@ -27,6 +29,7 @@ pub async fn probe(
         host,
         method,
         path,
+        headers,
         timeout,
         crate::tls::TlsMode::Roots(&crate::tls::roots()),
     )
@@ -39,6 +42,7 @@ pub async fn probe_with_roots(
     host: &str,
     method: &str,
     path: &str,
+    headers: &[(&str, &str)],
     timeout: Duration,
     roots: &rustls::RootCertStore,
 ) -> HttpObservation {
@@ -47,6 +51,7 @@ pub async fn probe_with_roots(
         host,
         method,
         path,
+        headers,
         timeout,
         crate::tls::TlsMode::Roots(roots),
     )
@@ -59,9 +64,19 @@ pub async fn probe_insecure(
     host: &str,
     method: &str,
     path: &str,
+    headers: &[(&str, &str)],
     timeout: Duration,
 ) -> HttpObservation {
-    probe_impl(destination, host, method, path, timeout, crate::tls::TlsMode::Insecure).await
+    probe_impl(
+        destination,
+        host,
+        method,
+        path,
+        headers,
+        timeout,
+        crate::tls::TlsMode::Insecure,
+    )
+    .await
 }
 
 /// Shared probe body for the given trust mode.
@@ -70,6 +85,7 @@ async fn probe_impl(
     host: &str,
     method: &str,
     path: &str,
+    headers: &[(&str, &str)],
     timeout: Duration,
     mode: crate::tls::TlsMode<'_>,
 ) -> HttpObservation {
@@ -105,13 +121,15 @@ async fn probe_impl(
     // Build the request; h2 needs an authority, so construct the URI from a
     // full URL (hyper fills the :authority pseudo-header).
     let uri = format!("https://{host}{path}");
-    let request = match hyper::Request::builder()
+    let mut builder = hyper::Request::builder()
         .method(method)
         .uri(uri)
         .header("user-agent", "ip-tools")
-        .header("accept", "*/*")
-        .body(())
-    {
+        .header("accept", "*/*");
+    for (name, value) in headers {
+        builder = builder.header(*name, *value);
+    }
+    let request = match builder.body(()) {
         Ok(r) => r,
         Err(e) => {
             return base.with_failure(ProbeError {

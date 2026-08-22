@@ -139,6 +139,9 @@ enum FixtureRoute {
     StalledBody,
     /// Accept the HTTP/3 request but never send a response (a hung server).
     Quiesce,
+    /// A custom request header (`x-fixture-marker: present`) was sent; answers
+    /// 202 to prove the header reached the server on the wire.
+    MarkerPresent,
 }
 
 /// Size of the oversized body served for [`FixtureRoute::LargeBody`] — larger
@@ -149,6 +152,13 @@ const LARGE_BODY_BYTES: usize = 2 * 1024 * 1024;
 /// Classify a request by its host (URI authority first, then `Host` header,
 /// which covers HTTP/2/3's `:authority` and HTTP/1.1's `Host` alike).
 fn route_for(req: &hyper::Request<impl Sized>) -> FixtureRoute {
+    // A custom header route, checked first so the host-keyed routes below are
+    // unaffected: when the request carries `x-fixture-marker: present`, answer
+    // 202 so a probe that actually sent the `--header` is distinguishable on
+    // the wire from one that did not.
+    if req.headers().get("x-fixture-marker") == Some(&hyper::header::HeaderValue::from_static("present")) {
+        return FixtureRoute::MarkerPresent;
+    }
     let host = req
         .uri()
         .authority()
@@ -255,6 +265,12 @@ async fn run_tcp_server(listener: tokio::net::TcpListener, acceptor: tokio_rustl
                     FixtureRoute::StalledBody | FixtureRoute::Quiesce => {
                         Ok::<_, std::convert::Infallible>(hyper::Response::new(StalledBody { sent: false }.boxed()))
                     }
+                    FixtureRoute::MarkerPresent => Ok::<_, std::convert::Infallible>(
+                        hyper::Response::builder()
+                            .status(202)
+                            .body(http_body_util::Full::new(bytes::Bytes::from_static(b"marker")).boxed())
+                            .expect("static marker response"),
+                    ),
                     FixtureRoute::Normal => Ok::<_, std::convert::Infallible>(hyper::Response::new(
                         http_body_util::Full::new(bytes::Bytes::from_static(b"ok")).boxed(),
                     )),
@@ -361,6 +377,18 @@ async fn serve_quic_connection(incoming: quinn::Incoming) {
                     return;
                 }
                 if stream.send_data(bytes::Bytes::from_static(b"ok")).await.is_err() {
+                    return;
+                }
+                let _ = stream.finish().await;
+            }
+            FixtureRoute::MarkerPresent => {
+                // Answer 202 (distinct from the ordinary 200) once the custom
+                // `--header` actually reached the server on the QUIC path.
+                let response = hyper::Response::builder().status(202).body(()).expect("status 202");
+                if stream.send_response(response).await.is_err() {
+                    return;
+                }
+                if stream.send_data(bytes::Bytes::from_static(b"marker")).await.is_err() {
                     return;
                 }
                 let _ = stream.finish().await;

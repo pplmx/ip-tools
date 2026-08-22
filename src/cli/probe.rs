@@ -27,6 +27,13 @@ pub(super) async fn run_probe(sub_m: &ArgMatches) -> ExitCode {
         .get_one::<String>("protocol")
         .expect("protocol has default")
         .clone();
+    let headers = match super::parse_custom_headers(sub_m) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("Error: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
     run_probe_flow(
         sub_m,
         render_probe,
@@ -36,12 +43,22 @@ pub(super) async fn run_probe(sub_m: &ArgMatches) -> ExitCode {
             let method = method.clone();
             let path = path.clone();
             let protocol = protocol.clone();
+            let headers = headers.clone();
             async move {
+                let header_refs: Vec<(&str, &str)> = headers.iter().map(|(n, v)| (n.as_str(), v.as_str())).collect();
                 match protocol.as_str() {
                     "tls" => ip_probe::tls_repeat(dest, &host, count, timeout, insecure).await,
-                    "http" => ip_probe::http_repeat(dest, &host, &method, &path, count, timeout, insecure).await,
-                    "http2" => ip_probe::http2_repeat(dest, &host, &method, &path, count, timeout, insecure).await,
-                    "http3" => ip_probe::http3_repeat(dest, &host, &method, &path, count, timeout, insecure).await,
+                    "http" => {
+                        ip_probe::http_repeat(dest, &host, &method, &path, &header_refs, count, timeout, insecure).await
+                    }
+                    "http2" => {
+                        ip_probe::http2_repeat(dest, &host, &method, &path, &header_refs, count, timeout, insecure)
+                            .await
+                    }
+                    "http3" => {
+                        ip_probe::http3_repeat(dest, &host, &method, &path, &header_refs, count, timeout, insecure)
+                            .await
+                    }
                     _ => ip_probe::tcp_repeat(dest, count, timeout).await,
                 }
             }
