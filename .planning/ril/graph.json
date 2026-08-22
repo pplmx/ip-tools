@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-22T13:48:05+00:00",
+  "updated_at": "2026-08-22T14:53:03+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -1043,6 +1043,54 @@
       "touched_round": 0,
       "commit": "40ee1a6423fa48a7ed7f9bb044113113ef919366",
       "summary": "--header @<file> reads NAME:VALUE lines from a file and --header - (stdin) reads them from stdin (inline NAME:VALUE unchanged) on http/http2/http3/probe/diagnose; bad file/stdin lines fail clearly. No public API change, no new dependency. 1 fixture-gated CLI test (@file + stdin each deliver the marker header, server answers 202). 185 tests green, all gates clean, coverage 93.24%. commit 40ee1a6"
+    },
+    "DEC-016": {
+      "id": "DEC-016",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T14:09:38+00:00",
+      "updated_at": "2026-08-22T14:09:38+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-22): HTTP time-to-first-byte (TTFB). The HTTP probes report total latency (TLS+HTTP) but not the time from sending the request to receiving the response headers — a classic web-performance primitive that separates server response latency from body transfer. Capture ttfb_ms on http/http2/http3 (request-send to headers) into HttpObservation, render it in the human report and carry it in JSON. Zero new deps; the probes already time the overall round-trip.",
+      "alternatives_rejected": "--interface/source-IP binding (touches tcp/tls/quinn bind + hickory dns, large cross-cutting blast radius, hard to test); route multi-target (privileged raw sockets, not deterministically testable); CSV for dns/probe (format extension, less novel than a new metric)"
+    },
+    "ISS-011": {
+      "id": "ISS-011",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T14:09:45+00:00",
+      "updated_at": "2026-08-22T14:53:03+00:00",
+      "touched_round": 0,
+      "summary": "The HTTP probes report total latency but not time-to-first-byte—the time from sending the request to receiving the response headers—so a slow server response vs slow body transfer cannot be told apart, and a key web-performance primitive is invisible.",
+      "severity": "low"
+    },
+    "TASK-017": {
+      "id": "TASK-017",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T14:11:33+00:00",
+      "updated_at": "2026-08-22T14:53:03+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.6,
+      "confidence": 1,
+      "effort": 0.4,
+      "unlock_factor": 1,
+      "summary": "Capture ttfb_ms (request-send to response headers) on http/http2/http3 into HttpObservation, render in the human report and carry in JSON; update all HttpObservation test constructors, regenerate api-baseline. Pinned by fixture tests asserting ttfb is present/latent."
+    },
+    "CHG-011": {
+      "id": "CHG-011",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T14:53:03+00:00",
+      "updated_at": "2026-08-22T14:53:03+00:00",
+      "touched_round": 0,
+      "commit": "30f22a12ee28e5003bf47812880d20086adf92f3",
+      "summary": "HTTP probes (h1/h2/h3) now capture TTFB (HttpObservation.ttfb_ms: request-send to response headers), rendered as 'ttfb:' and carried in JSON, distinct from total latency. 1 fixture test asserts ttfb present and <= latency on all three. Public API note: HttpObservation gained ttfb_ms (api-baseline regenerated). 186 tests green, all gates clean, coverage 93.27%. commit 30f22a1"
     }
   },
   "edges": [
@@ -1717,6 +1765,36 @@
       "to": "ISS-010",
       "type": "resolves",
       "created_at": "2026-08-22T13:48:05+00:00"
+    },
+    {
+      "from": "ISS-011",
+      "to": "COMP-http",
+      "type": "located_in",
+      "created_at": "2026-08-22T14:13:18+00:00"
+    },
+    {
+      "from": "TASK-017",
+      "to": "ISS-011",
+      "type": "addresses",
+      "created_at": "2026-08-22T14:13:18+00:00"
+    },
+    {
+      "from": "DEC-016",
+      "to": "TASK-017",
+      "type": "governs",
+      "created_at": "2026-08-22T14:13:18+00:00"
+    },
+    {
+      "from": "CHG-011",
+      "to": "TASK-017",
+      "type": "implements",
+      "created_at": "2026-08-22T14:53:03+00:00"
+    },
+    {
+      "from": "CHG-011",
+      "to": "ISS-011",
+      "type": "resolves",
+      "created_at": "2026-08-22T14:53:03+00:00"
     }
   ]
 }
