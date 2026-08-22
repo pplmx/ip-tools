@@ -99,6 +99,7 @@ mod tests {
                 issuer: "CN=CA".into(),
                 not_before_utc: None,
                 not_after_utc: Some("2027-01-01T00:00:00Z".into()),
+                sans: vec!["example.com".into()],
             }),
             latency_ms: success.then_some(7),
             failure: (!success).then(|| ProbeError {

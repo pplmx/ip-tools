@@ -328,11 +328,43 @@ fn cert_summary(der: &rustls_pki_types::CertificateDer<'_>) -> Option<Certificat
     let (_, cert) = parse_x509_certificate(der.as_ref()).ok()?;
     let subject = cert.subject().to_string();
     let issuer = cert.issuer().to_string();
+    let sans = cert
+        .subject_alternative_name()
+        .ok()
+        .flatten()
+        .map(|san| {
+            san.value
+                .general_names
+                .iter()
+                .filter_map(|gn| general_name_string(gn))
+                .collect()
+        })
+        .unwrap_or_default();
     Some(CertificateSummary {
         subject,
         issuer,
         not_before_utc: format_utc(cert.validity().not_before.timestamp()),
         not_after_utc: format_utc(cert.validity().not_after.timestamp()),
+        sans,
+    })
+}
+
+/// Render a certificate [`GeneralName`] (subjectAltName) as a string, or
+/// `None` for name types we do not surface (otherName, registered ID, ...).
+fn general_name_string(name: &x509_parser::extensions::GeneralName) -> Option<String> {
+    use x509_parser::extensions::GeneralName;
+    Some(match name {
+        GeneralName::DNSName(n) | GeneralName::RFC822Name(n) | GeneralName::URI(n) => n.to_string(),
+        GeneralName::IPAddress(bytes) => {
+            let ip = match bytes.len() {
+                4 => std::net::IpAddr::V4(std::net::Ipv4Addr::from(<[u8; 4]>::try_from(*bytes).ok()?)),
+                16 => std::net::IpAddr::V6(std::net::Ipv6Addr::from(<[u8; 16]>::try_from(*bytes).ok()?)),
+                _ => return None,
+            };
+            ip.to_string()
+        }
+        GeneralName::DirectoryName(dn) => dn.to_string(),
+        _ => return None,
     })
 }
 

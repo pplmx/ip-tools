@@ -34,6 +34,17 @@ async fn tls_probe_handshakes_local_fixture() {
     let obs = tls::probe_with_roots(fixture.tcp_addr(), "localhost", timeout(), &fixture.roots).await;
     assert!(obs.success, "tls probe to local fixture should succeed: {obs:?}");
     assert_eq!(obs.version.as_deref(), Some("TLSv1.3"));
+    // The self-signed fixture cert is generated with known SANs; the summary
+    // must surface them so operators can see what the cert actually covers.
+    let cert = obs.certificate.expect("fixture presents a certificate");
+    assert!(
+        cert.sans.iter().any(|s| s == "localhost"),
+        "expected localhost SAN on fixture cert: {cert:?}"
+    );
+    assert!(
+        cert.sans.iter().any(|s| s == "127.0.0.1"),
+        "expected 127.0.0.1 SAN on fixture cert: {cert:?}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]

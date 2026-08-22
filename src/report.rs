@@ -191,7 +191,15 @@ fn render_cert(cert: &CertificateSummary) -> String {
                 String::new()
             }
         });
-    format!("{} issued by {}{}{}", cert.subject, cert.issuer, valid, lifetime)
+    let sans = if cert.sans.is_empty() {
+        String::new()
+    } else {
+        format!("; sans: {}", cert.sans.join(", "))
+    };
+    format!(
+        "{} issued by {}{}{}{}",
+        cert.subject, cert.issuer, valid, lifetime, sans
+    )
 }
 
 /// Number of days before expiry the certificate report flags as expiring.
@@ -506,6 +514,7 @@ mod tests {
                 issuer: "CN=issuer".into(),
                 not_before_utc: Some("2026-01-01T00:00:00Z".into()),
                 not_after_utc: Some("2027-01-01T00:00:00Z".into()),
+                sans: vec!["example.com".into(), "www.example.com".into()],
             }),
             latency_ms: cert.then_some(42),
             failure: (!cert).then(|| ProbeError {
@@ -681,6 +690,7 @@ mod tests {
             issuer: "CN=y".into(),
             not_before_utc: None,
             not_after_utc: None,
+            sans: Vec::new(),
         });
         assert_eq!(no_validity, "CN=x issued by CN=y");
         // Success without latency reports 0 ms but does not panic.
@@ -1027,6 +1037,7 @@ mod tests {
             issuer: "CN=y".into(),
             not_before_utc: Some("2026-01-01T00:00:00Z".into()),
             not_after_utc: Some(days_out_rfc3339(days)),
+            sans: Vec::new(),
         };
         // Far future: no lifetime annotation.
         let far = render_cert(&cert(400));
@@ -1038,6 +1049,32 @@ mod tests {
         // Already expired: annotated.
         let past = render_cert(&cert(-3));
         assert!(past.contains("expired"), "expired annotated: {past}");
+    }
+
+    #[test]
+    fn render_cert_shows_subject_alternative_names() {
+        let with_sans = CertificateSummary {
+            subject: "CN=example.com".into(),
+            issuer: "CN=CA".into(),
+            not_before_utc: None,
+            not_after_utc: None,
+            sans: vec!["example.com".into(), "127.0.0.1".into()],
+        };
+        let out = render_cert(&with_sans);
+        assert!(
+            out.contains("; sans: example.com, 127.0.0.1"),
+            "SANs should be rendered: {out}"
+        );
+
+        // No SANs -> no annotation (keeps old output shape).
+        let none = CertificateSummary {
+            subject: "CN=x".into(),
+            issuer: "CN=y".into(),
+            not_before_utc: None,
+            not_after_utc: None,
+            sans: Vec::new(),
+        };
+        assert_eq!(render_cert(&none), "CN=x issued by CN=y");
     }
 
     /// RFC 3339 UTC string for the civil date `now + offset` days from today,

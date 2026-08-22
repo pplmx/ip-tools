@@ -13,6 +13,9 @@ pub struct CertificateSummary {
     pub not_before_utc: Option<String>,
     /// `notAfter` as an RFC 3339 UTC timestamp, when available.
     pub not_after_utc: Option<String>,
+    /// Subject Alternative Names (hostnames / IPs / emails / URIs) that the
+    /// certificate is valid for, in certificate order.
+    pub sans: Vec<String>,
 }
 
 /// A single TLS handshake to one destination socket address.

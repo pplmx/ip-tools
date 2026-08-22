@@ -201,6 +201,7 @@ pub struct ip_tools::model::tls::CertificateSummary
 pub ip_tools::model::tls::CertificateSummary::issuer: alloc::string::String
 pub ip_tools::model::tls::CertificateSummary::not_after_utc: core::option::Option<alloc::string::String>
 pub ip_tools::model::tls::CertificateSummary::not_before_utc: core::option::Option<alloc::string::String>
+pub ip_tools::model::tls::CertificateSummary::sans: alloc::vec::Vec<alloc::string::String>
 pub ip_tools::model::tls::CertificateSummary::subject: alloc::string::String
 pub struct ip_tools::model::tls::TlsObservation
 pub ip_tools::model::tls::TlsObservation::alpn: core::option::Option<alloc::string::String>
@@ -300,6 +301,7 @@ pub struct ip_tools::model::CertificateSummary
 pub ip_tools::model::CertificateSummary::issuer: alloc::string::String
 pub ip_tools::model::CertificateSummary::not_after_utc: core::option::Option<alloc::string::String>
 pub ip_tools::model::CertificateSummary::not_before_utc: core::option::Option<alloc::string::String>
+pub ip_tools::model::CertificateSummary::sans: alloc::vec::Vec<alloc::string::String>
 pub ip_tools::model::CertificateSummary::subject: alloc::string::String
 pub struct ip_tools::model::Diagnosis
 pub ip_tools::model::Diagnosis::category: ip_tools::model::diagnosis::DiagnosticCategory
@@ -527,6 +529,7 @@ pub struct ip_tools::CertificateSummary
 pub ip_tools::CertificateSummary::issuer: alloc::string::String
 pub ip_tools::CertificateSummary::not_after_utc: core::option::Option<alloc::string::String>
 pub ip_tools::CertificateSummary::not_before_utc: core::option::Option<alloc::string::String>
+pub ip_tools::CertificateSummary::sans: alloc::vec::Vec<alloc::string::String>
 pub ip_tools::CertificateSummary::subject: alloc::string::String
 pub struct ip_tools::Diagnosis
 pub ip_tools::Diagnosis::category: ip_tools::model::diagnosis::DiagnosticCategory

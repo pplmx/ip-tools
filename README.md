@@ -233,6 +233,11 @@ actionable: `(expires in N days)` within 30 days, or `(expired)` once past
 `notAfter` — an expiring certificate is invisible in a raw timestamp, so the
 report makes it explicit.
 
+The certificate row also lists its **Subject Alternative Names** (`; sans:
+example.com, 127.0.0.1`), so you can see exactly which hostnames/IPs the
+certificate is valid for — and whether the host you probed is among them
+(searchable when you've a hostname that doesn't match, or a wildcard-only cert).
+
 Example output:
 
 ```
