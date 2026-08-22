@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-22T10:29:01+00:00",
+  "updated_at": "2026-08-22T10:33:20+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -547,6 +547,43 @@
       "touched_round": 0,
       "commit": "26926de3e269d6799942be222f8061bc3db96d6d",
       "summary": "dns --dot HOST[:PORT] adds DNS-over-TLS (RFC 7858): library dns::dot_query (raw DNS inside TLS on 853, reusing in-tree rustls + existing wire builder/parser, zero new deps), ResolverKind::Dot, CLI --dot threaded through single-shot and --count repeat, report renders DoT rows (human + JSON). parse_dot_endpoint unit test + dot_query doc-test + 2 fixture-gated integration tests (raw query returns canned A/AAAA; --count 3 aggregates 100%). 171 tests green, all gates clean, coverage 93.32%. commit 26926de"
+    },
+    "ISS-002": {
+      "id": "ISS-002",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T10:32:53+00:00",
+      "updated_at": "2026-08-22T10:33:19+00:00",
+      "touched_round": 0,
+      "summary": "dns --dot added the DNS-over-TLS transport, but diagnose still only folded --doh into its evidence/address pool, so a TLS-protected DNS comparison was unavailable in the full diagnostic pipeline (the diagnosis could not reason over DoT answers or probe DoT-resolved addresses).",
+      "severity": "medium"
+    },
+    "TASK-003": {
+      "id": "TASK-003",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T10:32:56+00:00",
+      "updated_at": "2026-08-22T10:33:19+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.6,
+      "confidence": 1,
+      "effort": 0.2,
+      "unlock_factor": 1,
+      "summary": "diagnose --dot <endpoint> (repeatable, like --doh): fold DNS-over-TLS answers into the full diagnostic pipeline's DNS evidence stack and probed address pool, so resolver-disagreement and steering detection can compare the local/--server path with a TLS-protected channel. Pinned by a fixture-gated test proving diagnose --dot surfaces the DoT-resolved record and renders the diagnosis."
+    },
+    "CHG-002": {
+      "id": "CHG-002",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T10:33:19+00:00",
+      "updated_at": "2026-08-22T10:33:19+00:00",
+      "touched_round": 0,
+      "commit": "b0c5b8990a4a2e675f6558f4ecf3a9f1a5a65062",
+      "summary": "diagnose --dot <endpoint>: folds DoT answers into the diagnostic pipeline's DNS evidence + probed address pool (mirrors --doh). Fixture-gated test proves the DoT-resolved record appears in evidence and the diagnosis renders. 172 tests green, all gates clean. commit b0c5b89"
     }
   },
   "edges": [
@@ -825,6 +862,42 @@
       "to": "ISS-001",
       "type": "resolves",
       "created_at": "2026-08-22T10:29:01+00:00"
+    },
+    {
+      "from": "ISS-002",
+      "to": "COMP-diagnose",
+      "type": "located_in",
+      "created_at": "2026-08-22T10:32:59+00:00"
+    },
+    {
+      "from": "TASK-003",
+      "to": "ISS-002",
+      "type": "addresses",
+      "created_at": "2026-08-22T10:32:59+00:00"
+    },
+    {
+      "from": "TASK-003",
+      "to": "TASK-001",
+      "type": "depends_on",
+      "created_at": "2026-08-22T10:32:59+00:00"
+    },
+    {
+      "from": "DEC-007",
+      "to": "TASK-003",
+      "type": "governs",
+      "created_at": "2026-08-22T10:32:59+00:00"
+    },
+    {
+      "from": "CHG-002",
+      "to": "TASK-003",
+      "type": "implements",
+      "created_at": "2026-08-22T10:33:19+00:00"
+    },
+    {
+      "from": "CHG-002",
+      "to": "ISS-002",
+      "type": "resolves",
+      "created_at": "2026-08-22T10:33:20+00:00"
     }
   ]
 }
