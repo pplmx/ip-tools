@@ -180,6 +180,15 @@ is resolved and probed in turn. Human output labels each host block; `--json`
 emits a per-target array for more than one host; `--strict` aggregates failed
 probes across all targets.
 
+On a dual-stack host, `--ipv4` probes only the IPv4 addresses and `--ipv6` only
+the IPv6 addresses of each target (mutually exclusive). This avoids
+broken-family timeouts and lets you test one family in isolation — for example
+confirming whether IPv6 is actually up:
+
+```shell
+ip-tools probe example.com --count 20 --ipv6 --strict
+```
+
 Example output:
 
 ```

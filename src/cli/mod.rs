@@ -69,12 +69,12 @@ fn parser() -> ArgMatches {
         .subcommand(probe_command(
             "tcp",
             "test TCP connectivity to a host:port across its addresses",
-            &[strict_arg()],
+            &[strict_arg(), ipv4_arg(), ipv6_arg()],
         ))
         .subcommand(probe_command(
             "tls",
             "perform TLS handshake to a host:port across its addresses",
-            &[insecure_arg(), strict_arg(), sni_arg()],
+            &[insecure_arg(), strict_arg(), sni_arg(), ipv4_arg(), ipv6_arg()],
         ))
         .subcommand(probe_command(
             "http",
@@ -87,6 +87,8 @@ fn parser() -> ArgMatches {
                 path_arg(),
                 header_arg(),
                 body_arg(),
+                ipv4_arg(),
+                ipv6_arg(),
             ],
         ))
         .subcommand(probe_command(
@@ -103,6 +105,8 @@ fn parser() -> ArgMatches {
                 header_arg(),
                 body_arg(),
                 csv_arg(),
+                ipv4_arg(),
+                ipv6_arg(),
             ],
         ))
         .subcommand(probe_command(
@@ -116,6 +120,8 @@ fn parser() -> ArgMatches {
                 path_arg(),
                 header_arg(),
                 body_arg(),
+                ipv4_arg(),
+                ipv6_arg(),
             ],
         ))
         .subcommand(probe_command(
@@ -129,6 +135,8 @@ fn parser() -> ArgMatches {
                 path_arg(),
                 header_arg(),
                 body_arg(),
+                ipv4_arg(),
+                ipv6_arg(),
             ],
         ))
         .subcommand(
@@ -235,6 +243,24 @@ fn concurrency_arg() -> Arg {
         .value_parser(clap::value_parser!(usize))
         .default_value("32")
         .help("maximum number of parallel probes")
+}
+
+/// `--ipv4` argument: probe only the IPv4 addresses of each target.
+fn ipv4_arg() -> Arg {
+    Arg::new("ipv4")
+        .long("ipv4")
+        .action(ArgAction::SetTrue)
+        .conflicts_with("ipv6")
+        .help("probe only the IPv4 addresses of each target")
+}
+
+/// `--ipv6` argument: probe only the IPv6 addresses of each target.
+fn ipv6_arg() -> Arg {
+    Arg::new("ipv6")
+        .long("ipv6")
+        .action(ArgAction::SetTrue)
+        .conflicts_with("ipv4")
+        .help("probe only the IPv6 addresses of each target")
 }
 
 /// `--count` argument for repeated probing.
@@ -437,6 +463,10 @@ where
     let timeout_ms = *sub_m.get_one::<u64>("timeout").expect("timeout has default");
     let concurrency = *sub_m.get_one::<usize>("concurrency").expect("concurrency has default");
     let timeout = Duration::from_millis(timeout_ms);
+    // `--ipv4`/`--ipv6` restrict a sweep to one address family; with neither,
+    // every resolved address is probed (the default).
+    let ipv4_only = sub_m.get_flag("ipv4");
+    let ipv6_only = sub_m.get_flag("ipv6");
 
     let servers = match parse_custom_servers(sub_m) {
         Ok(v) => v,
@@ -480,6 +510,11 @@ where
         };
         let destinations: Vec<SocketAddr> = addresses
             .into_iter()
+            .filter(|ip| match (ipv4_only, ipv6_only) {
+                (true, _) => ip.is_ipv4(),
+                (_, true) => ip.is_ipv6(),
+                _ => true,
+            })
             .map(|ip| SocketAddr::new(ip, target.port))
             .collect();
         let host = sni.clone().unwrap_or_else(|| target.host.clone());

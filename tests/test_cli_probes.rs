@@ -497,6 +497,35 @@ fn tcp_cli_probes_bracketed_ipv6_literal() {
 }
 
 #[test]
+fn tcp_cli_ipv4_and_ipv6_filter_the_probed_family() {
+    // `--ipv4`/`--ipv6` restrict a sweep to one address family. Against the
+    // IPv4 loopback, `--ipv4` reaches the listener and `--ipv6` filters it to
+    // no addresses (exit 0, no probe output); passing both is a parse error.
+    let addr = local_tcp_listener();
+
+    let out = stdout(
+        &cmd()
+            .args(["tcp", &addr.to_string(), "--ipv4", "--timeout", "800"])
+            .assert()
+            .success(),
+    );
+    assert!(out.contains("PASS"), "--ipv4 should probe the v4 loopback: {out}");
+
+    let out = stdout(
+        &cmd()
+            .args(["tcp", &addr.to_string(), "--ipv6", "--timeout", "800"])
+            .assert()
+            .success(),
+    );
+    assert!(!out.contains("PASS"), "--ipv6 must filter out the IPv4 loopback: {out}");
+
+    cmd()
+        .args(["tcp", &addr.to_string(), "--ipv4", "--ipv6"])
+        .assert()
+        .failure();
+}
+
+#[test]
 fn strict_exits_nonzero_only_when_probe_fails() {
     // A failed probe is an observation: by default the CLI still exits 0...
     let closed = closed_loopback_port();
