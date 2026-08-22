@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-22T15:45:32+00:00",
+  "updated_at": "2026-08-22T15:50:37+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -1272,6 +1272,54 @@
       "touched_round": 0,
       "rationale": "converged-idle (2026-08-22): quality convergence and the feature-evolution backlog are both complete. 0 active task/issue nodes; the last core-feature milestone (TASK-021 dns --record-type, CHG-015) is resolved and verified (193 tests green, clippy/fmt/doc clean, api-baseline matches). Remaining candidate work is either already rejected (source-IP/interface binding = large blast radius; route multi-target = privileged, not deterministically testable; per-probe single-observation CSV = low value) or blocked by the environment (public-API-changing work needs cargo public-api, which does not run here without pinning RUSTUP_TOOLCHAIN=nightly). Per §10/§11.5 the loop parks rather than churning idle verification commits.",
       "alternatives_rejected": "source-IP/interface binding; route multi-target; tcp/tls/http single-observation CSV; inventing low-value option-patches to keep committing"
+    },
+    "DEC-021": {
+      "id": "DEC-021",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T15:47:25+00:00",
+      "updated_at": "2026-08-22T15:47:25+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-22): route --csv. diagnose, dns and probe already export CSV; route — the remaining per-target command — still emits only human text or JSON, so a hop-by-hop traceroute path (ttl, router hostname/address, RTT, loss) can not be loaded straight into a spreadsheet for path analysis / dashboards. Add --csv to route emitting one row per hop (ttl,hostname,addr,rtt_ms,lost; RFC 4180 quoting), mutually exclusive with --json/human. Hand-rolled, no new dependency, no public API change (CLI only).",
+      "alternatives_rejected": "route multi-target (privileged raw sockets, not deterministically testable); source-IP/interface binding (large blast radius); tcp/tls/http single-observation CSV (single row, low value)"
+    },
+    "TASK-022": {
+      "id": "TASK-022",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T15:47:31+00:00",
+      "updated_at": "2026-08-22T15:50:37+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.2,
+      "unlock_factor": 1,
+      "summary": "Add route --csv: a header + one row per hop (ttl,hostname,addr,rtt_ms,lost; RFC 4180 quoting for empty/lost fields), mutually exclusive with --json/human. No public API change. Pinned by a renderer unit test."
+    },
+    "ISS-015": {
+      "id": "ISS-015",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T15:47:31+00:00",
+      "updated_at": "2026-08-22T15:50:37+00:00",
+      "touched_round": 0,
+      "severity": "low",
+      "summary": "route emits only human text or JSON, so hop-by-hop traceroute path data (router addresses/RTT/loss) cannot be loaded into a spreadsheet for path analysis or dashboards."
+    },
+    "CHG-016": {
+      "id": "CHG-016",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T15:50:37+00:00",
+      "updated_at": "2026-08-22T15:50:37+00:00",
+      "touched_round": 0,
+      "commit": "024168313f03d83b29155d0af776257512cf26fa",
+      "summary": "route --csv emits a ttl,hostname,addr,rtt_ms,lost row per hop (lost hops empty hostname/addr/rtt with lost=1, RFC 4180 quoting); mutually exclusive with --json/human. Completes the CSV export pattern (diagnose/dns/probe already had it). Generalized the shared --csv help text. No public API change. Pinned by a renderer unit test. 195 tests green, clippy/fmt/doc clean, api-baseline unchanged."
     }
   },
   "edges": [
@@ -2072,6 +2120,36 @@
       "to": "ISS-014",
       "type": "resolves",
       "created_at": "2026-08-22T15:44:54+00:00"
+    },
+    {
+      "from": "DEC-021",
+      "to": "TASK-022",
+      "type": "governs",
+      "created_at": "2026-08-22T15:47:31+00:00"
+    },
+    {
+      "from": "ISS-015",
+      "to": "COMP-route",
+      "type": "located_in",
+      "created_at": "2026-08-22T15:47:31+00:00"
+    },
+    {
+      "from": "TASK-022",
+      "to": "ISS-015",
+      "type": "addresses",
+      "created_at": "2026-08-22T15:47:31+00:00"
+    },
+    {
+      "from": "CHG-016",
+      "to": "TASK-022",
+      "type": "implements",
+      "created_at": "2026-08-22T15:50:37+00:00"
+    },
+    {
+      "from": "CHG-016",
+      "to": "ISS-015",
+      "type": "resolves",
+      "created_at": "2026-08-22T15:50:37+00:00"
     }
   ]
 }
