@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-22T15:57:09+00:00",
+  "updated_at": "2026-08-22T16:03:14+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -1368,6 +1368,54 @@
       "touched_round": 0,
       "commit": "dce56483e5078254201cd43360112803afdfc9ef",
       "summary": "tcp/tls/http/http2/http3 gained --csv (run_probe_flow csv renderer, previously only probe): tcp rows (host,destination,success,latency_ms,failure), tls (+sni,version,cipher,alpn,subject,issuer,not_after_utc), http family (host,destination,protocol,status,location,body_bytes,ttfb_ms,latency_ms,failure). json/csv/human exclusive. Completes CSV export across every command. No public API change. Pinned: tcp --csv CLI test, http --csv fixture test, render_tls_csv unit test. 198 tests green, clippy/fmt/doc clean, api-baseline unchanged."
+    },
+    "DEC-023": {
+      "id": "DEC-023",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T15:58:48+00:00",
+      "updated_at": "2026-08-22T15:58:48+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-22): extend dns --record-type to CAA and SRV, building directly on the record-type infrastructure (DnsRecord model, hickory record_from_rdata, DoH/DoT wire parser, rendering, CSV) from CHG-015. CAA (RFC 8659) answers which certificate authorities may issue certs for a domain (cert-policy/security teams), and SRV (RFC 2782) answers service endpoints (SIP/XMPP/LDAP). No public API shape change beyond the already-generalized DnsRecord enum gaining two variants and DnsRecordType two more; regenerated api-baseline stays authored in-tree. Hand-rolled, no new dependency.",
+      "alternatives_rejected": "source-IP/interface binding (large blast radius across tcp/tls/quinn bind + hickory, not deterministically testable); route multi-target (privileged, not deterministically testable); PTR/other niche types (lower usage than CAA/SRV)"
+    },
+    "TASK-024": {
+      "id": "TASK-024",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T15:58:55+00:00",
+      "updated_at": "2026-08-22T16:03:14+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.3,
+      "unlock_factor": 1,
+      "summary": "Extend dns --record-type to CAA and SRV: add DnsRecordType::Caa/Srv, DnsRecord::Caa{flags,tag,value}/Srv{priority,weight,port,target} (Display/serialize), hickory record_from_rdata + DoH/DoT wire parser (CAA=257 flags/tag/len/value, SRV=33 priority/weight/port/name), rendering, CSV and parse_record_type. No new dependency. Pinned by wire-parser unit tests, record_from_rdata test, render test, and a --record-type CLI test."
+    },
+    "ISS-017": {
+      "id": "ISS-017",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T15:58:55+00:00",
+      "updated_at": "2026-08-22T16:03:14+00:00",
+      "touched_round": 0,
+      "severity": "low",
+      "summary": "dns cannot query CAA (which CAs may issue certs for a domain) or SRV (SIP/XMPP/LDAP service endpoints), so cert-policy and service-discovery lookups are not supported."
+    },
+    "CHG-018": {
+      "id": "CHG-018",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T16:03:14+00:00",
+      "updated_at": "2026-08-22T16:03:14+00:00",
+      "touched_round": 0,
+      "commit": "b62f943db779619aec59e7548e329c1a10ee5485",
+      "summary": "dns --record-type gains CAA (257) and SRV (33): DnsRecordType +Caa/Srv; DnsRecord +Caa{flags,tag,value}/Srv{priority,weight,port,target}; hickory record_from_rdata + DoH/DoT wire parser decode both (CAA flags/tag/len/value, SRV priority/weight/port/name); rendering and parse_record_type updated. Public API change, api-baseline regenerated; no new dependency. Pinned: wire-parser unit tests, render test, --record-type CLI acceptance. 200 tests green, clippy/fmt/doc clean."
     }
   },
   "edges": [
@@ -2228,6 +2276,36 @@
       "to": "ISS-016",
       "type": "resolves",
       "created_at": "2026-08-22T15:57:09+00:00"
+    },
+    {
+      "from": "DEC-023",
+      "to": "TASK-024",
+      "type": "governs",
+      "created_at": "2026-08-22T15:58:55+00:00"
+    },
+    {
+      "from": "TASK-024",
+      "to": "ISS-017",
+      "type": "addresses",
+      "created_at": "2026-08-22T15:58:55+00:00"
+    },
+    {
+      "from": "ISS-017",
+      "to": "COMP-dns",
+      "type": "located_in",
+      "created_at": "2026-08-22T15:58:55+00:00"
+    },
+    {
+      "from": "CHG-018",
+      "to": "TASK-024",
+      "type": "implements",
+      "created_at": "2026-08-22T16:03:14+00:00"
+    },
+    {
+      "from": "CHG-018",
+      "to": "ISS-017",
+      "type": "resolves",
+      "created_at": "2026-08-22T16:03:14+00:00"
     }
   ]
 }
