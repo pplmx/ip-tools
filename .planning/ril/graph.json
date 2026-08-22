@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-22T16:23:28+00:00",
+  "updated_at": "2026-08-22T16:29:08+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -1464,6 +1464,54 @@
       "touched_round": 0,
       "commit": "97309fd6eb1b7a8849df96d4fca957da5200bf8f",
       "summary": "CertificateSummary.sans: Vec<String> parsed from the peer cert SAN extension in tls::cert_summary via x509-parser (DNSName/email/URI/IPAddress as strings); rendered in the human TLS report (; sans: ...) and carried in JSON. Lets an operator see which hostnames/IPs a cert covers. Public API change, api-baseline regenerated; no new dependency. Pinned: fixture TLS test (SANs localhost,127.0.0.1 on self-signed cert) + render_cert unit test. 201 tests green, clippy/fmt/doc clean."
+    },
+    "DEC-025": {
+      "id": "DEC-025",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T16:25:16+00:00",
+      "updated_at": "2026-08-22T16:25:16+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-23): surface whether the served certificate covers the presented hostname/SNI. After CertificateSummary.sans (CHG-019) we know a certs SANs; a TLS diagnostics tool should also tell the operator whether the cert actually covers the name they connected with — especially under --insecure, where a wrong-host/wildcard/mismatched cert is otherwise silently accepted and the mismatch is invisible. Add a pure, RFC-6125-ish hostname matcher (IP SAN for IP-literal SNI; DNSName SAN case-insensitive with single-label *. wildcard) and render a covers {sni}: yes/no verdict in the TLS human report. Distinct from display-only SAN; contained, deterministically testable, no public API change (derived at render time).",
+      "alternatives_rejected": "source-IP/interface binding (large cross-cutting blast radius); TLS-version forcing (changes 12 public probe signatures, ~49 call sites); certificate chain depth (requires threading the full peer chain through the TLS observation model, larger)"
+    },
+    "TASK-026": {
+      "id": "TASK-026",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T16:25:24+00:00",
+      "updated_at": "2026-08-22T16:29:08+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.2,
+      "unlock_factor": 1,
+      "summary": "Add a pure hostname-coverage matcher (IP SAN for IP-literal SNI; DNSName SAN case-insensitive with single-label *. wildcard) and render a \"covers {sni}: yes/no\" verdict in the TLS human report using observation.sni vs CertificateSummary.sans. No public API change (derived at render time). Pinned by unit tests for the matcher (exact/case/1-label-wildcard/not-multi-level/not-apex/IP) and a render test (cover vs mismatch)."
+    },
+    "ISS-019": {
+      "id": "ISS-019",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T16:25:25+00:00",
+      "updated_at": "2026-08-22T16:29:08+00:00",
+      "touched_round": 0,
+      "severity": "low",
+      "summary": "The TLS report shows the certificate SANs but not whether the served cert actually covers the hostname/SNI presented, so a wrong-host or wildcard-mismatch (especially under --insecure) is not surfaced."
+    },
+    "CHG-020": {
+      "id": "CHG-020",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T16:29:08+00:00",
+      "updated_at": "2026-08-22T16:29:08+00:00",
+      "touched_round": 0,
+      "commit": "66c13af53c2d5bc68f153f52d627bd54123e4e5b",
+      "summary": "TLS human report now prints covers {sni}: yes/no — whether the served cert SANs cover the presented hostname (RFC 6125-ish: IP SAN for IP-literal SNI; case-insensitive DNS SAN with single-left-most-label *. wildcard). Surfaces wrong-host/wildcard mismatch even under --insecure. Derived at render time (obs.sni vs cert.sans); no public API change. Pinned: matcher unit tests (exact/case/one-label-wildcard/not-multi-level/not-apex/IP), render verdict test, fixture-lived assertion. 203 tests green, clippy/fmt/doc clean."
     }
   },
   "edges": [
@@ -2384,6 +2432,36 @@
       "to": "ISS-018",
       "type": "resolves",
       "created_at": "2026-08-22T16:23:28+00:00"
+    },
+    {
+      "from": "DEC-025",
+      "to": "TASK-026",
+      "type": "governs",
+      "created_at": "2026-08-22T16:25:25+00:00"
+    },
+    {
+      "from": "TASK-026",
+      "to": "ISS-019",
+      "type": "addresses",
+      "created_at": "2026-08-22T16:25:25+00:00"
+    },
+    {
+      "from": "ISS-019",
+      "to": "COMP-tls",
+      "type": "located_in",
+      "created_at": "2026-08-22T16:25:25+00:00"
+    },
+    {
+      "from": "CHG-020",
+      "to": "TASK-026",
+      "type": "implements",
+      "created_at": "2026-08-22T16:29:08+00:00"
+    },
+    {
+      "from": "CHG-020",
+      "to": "ISS-019",
+      "type": "resolves",
+      "created_at": "2026-08-22T16:29:08+00:00"
     }
   ]
 }
