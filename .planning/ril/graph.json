@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-22T13:22:24+00:00",
+  "updated_at": "2026-08-22T13:48:05+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -995,6 +995,54 @@
       "touched_round": 0,
       "commit": "2f06ae44b95ef0f93403719c41544fcfd6af4227",
       "summary": "diagnose --csv exports each host's verdicts as spreadsheet-friendly rows (host,severity,category,confidence,summary; RFC4180-style quoting), single and multi-target; csv/json/human mutually exclusive; hand-rolled, no new dependency. 1 fixture-gated CLI test. 184 tests green, all gates clean, coverage 93.31%. commit 2f06ae4"
+    },
+    "DEC-015": {
+      "id": "DEC-015",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T13:23:57+00:00",
+      "updated_at": "2026-08-22T13:23:57+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-22): --header @file and --header - (stdin). --body already reads from a file/stdin; --header only takes inline NAME:VALUE repeats, so endpoints needing many headers (auth + cookie + custom) must be shell-escaped inline and cannot be reused from a file. Extend the shared parse_custom_headers to expand '@file' (one NAME:VALUE per line) and '-' (stdin line-by-line) in each --header value, applied to http/http2/http3/probe/diagnose. Literal behavior unchanged; no new dependency. Document that '-' consumes all stdin (don't combine with --body -).",
+      "alternatives_rejected": "--interface/source-IP binding (touches tcp/tls/quinn bind paths + dns sockets, high blast radius, a partial version would be inconsistent); route multi-target (privileged raw sockets, hard to test deterministically); CSV for dns/probe (niche, less actionable than diagnosis CSV)"
+    },
+    "ISS-010": {
+      "id": "ISS-010",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T13:23:59+00:00",
+      "updated_at": "2026-08-22T13:48:05+00:00",
+      "touched_round": 0,
+      "summary": "--header only takes inline NAME:VALUE repeats, so a request needing many headers (auth + cookie + custom) must be shell-escaped inline; there is no way to read headers from a file or stdin for reuse/cleaner automation.",
+      "severity": "low"
+    },
+    "TASK-016": {
+      "id": "TASK-016",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T13:24:04+00:00",
+      "updated_at": "2026-08-22T13:48:05+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.35,
+      "unlock_factor": 1,
+      "summary": "Extend parse_custom_headers to expand '@file' (one NAME:VALUE per line) and '-' (stdin line-by-line) in each --header value, on http/http2/http3/probe/diagnose; literal NAME:VALUE unchanged; clear errors for bad lines/files. Unit tests + a fixture-gated CLI test proving a file's headers reach the server."
+    },
+    "CHG-010": {
+      "id": "CHG-010",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T13:48:05+00:00",
+      "updated_at": "2026-08-22T13:48:05+00:00",
+      "touched_round": 0,
+      "commit": "40ee1a6423fa48a7ed7f9bb044113113ef919366",
+      "summary": "--header @<file> reads NAME:VALUE lines from a file and --header - (stdin) reads them from stdin (inline NAME:VALUE unchanged) on http/http2/http3/probe/diagnose; bad file/stdin lines fail clearly. No public API change, no new dependency. 1 fixture-gated CLI test (@file + stdin each deliver the marker header, server answers 202). 185 tests green, all gates clean, coverage 93.24%. commit 40ee1a6"
     }
   },
   "edges": [
@@ -1639,6 +1687,36 @@
       "to": "ISS-009",
       "type": "resolves",
       "created_at": "2026-08-22T13:22:24+00:00"
+    },
+    {
+      "from": "ISS-010",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-22T13:24:08+00:00"
+    },
+    {
+      "from": "TASK-016",
+      "to": "ISS-010",
+      "type": "addresses",
+      "created_at": "2026-08-22T13:24:08+00:00"
+    },
+    {
+      "from": "DEC-015",
+      "to": "TASK-016",
+      "type": "governs",
+      "created_at": "2026-08-22T13:24:08+00:00"
+    },
+    {
+      "from": "CHG-010",
+      "to": "TASK-016",
+      "type": "implements",
+      "created_at": "2026-08-22T13:48:05+00:00"
+    },
+    {
+      "from": "CHG-010",
+      "to": "ISS-010",
+      "type": "resolves",
+      "created_at": "2026-08-22T13:48:05+00:00"
     }
   ]
 }
