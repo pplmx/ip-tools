@@ -4,7 +4,7 @@
 //! HTTP/3, via `quinn` and `h3`. Keeping this distinct from the TCP path makes
 //! `TCP/HTTPS PASS / QUIC/HTTP3 FAIL` (and the reverse) observable.
 
-use crate::http_common::MAX_BODY_BYTES;
+use crate::http_common::{collect_response_headers, MAX_BODY_BYTES};
 use crate::model::http::HttpObservation;
 use crate::model::tls::TlsObservation;
 use crate::model::{FailureKind, ProbeError};
@@ -219,6 +219,7 @@ async fn probe_impl(
         .get(hyper::header::LOCATION)
         .and_then(|v| v.to_str().ok())
         .map(str::to_string);
+    let headers = collect_response_headers(response.headers());
 
     // Read the (bounded) response body. `ended` distinguishes a body that
     // completed (end-of-stream reached, or the cap) from one that stalled:
@@ -249,6 +250,7 @@ async fn probe_impl(
         status: Some(status),
         protocol: Some("HTTP/3".to_string()),
         location,
+        headers,
         body_bytes: ended.then_some(bytes_read),
         latency_ms: Some(start.elapsed().as_millis() as u64),
         ..base

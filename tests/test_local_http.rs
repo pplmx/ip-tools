@@ -956,3 +956,69 @@ fn http_cli_rejects_malformed_header() {
         "the error must explain the expected form: {stderr}"
     );
 }
+
+#[test]
+fn http_probes_record_response_headers() {
+    // The fixture answers every ordinary route with a `server:
+    // ip-tools-fixture` header; the probes must record it (and the JSON must
+    // carry it) so server-software evidence survives in the observation.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let tcp = fixture.tcp_addr();
+
+    for protocol in ["http", "http2"] {
+        let out = Command::cargo_bin("ip-tools")
+            .expect("ip-tools binary")
+            .args([protocol, &tcp.to_string(), "--insecure", "--json", "--timeout", "2000"])
+            .output()
+            .expect("run with header recording");
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            out.status.success(),
+            "{protocol} should exit 0: {stdout}\n{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(
+            stdout.contains("\"server\""),
+            "{protocol} JSON must carry the response headers: {stdout}"
+        );
+        assert!(
+            stdout.contains("ip-tools-fixture"),
+            "{protocol} must record the server header value: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn http3_probe_records_response_headers() {
+    // The same header-recording guarantee on the QUIC path.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let udp = fixture.udp_addr();
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args(["http3", &udp.to_string(), "--insecure", "--json", "--timeout", "2000"])
+        .output()
+        .expect("run http3 with header recording");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "http3 should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.contains("\"server\""),
+        "http3 JSON must carry the response headers: {stdout}"
+    );
+    assert!(
+        stdout.contains("ip-tools-fixture"),
+        "http3 must record the server header value: {stdout}"
+    );
+}

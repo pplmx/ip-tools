@@ -224,6 +224,14 @@ every protocol — an `authorization`, `cookie`, or any header an endpoint
 requires to answer truthfully (the `user-agent`/`accept` defaults are always
 sent).
 
+The probes also record the **response headers** (bounded to the first 24):
+the `--json` observation carries every header, and the human report shows the
+diagnostic-relevant ones — server identity (`server`, `x-powered-by`,
+`x-served-by`), CDN/proxy evidence (`via`, `x-cache`, `x-cache-hits`,
+`cf-ray`, `cf-cache-status`, `age`, `alt-svc`), caching (`cache-control`,
+`expires`, `etag`, `last-modified`), and `set-cookie`/`content-type` — so
+*which* server or CDN actually answered is visible in both modes.
+
 Example output:
 
 ```

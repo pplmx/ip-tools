@@ -29,6 +29,11 @@ pub struct HttpObservation {
     pub status: Option<u16>,
     /// `Location` header (redirect target), when present.
     pub location: Option<String>,
+    /// Response headers (name → value) received, excluding the `Location`
+    /// header recorded separately. Bounded to the first 24 headers so a
+    /// hostile server cannot balloon the observation. Empty when no response
+    /// headers were seen.
+    pub headers: Vec<(String, String)>,
     /// Response body bytes read, capped at 1 MiB. `None` when headers were
     /// received but the body did not complete within the probe timeout (a
     /// stalled or truncated response), for every protocol.
@@ -52,6 +57,7 @@ impl HttpObservation {
             protocol: None,
             status: None,
             location: None,
+            headers: Vec::new(),
             body_bytes: None,
             latency_ms: None,
             failure: None,

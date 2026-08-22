@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-22T00:01:40+00:00",
+  "updated_at": "2026-08-22T00:11:28+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -325,6 +325,32 @@
       "touched_round": 0,
       "summary": "HTTP probes hard-coded user-agent/accept and allowed no request customization (no Authorization/cookie/etc.), so endpoints requiring a header could not be probed truthfully",
       "severity": "medium"
+    },
+    "TASK-http-headers": {
+      "id": "TASK-http-headers",
+      "type": "task",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T00:11:28+00:00",
+      "updated_at": "2026-08-22T00:11:28+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.75,
+      "confidence": 1.0,
+      "effort": 0.45,
+      "unlock_factor": 1.1,
+      "summary": "Capture and render HTTP response headers in http/http2/http3 observations: currently only status/protocol/location/body-size are recorded, so server-software/CDN/proxy evidence (Server, Via, Alt-Svc, Set-Cookie, cache-control, x-*) is invisible; add a bounded headers list to HttpObservation, render a curated set in report, JSON carries all"
+    },
+    "ISS-headers-not-observed": {
+      "id": "ISS-headers-not-observed",
+      "type": "issue",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T00:11:28+00:00",
+      "updated_at": "2026-08-22T00:11:28+00:00",
+      "touched_round": 0,
+      "summary": "The HTTP probes discard the response headers entirely; a user cannot see which server/CDN/proxy answered, how it caches, or what cookies/set-cookie were set — core evidence for network diagnosis (identifying a WAF, a CDN hit, a proxy hop)",
+      "severity": "medium"
     }
   },
   "edges": [
@@ -423,6 +449,24 @@
       "to": "ISS-headers-not-sendable",
       "type": "resolves",
       "created_at": "2026-08-22T00:01:40+00:00"
+    },
+    {
+      "from": "ISS-headers-not-observed",
+      "to": "COMP-http",
+      "type": "located_in",
+      "created_at": "2026-08-22T00:11:28+00:00"
+    },
+    {
+      "from": "TASK-http-headers",
+      "to": "ISS-headers-not-observed",
+      "type": "addresses",
+      "created_at": "2026-08-22T00:11:28+00:00"
+    },
+    {
+      "from": "DEC-005",
+      "to": "TASK-http-headers",
+      "type": "governs",
+      "created_at": "2026-08-22T00:11:28+00:00"
     }
   ]
 }

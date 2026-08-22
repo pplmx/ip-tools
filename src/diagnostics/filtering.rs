@@ -161,6 +161,7 @@ mod tests {
             protocol: Some(protocol.into()),
             status: failed.then_some(0).or(Some(200)),
             location: None,
+            headers: Vec::new(),
             body_bytes: None,
             latency_ms: Some(1),
             failure: failed.then(|| ProbeError {

@@ -100,6 +100,7 @@ pub struct ip_tools::model::http::HttpObservation
 pub ip_tools::model::http::HttpObservation::body_bytes: core::option::Option<u64>
 pub ip_tools::model::http::HttpObservation::destination: core::net::socket_addr::SocketAddr
 pub ip_tools::model::http::HttpObservation::failure: core::option::Option<ip_tools::model::ProbeError>
+pub ip_tools::model::http::HttpObservation::headers: alloc::vec::Vec<(alloc::string::String, alloc::string::String)>
 pub ip_tools::model::http::HttpObservation::host: alloc::string::String
 pub ip_tools::model::http::HttpObservation::latency_ms: core::option::Option<u64>
 pub ip_tools::model::http::HttpObservation::location: core::option::Option<alloc::string::String>
@@ -242,6 +243,7 @@ pub struct ip_tools::model::HttpObservation
 pub ip_tools::model::HttpObservation::body_bytes: core::option::Option<u64>
 pub ip_tools::model::HttpObservation::destination: core::net::socket_addr::SocketAddr
 pub ip_tools::model::HttpObservation::failure: core::option::Option<ip_tools::model::ProbeError>
+pub ip_tools::model::HttpObservation::headers: alloc::vec::Vec<(alloc::string::String, alloc::string::String)>
 pub ip_tools::model::HttpObservation::host: alloc::string::String
 pub ip_tools::model::HttpObservation::latency_ms: core::option::Option<u64>
 pub ip_tools::model::HttpObservation::location: core::option::Option<alloc::string::String>
@@ -426,6 +428,7 @@ pub struct ip_tools::HttpObservation
 pub ip_tools::HttpObservation::body_bytes: core::option::Option<u64>
 pub ip_tools::HttpObservation::destination: core::net::socket_addr::SocketAddr
 pub ip_tools::HttpObservation::failure: core::option::Option<ip_tools::model::ProbeError>
+pub ip_tools::HttpObservation::headers: alloc::vec::Vec<(alloc::string::String, alloc::string::String)>
 pub ip_tools::HttpObservation::host: alloc::string::String
 pub ip_tools::HttpObservation::latency_ms: core::option::Option<u64>
 pub ip_tools::HttpObservation::location: core::option::Option<alloc::string::String>

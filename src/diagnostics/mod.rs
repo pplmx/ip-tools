@@ -344,6 +344,7 @@ mod tests {
                 protocol: Some("HTTP/1.1".into()),
                 status: Some(200),
                 location: None,
+                headers: Vec::new(),
                 body_bytes: Some(100),
                 latency_ms: Some(30),
                 failure: None,
@@ -357,6 +358,7 @@ mod tests {
                 protocol: Some("HTTP/3".into()),
                 status: None,
                 location: None,
+                headers: Vec::new(),
                 body_bytes: None,
                 latency_ms: None,
                 failure: Some(ProbeError {
@@ -389,6 +391,7 @@ mod tests {
             protocol: Some("HTTP/1.1".into()),
             status: Some(200),
             location: None,
+            headers: Vec::new(),
             body_bytes: None, // headers received, body stalled
             latency_ms: Some(30),
             failure: None,

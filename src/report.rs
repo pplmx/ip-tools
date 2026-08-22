@@ -199,6 +199,32 @@ pub fn render_http(observations: &[HttpObservation]) -> String {
                 out.push_str(&format!("    ALPN: {alpn}\n"));
             }
         }
+        // Show the diagnostic-relevant response headers (server identity,
+        // CDN/proxy hops, caching, security markers). All headers are in the
+        // JSON; this is the curated terminal view.
+        for (name, value) in &obs.headers {
+            if matches!(
+                name.to_ascii_lowercase().as_str(),
+                "server"
+                    | "via"
+                    | "x-powered-by"
+                    | "x-served-by"
+                    | "x-cache"
+                    | "x-cache-hits"
+                    | "cf-ray"
+                    | "cf-cache-status"
+                    | "age"
+                    | "cache-control"
+                    | "expires"
+                    | "etag"
+                    | "last-modified"
+                    | "content-type"
+                    | "alt-svc"
+                    | "set-cookie"
+            ) {
+                out.push_str(&format!("    {name}: {value}\n"));
+            }
+        }
         if let Some(bytes) = obs.body_bytes {
             out.push_str(&format!("    body: {bytes} bytes\n"));
         } else if obs.status.is_some() {
@@ -483,6 +509,7 @@ mod tests {
             protocol: Some("HTTP/2".into()),
             status: Some(200),
             location: Some("https://example.com/login".into()),
+            headers: Vec::new(),
             body_bytes: Some(1234),
             latency_ms: Some(30),
             failure: None,
@@ -496,6 +523,7 @@ mod tests {
             protocol: Some("HTTP/2".into()),
             status: None,
             location: None,
+            headers: Vec::new(),
             body_bytes: None,
             latency_ms: None,
             failure: Some(ProbeError {
@@ -512,6 +540,7 @@ mod tests {
             protocol: None,
             status: None,
             location: None,
+            headers: Vec::new(),
             body_bytes: None,
             latency_ms: Some(1),
             failure: None,
@@ -527,6 +556,7 @@ mod tests {
             protocol: None,
             status: Some(301),
             location: None,
+            headers: Vec::new(),
             body_bytes: None,
             latency_ms: None,
             failure: None,

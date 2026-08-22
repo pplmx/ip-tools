@@ -5,7 +5,7 @@
 //! the HTTP/1.1 probe makes `HTTP/1.1 PASS / HTTP/2 FAIL` (and the reverse) a
 //! first-class, observable distinction.
 
-use crate::http_common::{build_tls_observation, http_error, MAX_BODY_BYTES};
+use crate::http_common::{build_tls_observation, collect_response_headers, http_error, MAX_BODY_BYTES};
 use crate::model::http::HttpObservation;
 use crate::model::{FailureKind, ProbeError};
 use std::net::SocketAddr;
@@ -164,6 +164,7 @@ async fn probe_impl(
         .get(hyper::header::LOCATION)
         .and_then(|v| v.to_str().ok())
         .map(str::to_string);
+    let headers = collect_response_headers(response.headers());
 
     // Drain the response body (bounded). `ended` distinguishes a body that
     // completed (end-of-stream reached, or the cap) from one that stalled:
@@ -196,6 +197,7 @@ async fn probe_impl(
         status: Some(status),
         protocol: Some("HTTP/2".to_string()),
         location,
+        headers,
         body_bytes: ended.then_some(bytes_read),
         latency_ms: Some(start.elapsed().as_millis() as u64),
         ..base

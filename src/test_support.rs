@@ -271,9 +271,16 @@ async fn run_tcp_server(listener: tokio::net::TcpListener, acceptor: tokio_rustl
                             .body(http_body_util::Full::new(bytes::Bytes::from_static(b"marker")).boxed())
                             .expect("static marker response"),
                     ),
-                    FixtureRoute::Normal => Ok::<_, std::convert::Infallible>(hyper::Response::new(
-                        http_body_util::Full::new(bytes::Bytes::from_static(b"ok")).boxed(),
-                    )),
+                    FixtureRoute::Normal => {
+                        // A `server` response header lets tests assert that
+                        // response headers are recorded on the wire.
+                        let response = hyper::Response::builder()
+                            .status(200)
+                            .header("server", "ip-tools-fixture")
+                            .body(http_body_util::Full::new(bytes::Bytes::from_static(b"ok")).boxed())
+                            .expect("static ok response");
+                        Ok::<_, std::convert::Infallible>(response)
+                    }
                 }
             });
             let result = if negotiated_h2 {
@@ -372,7 +379,13 @@ async fn serve_quic_connection(incoming: quinn::Incoming) {
                 std::future::pending::<()>().await;
             }
             FixtureRoute::Normal => {
-                let response = hyper::Response::builder().status(200).body(()).expect("status 200");
+                // A `server` response header lets tests assert that response
+                // headers are recorded on the QUIC path too.
+                let response = hyper::Response::builder()
+                    .status(200)
+                    .header("server", "ip-tools-fixture")
+                    .body(())
+                    .expect("status 200");
                 if stream.send_response(response).await.is_err() {
                     return;
                 }

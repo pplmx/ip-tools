@@ -5,7 +5,7 @@
 //! connection. Redirection is *not* followed by default: a redirect is
 //! recorded, not chased, so the raw server behaviour is visible.
 
-use crate::http_common::{build_tls_observation, http_error, MAX_BODY_BYTES};
+use crate::http_common::{build_tls_observation, collect_response_headers, http_error, MAX_BODY_BYTES};
 use crate::model::http::HttpObservation;
 use crate::model::{FailureKind, ProbeError};
 use http_body_util::{BodyExt, Empty};
@@ -171,6 +171,7 @@ async fn probe_impl(
         .get(hyper::header::LOCATION)
         .and_then(|v| v.to_str().ok())
         .map(str::to_string);
+    let headers = collect_response_headers(response.headers());
     let mut body = response.into_body();
     let mut bytes_read: u64 = 0;
     let mut ended = false;
@@ -199,6 +200,7 @@ async fn probe_impl(
         status: Some(status),
         protocol,
         location,
+        headers,
         body_bytes,
         latency_ms: Some(start.elapsed().as_millis() as u64),
         ..base

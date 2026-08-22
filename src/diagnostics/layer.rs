@@ -209,6 +209,7 @@ mod tests {
             protocol: Some(protocol.into()),
             status,
             location: None,
+            headers: Vec::new(),
             body_bytes: Some(status.map_or(0, |_| 100)),
             latency_ms: status.map(|_| 20),
             failure: failure.map(|m| ProbeError {
@@ -311,6 +312,7 @@ mod tests {
             protocol: Some("HTTP/3".into()),
             status: None,
             location: None,
+            headers: Vec::new(),
             body_bytes: None,
             latency_ms: None,
             failure: Some(ProbeError {
@@ -383,6 +385,7 @@ mod tests {
             protocol: Some(protocol.into()),
             status: None,
             location: None,
+            headers: Vec::new(),
             body_bytes: None,
             latency_ms: None,
             failure: Some(ProbeError {
@@ -498,6 +501,7 @@ mod tests {
             protocol: Some("HTTP/1.1".into()),
             status: Some(200),
             location: None,
+            headers: Vec::new(),
             body_bytes: None, // headers received, body never completed
             latency_ms: Some(30),
             failure: None,
