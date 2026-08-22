@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-22T01:43:07+00:00",
+  "updated_at": "2026-08-22T06:04:32+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -366,10 +366,10 @@
     "TASK-probe-dns": {
       "id": "TASK-probe-dns",
       "type": "task",
-      "status": "active",
-      "version": 2,
+      "status": "resolved",
+      "version": 3,
       "created_at": "2026-08-22T01:32:57+00:00",
-      "updated_at": "2026-08-22T01:43:07+00:00",
+      "updated_at": "2026-08-22T06:04:32+00:00",
       "touched_round": 0,
       "category": "core-feature",
       "severity": 0.75,
@@ -399,6 +399,17 @@
       "touched_round": 0,
       "rationale": "DNS-repeat lands on the dns subcommand (--count N), not probe --protocol dns: ProbeResult.destination is a SocketAddr and the diagnose engine joins repeated probes to addresses by destination, whereas DNS repeat is hostname-centric (per resolver + record type); shoehorning it into the address-sweep probe flow would mislabel rows or silently drop per-resolver detail",
       "alternatives_rejected": "probe --protocol dns (address-keyed ProbeResult does not fit hostname resolution); a separate repeat command (more CLI surface for the same capability)"
+    },
+    "CHG-dns-repeat": {
+      "id": "CHG-dns-repeat",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T06:04:32+00:00",
+      "updated_at": "2026-08-22T06:04:32+00:00",
+      "touched_round": 0,
+      "commit": "fa72849ff635687202b05a106ac01075a2a6c8bf",
+      "summary": "dns --count N aggregates per-resolver/per-record-type latency + failure stats via DnsClient::resolve_repeat / dns::aggregate_repeat / DnsRepeatResult; --doh looped; --count 1 default stays single-shot; fake-resolver unit test + 2 CLI tests; api-baseline regenerated"
     }
   },
   "edges": [
@@ -551,6 +562,18 @@
       "to": "DEC-005",
       "type": "supersedes",
       "created_at": "2026-08-22T01:43:07+00:00"
+    },
+    {
+      "from": "CHG-dns-repeat",
+      "to": "TASK-probe-dns",
+      "type": "implements",
+      "created_at": "2026-08-22T06:04:32+00:00"
+    },
+    {
+      "from": "CHG-dns-repeat",
+      "to": "ISS-dns-repeat-missing",
+      "type": "resolves",
+      "created_at": "2026-08-22T06:04:32+00:00"
     }
   ]
 }
