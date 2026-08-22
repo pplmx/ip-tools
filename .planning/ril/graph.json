@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-22T15:13:43+00:00",
+  "updated_at": "2026-08-22T15:22:18+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -222,10 +222,10 @@
     "ISS-sni-not-exposed": {
       "id": "ISS-sni-not-exposed",
       "type": "issue",
-      "status": "active",
-      "version": 1,
+      "status": "resolved",
+      "version": 2,
       "created_at": "2026-08-21T17:57:26+00:00",
-      "updated_at": "2026-08-21T17:57:26+00:00",
+      "updated_at": "2026-08-22T15:22:18+00:00",
       "touched_round": 0,
       "summary": "The CLI exposes no way to override SNI/Host: probing an IP literal (e.g. a CDN edge or --server result) always presents the literal as SNI, and --insecure is required even when the target IP belongs to a known hostname; the library (tls::probe(dest, sni, ...)) already separates destination from sni, so the gap is CLI-only",
       "severity": "medium"
@@ -270,10 +270,10 @@
     "ISS-path-hardcoded": {
       "id": "ISS-path-hardcoded",
       "type": "issue",
-      "status": "active",
-      "version": 1,
+      "status": "resolved",
+      "version": 2,
       "created_at": "2026-08-21T19:54:47+00:00",
-      "updated_at": "2026-08-21T19:54:47+00:00",
+      "updated_at": "2026-08-22T15:22:18+00:00",
       "touched_round": 0,
       "summary": "HTTP/1.1/2/3 probes always request \"/\", so a user cannot observe how a destination behaves for a specific resource (e.g. /healthz or a path behind a WAF); the method (--method) and hostname (--sni) are controllable but the path is not",
       "severity": "medium"
@@ -318,10 +318,10 @@
     "ISS-headers-not-sendable": {
       "id": "ISS-headers-not-sendable",
       "type": "issue",
-      "status": "active",
-      "version": 1,
+      "status": "resolved",
+      "version": 2,
       "created_at": "2026-08-22T00:01:40+00:00",
-      "updated_at": "2026-08-22T00:01:40+00:00",
+      "updated_at": "2026-08-22T15:22:18+00:00",
       "touched_round": 0,
       "summary": "HTTP probes hard-coded user-agent/accept and allowed no request customization (no Authorization/cookie/etc.), so endpoints requiring a header could not be probed truthfully",
       "severity": "medium"
@@ -344,10 +344,10 @@
     "ISS-headers-not-observed": {
       "id": "ISS-headers-not-observed",
       "type": "issue",
-      "status": "active",
-      "version": 1,
+      "status": "resolved",
+      "version": 2,
       "created_at": "2026-08-22T00:11:28+00:00",
-      "updated_at": "2026-08-22T00:11:28+00:00",
+      "updated_at": "2026-08-22T15:22:18+00:00",
       "touched_round": 0,
       "summary": "The HTTP probes discard the response headers entirely; a user cannot see which server/CDN/proxy answered, how it caches, or what cookies/set-cookie were set — core evidence for network diagnosis (identifying a WAF, a CDN hit, a proxy hop)",
       "severity": "medium"
@@ -381,10 +381,10 @@
     "ISS-dns-repeat-missing": {
       "id": "ISS-dns-repeat-missing",
       "type": "issue",
-      "status": "active",
-      "version": 1,
+      "status": "resolved",
+      "version": 2,
       "created_at": "2026-08-22T01:32:57+00:00",
-      "updated_at": "2026-08-22T01:32:57+00:00",
+      "updated_at": "2026-08-22T15:22:18+00:00",
       "touched_round": 0,
       "summary": "The probe command aggregates repeated latency/success/failure stats for tcp/tls/http/http2/http3 but not dns — the very first layer the tool measures and often the first to show flakiness or steering. A single dns run shows one-lookup latency; there is no way to see resolver stability over time (p50/p95/jitter of resolution, intermittent SERVFAIL/REFUSED)",
       "severity": "medium"
@@ -1187,6 +1187,69 @@
       "touched_round": 0,
       "commit": "01da33a5c78341977d31a219a8139eb88d652803",
       "summary": "probe --csv emits one row per (host,destination): attempts,success_rate,latency_p50/p95/max_ms,jitter_ms,failures from the --count aggregation, single and multi-target; json/csv/human mutually exclusive (csv wins). No public API change, no new dep. 1 fixture-gated CLI test (header + 3/3 success row). 187 tests green, clippy/fmt/doc clean."
+    },
+    "DEC-019": {
+      "id": "DEC-019",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T15:17:52+00:00",
+      "updated_at": "2026-08-22T15:17:52+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-22): address-family selection. The per-address probe commands (tcp/tls/http/http2/http3/probe) resolve each target and probe all of its addresses; a dual-stack host where one family is broken/unroutable forces timeouts and noise, and an operator often needs to test just IPv4 or just IPv6 (is v6 up? probe only v4 of a known-broken-v6 fleet). Add --ipv4/--ipv6 (mutually exclusive) to those commands, filtering resolved destinations by family in run_probe_flow. diagnose deliberately does NOT gain the filter: its address-family asymmetry diagnosis (connectivity.rs family_rules) depends on seeing both families. No public API change; CLI flags only.",
+      "alternatives_rejected": "extended DNS record types (CNAME/MX/TXT/NS/SOA) — high value but requires redesigning DnsObservation.records from Vec<IpAddr> to a richer DnsRecord model, a public API change rippling through dns.rs/model/report/CSV/diagnostics; park as a separate milestone; --interface/source-IP binding (large blast radius across tcp/tls/quinn bind + hickory); route multi-target (privileged raw sockets)"
+    },
+    "TASK-020": {
+      "id": "TASK-020",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T15:17:56+00:00",
+      "updated_at": "2026-08-22T15:21:51+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.25,
+      "unlock_factor": 1,
+      "summary": "Add --ipv4/--ipv6 (mutually exclusive) to tcp/tls/http/http2/http3/probe, filtering resolved destinations by address family in run_probe_flow (default probes all). Pinned by a CLI test: --ipv4 probes an IPv4-literal target and --ipv6 filters it to no addresses. No public API change."
+    },
+    "TASK-021": {
+      "id": "TASK-021",
+      "type": "task",
+      "status": "active",
+      "version": 2,
+      "created_at": "2026-08-22T15:18:00+00:00",
+      "updated_at": "2026-08-22T15:18:17+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.6,
+      "confidence": 1,
+      "effort": 0.6,
+      "unlock_factor": 1,
+      "summary": "Extend dns beyond A/AAAA to CNAME/MX/TXT/NS/SOA: redesign DnsObservation.records from Vec<IpAddr> to a richer DnsRecord (type + value, MX priority/name) so mail routing (MX), SPF/DKIM (TXT), CNAME/authority (NS/SOA) are inspectable; update report/dns CSV/diagnostics and regenerate api-baseline. Requires public API change; larger, separate milestone."
+    },
+    "ISS-014": {
+      "id": "ISS-014",
+      "type": "issue",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T15:18:17+00:00",
+      "updated_at": "2026-08-22T15:18:17+00:00",
+      "touched_round": 0,
+      "severity": "low",
+      "summary": "dns only queries A/AAAA; mail routing (MX), SPF/DKIM (TXT), aliasing (CNAME), and authority (NS/SOA) are not inspectable, so a DNS diagnostics tool cannot answer \"where does mail go?\" or \"does this SPF record exist?\"."
+    },
+    "CHG-014": {
+      "id": "CHG-014",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T15:21:48+00:00",
+      "updated_at": "2026-08-22T15:21:48+00:00",
+      "touched_round": 0,
+      "commit": "39b25034607f58f293c8c1885eb65e9591e00776",
+      "summary": "--ipv4/--ipv6 (mutually exclusive) on tcp/tls/http/http2/http3/probe filter each targets resolved destinations by family in run_probe_flow (default probes all). diagnose deliberately excluded so its family-asymmetry diagnosis sees both families. No public API change. 1 CLI test (ipv4 reaches v4 loopback, ipv6 filters it out, both is a parse error). 189 tests green, clippy/fmt/doc clean."
     }
   },
   "edges": [
@@ -1951,6 +2014,30 @@
       "to": "ISS-013",
       "type": "resolves",
       "created_at": "2026-08-22T15:13:43+00:00"
+    },
+    {
+      "from": "DEC-019",
+      "to": "TASK-020",
+      "type": "governs",
+      "created_at": "2026-08-22T15:18:00+00:00"
+    },
+    {
+      "from": "TASK-021",
+      "to": "ISS-014",
+      "type": "addresses",
+      "created_at": "2026-08-22T15:18:19+00:00"
+    },
+    {
+      "from": "ISS-014",
+      "to": "COMP-dns",
+      "type": "located_in",
+      "created_at": "2026-08-22T15:18:19+00:00"
+    },
+    {
+      "from": "CHG-014",
+      "to": "TASK-020",
+      "type": "implements",
+      "created_at": "2026-08-22T15:21:50+00:00"
     }
   ]
 }
