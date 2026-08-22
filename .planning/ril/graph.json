@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-22T11:30:59+00:00",
+  "updated_at": "2026-08-22T11:50:51+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -710,6 +710,69 @@
       "touched_round": 0,
       "commit": "4b2dcd8ce3cc3968b243c7fd88d1324484b8a0ad",
       "summary": "--body <TEXT> sends an HTTP request body verbatim on http/http2/http3/probe/diagnose (library body: Option<&[u8]> threaded through probe + *_repeat fns; content-length across h1 Full / h2 SendStream+trailers / h3 stream send_data+finish; diagnose collect_http_probes). Fixture echo.invalid echoes the body; library test proves h1/h2/h3 echo a --body marker, 2 CLI tests (http + diagnose) render it. 178 tests green, all gates clean, coverage 93.38%. commit 4b2dcd8"
+    },
+    "DEC-010": {
+      "id": "DEC-010",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T11:33:42+00:00",
+      "updated_at": "2026-08-22T11:33:42+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-22): batch/multi-target diagnosis. diagnose and the probes accept a single target, so an ops/health sweep over many hosts requires a shell loop — one process, one JSON corpus and a single aggregated --strict exit are unavailable. Extend diagnose to accept multiple positional targets, run the full probe+engine pipeline per host sequentially, render each host's evidence+verdicts, emit a JSON array for >1 host (single-host stays the existing object), and aggregate --strict across hosts. No new dependency; single-target output/behavior unchanged.",
+      "alternatives_rejected": "--interface source-IP binding (real but touches tcp/tls/http/quinn bind paths with higher blast radius); --body @file/stdin (small follow-up to --body, not a milestone); shell-level for-loop batching (no single JSON corpus or aggregated exit)"
+    },
+    "ISS-005": {
+      "id": "ISS-005",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T11:33:44+00:00",
+      "updated_at": "2026-08-22T11:50:51+00:00",
+      "touched_round": 0,
+      "summary": "diagnose and the probe commands accept a single target, so there is no way to run a fleet/health sweep over many hosts in one invocation: an operator must shell-loop, cannot get a single JSON corpus or one aggregated --strict exit status.",
+      "severity": "medium"
+    },
+    "TASK-008": {
+      "id": "TASK-008",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T11:33:49+00:00",
+      "updated_at": "2026-08-22T11:50:51+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.8,
+      "confidence": 1,
+      "effort": 0.6,
+      "unlock_factor": 1,
+      "summary": "Refactor diagnose into a per-target pipeline (probe+engine -> DiagnoseReport) and make the subcommand accept multiple positional targets: run each host sequentially, render every host's DNS/TCP/TLS/HTTP/repeat evidence + verdicts, emit a JSON array for >1 host (single-host stays the object), and aggregate --strict across hosts. Unresolvable hosts print their own error and fail the run."
+    },
+    "TASK-009": {
+      "id": "TASK-009",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-22T11:33:51+00:00",
+      "updated_at": "2026-08-22T11:50:51+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.7,
+      "confidence": 1,
+      "effort": 0.3,
+      "unlock_factor": 1,
+      "summary": "Tests + docs: a CLI test running diagnose on two targets (fixture + a non-resolving host) proving both render and the JSON array / aggregated --strict behave; README/CHANGELOG updates for multi-target diagnose."
+    },
+    "CHG-005": {
+      "id": "CHG-005",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-22T11:50:51+00:00",
+      "updated_at": "2026-08-22T11:50:51+00:00",
+      "touched_round": 0,
+      "commit": "af58b14c9cef6179015f5a19ab04feb1a8893663",
+      "summary": "diagnose accepts multiple positional targets (fleet/health sweep): each host runs the full probe+engine pipeline sequentially (extracted into diagnose_one); human output renders every host; >1 target emits a JSON array (single stays object); --strict aggregates across hosts; unresolved hosts print their own error and fail the run. No public API change. 2 fixture-gated CLI tests (array + strict). 180 tests green, all gates clean, coverage 93.39%. commit af58b14"
     }
   },
   "edges": [
@@ -1132,6 +1195,60 @@
       "to": "ISS-004",
       "type": "resolves",
       "created_at": "2026-08-22T11:30:59+00:00"
+    },
+    {
+      "from": "ISS-005",
+      "to": "COMP-diagnose",
+      "type": "located_in",
+      "created_at": "2026-08-22T11:33:55+00:00"
+    },
+    {
+      "from": "TASK-008",
+      "to": "ISS-005",
+      "type": "addresses",
+      "created_at": "2026-08-22T11:33:55+00:00"
+    },
+    {
+      "from": "TASK-009",
+      "to": "ISS-005",
+      "type": "addresses",
+      "created_at": "2026-08-22T11:33:55+00:00"
+    },
+    {
+      "from": "TASK-009",
+      "to": "TASK-008",
+      "type": "depends_on",
+      "created_at": "2026-08-22T11:33:55+00:00"
+    },
+    {
+      "from": "DEC-010",
+      "to": "TASK-008",
+      "type": "governs",
+      "created_at": "2026-08-22T11:33:55+00:00"
+    },
+    {
+      "from": "DEC-010",
+      "to": "TASK-009",
+      "type": "governs",
+      "created_at": "2026-08-22T11:33:55+00:00"
+    },
+    {
+      "from": "CHG-005",
+      "to": "TASK-008",
+      "type": "implements",
+      "created_at": "2026-08-22T11:50:51+00:00"
+    },
+    {
+      "from": "CHG-005",
+      "to": "TASK-009",
+      "type": "implements",
+      "created_at": "2026-08-22T11:50:51+00:00"
+    },
+    {
+      "from": "CHG-005",
+      "to": "ISS-005",
+      "type": "resolves",
+      "created_at": "2026-08-22T11:50:51+00:00"
     }
   ]
 }
