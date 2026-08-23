@@ -1126,6 +1126,46 @@ fn diagnose_cli_includes_doh_resolver_evidence() {
 }
 
 #[test]
+fn diagnose_cli_tls_version_forces_protocol() {
+    // `diagnose --tls-version 1.3` scopes the whole pipeline (TLS + http1 +
+    // http2 phases) to a forced protocol version against the local fixture —
+    // proving the flag threads through the full diagnostic pipeline. (http3
+    // is QUIC/TLS 1.3 only and deliberately unaffected.)
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let addr = fixture.tcp_addr().to_string();
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "diagnose",
+            &addr,
+            "--insecure",
+            "--tls-version",
+            "1.3",
+            "--timeout",
+            "2000",
+        ])
+        .output()
+        .expect("run diagnose --tls-version 1.3");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "diagnose --tls-version 1.3 should exit 0: {stdout}
+{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.contains("TLSv1.3"),
+        "expected a forced TLSv1.3 row in the diagnose output: {stdout}"
+    );
+    assert!(stdout.contains("HTTPS"), "HTTP evidence missing: {stdout}");
+}
+
+#[test]
 fn diagnose_cli_includes_dot_resolver_evidence() {
     // `diagnose --dot` must fold the DoT answers into the DNS observations
     // (visible in the evidence stack) and probe the DoT-resolved address.

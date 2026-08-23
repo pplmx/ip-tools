@@ -32,6 +32,7 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
     let json = sub_m.get_flag("json");
     let csv = sub_m.get_flag("csv");
     let insecure = sub_m.get_flag("insecure");
+    let tls_protocol = super::parse_tls_protocol(sub_m);
     let timeout_ms = *sub_m.get_one::<u64>("timeout").expect("timeout has default");
     let concurrency = *sub_m.get_one::<usize>("concurrency").expect("concurrency has default");
     let timeout = Duration::from_millis(timeout_ms);
@@ -107,6 +108,7 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
             timeout,
             concurrency,
             insecure,
+            tls_protocol,
         )
         .await
         {
@@ -170,6 +172,7 @@ async fn diagnose_one(
     timeout: Duration,
     concurrency: usize,
     insecure: bool,
+    tls_protocol: ip_tools::tls::TlsProtocol,
 ) -> Option<DiagnoseReport> {
     // Resolve once: the DNS observations and the probed addresses come from
     // the same lookups. Custom `--server`/`--doh`/`--dot` resolvers are
@@ -229,11 +232,12 @@ async fn diagnose_one(
     let sni = presented.to_string();
     let tls_obs: Vec<TlsObservation> = parallel_map(destinations.clone(), concurrency, move |d| {
         let sni = sni.clone();
+        let tls_protocol = tls_protocol;
         async move {
             if insecure {
-                ip_tls::probe_insecure(d, &sni, timeout).await
+                ip_tls::probe_insecure_with_version(d, &sni, timeout, tls_protocol).await
             } else {
-                ip_tls::probe(d, &sni, timeout).await
+                ip_tls::probe_with_version(d, &sni, timeout, tls_protocol).await
             }
         }
     })
@@ -249,6 +253,7 @@ async fn diagnose_one(
         concurrency,
         timeout,
         insecure,
+        tls_protocol,
     )
     .await;
 
@@ -342,6 +347,7 @@ fn render_csv(reports: &[DiagnoseReport]) -> String {
 // The request shape (host/method/path/headers) mirrors the underlying probes;
 // the arity is a deliberate, readable signature rather than a hidden struct.
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_lines)] // sequential per-protocol parallel probes are clearer inline
 async fn collect_http_probes(
     destinations: Vec<SocketAddr>,
     host: &str,
@@ -352,6 +358,7 @@ async fn collect_http_probes(
     concurrency: usize,
     timeout: Duration,
     insecure: bool,
+    tls_protocol: ip_tools::tls::TlsProtocol,
 ) -> Vec<HttpObservation> {
     // Each `parallel_map` closure is `move` and spawns `'static` futures, so
     // every captured value (host, method, path, headers) must be an owned
@@ -377,9 +384,29 @@ async fn collect_http_probes(
         async move {
             let header_refs: Vec<(&str, &str)> = headers.iter().map(|(n, v)| (n.as_str(), v.as_str())).collect();
             if insecure {
-                ip_http::probe_insecure(d, &host, &method, &path, &header_refs, body.as_deref(), timeout).await
+                ip_http::probe_insecure_with_version(
+                    d,
+                    &host,
+                    &method,
+                    &path,
+                    &header_refs,
+                    body.as_deref(),
+                    timeout,
+                    tls_protocol,
+                )
+                .await
             } else {
-                ip_http::probe(d, &host, &method, &path, &header_refs, body.as_deref(), timeout).await
+                ip_http::probe_with_version(
+                    d,
+                    &host,
+                    &method,
+                    &path,
+                    &header_refs,
+                    body.as_deref(),
+                    timeout,
+                    tls_protocol,
+                )
+                .await
             }
         }
     })
@@ -396,9 +423,29 @@ async fn collect_http_probes(
         async move {
             let header_refs: Vec<(&str, &str)> = headers.iter().map(|(n, v)| (n.as_str(), v.as_str())).collect();
             if insecure {
-                ip_http2::probe_insecure(d, &host, &method, &path, &header_refs, body.as_deref(), timeout).await
+                ip_http2::probe_insecure_with_version(
+                    d,
+                    &host,
+                    &method,
+                    &path,
+                    &header_refs,
+                    body.as_deref(),
+                    timeout,
+                    tls_protocol,
+                )
+                .await
             } else {
-                ip_http2::probe(d, &host, &method, &path, &header_refs, body.as_deref(), timeout).await
+                ip_http2::probe_with_version(
+                    d,
+                    &host,
+                    &method,
+                    &path,
+                    &header_refs,
+                    body.as_deref(),
+                    timeout,
+                    tls_protocol,
+                )
+                .await
             }
         }
     })
