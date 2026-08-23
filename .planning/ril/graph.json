@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-23T01:30:08+00:00",
+  "updated_at": "2026-08-23T01:35:24+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -2162,6 +2162,54 @@
       "touched_round": 0,
       "commit": "0c7a8c1d0ddf3e1e3d46cba83cf85c511d2abcf2",
       "summary": "HTTP human report now shows cert row + covers verdict via shared render_cert/cert_covers_hostname; renderer-only, no API change; unit + fixture tests."
+    },
+    "ISS-033": {
+      "id": "ISS-033",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T01:32:22+00:00",
+      "updated_at": "2026-08-23T01:35:24+00:00",
+      "touched_round": 0,
+      "severity": "low",
+      "summary": "The dns subcommand runs its multi-target DNS health sweep strictly sequentially (for target in targets { dns_compute }), so a sweep across many hosts/resolvers is serialized by the slowest resolver — while the per-address probe commands (tcp/tls/http/...) already bound their fleet sweeps with --concurrency. There is no way to parallelize a DNS health sweep."
+    },
+    "TASK-041": {
+      "id": "TASK-041",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T01:32:22+00:00",
+      "updated_at": "2026-08-23T01:35:24+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.25,
+      "unlock_factor": 1,
+      "summary": "Add dns --concurrency N (default 1, keeping current sequential behavior) to parallelize the multi-target DNS health sweep via the shared parallel_map helper, then re-sort outputs back to input-target order so human/JSON/CSV rendering stays deterministic. Pinned by a CLI test that multi-target dns still works with --concurrency and clamps invalid values."
+    },
+    "DEC-040": {
+      "id": "DEC-040",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T01:32:22+00:00",
+      "updated_at": "2026-08-23T01:32:22+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-23): dns --concurrency to parallelize multi-target DNS health sweeps. dns runs targets sequentially while the probe commands already bound fleet sweeps with --concurrency, so a large DNS sweep is serialized by the slowest resolver. Add --concurrency (default 1 preserves today's exact output order and semantics) via the shared parallel_map helper, re-sorting outputs by input order so rendering stays deterministic. No public API change.",
+      "alternatives_rejected": "always-parallel (changes default output/semantics); no flag (leaves DNS sweeps serialized); parallelizing resolvers within a single host before targets (bigger, address-target parallel is the sweep-level win)."
+    },
+    "CHG-034": {
+      "id": "CHG-034",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T01:35:24+00:00",
+      "updated_at": "2026-08-23T01:35:24+00:00",
+      "touched_round": 0,
+      "commit": "0a3869e332d28f59355c963df4b5fa478a3bc7d9",
+      "summary": "Added dns --concurrency N (default 1) to parallelize multi-target DNS health sweeps via parallel_map, re-sorting outputs to input order; no API change; CLI test."
     }
   },
   "edges": [
@@ -3598,6 +3646,42 @@
       "to": "ISS-032",
       "type": "resolves",
       "created_at": "2026-08-23T01:30:08+00:00"
+    },
+    {
+      "from": "DEC-040",
+      "to": "TASK-041",
+      "type": "governs",
+      "created_at": "2026-08-23T01:32:22+00:00"
+    },
+    {
+      "from": "DEC-040",
+      "to": "DEC-039",
+      "type": "supersedes",
+      "created_at": "2026-08-23T01:32:22+00:00"
+    },
+    {
+      "from": "TASK-041",
+      "to": "ISS-033",
+      "type": "addresses",
+      "created_at": "2026-08-23T01:32:22+00:00"
+    },
+    {
+      "from": "ISS-033",
+      "to": "COMP-dns",
+      "type": "located_in",
+      "created_at": "2026-08-23T01:32:22+00:00"
+    },
+    {
+      "from": "CHG-034",
+      "to": "TASK-041",
+      "type": "implements",
+      "created_at": "2026-08-23T01:35:24+00:00"
+    },
+    {
+      "from": "CHG-034",
+      "to": "ISS-033",
+      "type": "resolves",
+      "created_at": "2026-08-23T01:35:24+00:00"
     }
   ]
 }
