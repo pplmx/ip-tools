@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-23T00:35:29+00:00",
+  "updated_at": "2026-08-23T00:46:38+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -1826,6 +1826,54 @@
       "touched_round": 0,
       "rationale": "Reject the --output-body follow-on for the repeat probe and diagnose (supersedes TASK-033). The repeat probe aggregates N attempts into latency stats and diagnose runs HTTP/1.1+2+3 across every resolved address, so there is no single response body to persist — a single output file cannot represent N attempts or a 3-protocol multi-address sweep unambiguously (last-writer-wins would be misleading). The single-shot http/http2/http3 --output-body slice (CHG-026) already covers the full-body-inspection use case cleanly; repeat/diagnose remain latency/aggregate commands where a body dump has no clear meaning.",
       "alternatives_rejected": "writing only the last attempt/address body (arbitrary and confusing, not a real user need); lowering to a snippet-cap flag (out of scope, snippet already surfaced); requiring a directory of per-protocol files (scope creep, unclear naming))."
+    },
+    "ISS-026": {
+      "id": "ISS-026",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T00:38:35+00:00",
+      "updated_at": "2026-08-23T00:46:38+00:00",
+      "touched_round": 0,
+      "severity": "low",
+      "summary": "The per-address probe commands (tcp/tls/http/http2/http3/probe) resolve targets only via the system resolver and --server; --doh/--dot (encrypted-resolver resolution) are available on dns and diagnose but not on the probe commands, so an operator cannot probe through a tamper-resistant encrypted resolver even though diagnose already threads them through."
+    },
+    "TASK-034": {
+      "id": "TASK-034",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T00:38:35+00:00",
+      "updated_at": "2026-08-23T00:46:38+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.3,
+      "unlock_factor": 1,
+      "summary": "Extend --doh/--dot to the per-address probe commands via resolve_for_tcp_servers: thread optional DoH/DoT endpoints (and the --insecure flag for their TLS) into resolution, query each for A+AAAA, and include the addresses so tcp/tls/http/http2/http3/probe can probe through an encrypted resolver like diagnose does."
+    },
+    "DEC-033": {
+      "id": "DEC-033",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T00:38:36+00:00",
+      "updated_at": "2026-08-23T00:38:36+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-23): --doh/--dot on the per-address probe commands. dns and diagnose already resolve through DNS-over-HTTPS/TLS; the probe commands (tcp/tls/http/http2/http3/probe) only use system+--server. Threading the encrypted-resolver endpoints into the shared resolve_for_tcp_servers lets an operator probe through a tamper-resistant channel (steering detection parity with diagnose). No public API change (CLI + resolution only).",
+      "alternatives_rejected": "only diagnosing through DoH/DoT (already exists, leaves the probe commands without it); a separate dns-into-atom subcommand (redundant with --server/--doh threading); making every probe open a DoH endpoint per address (not needed — resolve once per target)."
+    },
+    "CHG-027": {
+      "id": "CHG-027",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T00:46:38+00:00",
+      "updated_at": "2026-08-23T00:46:38+00:00",
+      "touched_round": 0,
+      "commit": "ce4973288d5c7f3453087e72eb051edf5885d7e0",
+      "summary": "Extended --doh/--dot encrypted-resolver resolution to the per-address probe commands (tcp/tls/http/http2/http3/probe): doh/dot endpoint lists + insecure threaded through resolve_for_tcp_servers and run_probe_flow; --doh/--dot added to every probe subcommand; no API change."
     }
   },
   "edges": [
@@ -3010,6 +3058,42 @@
       "to": "TASK-033",
       "type": "governs",
       "created_at": "2026-08-23T00:35:29+00:00"
+    },
+    {
+      "from": "DEC-033",
+      "to": "TASK-034",
+      "type": "governs",
+      "created_at": "2026-08-23T00:38:36+00:00"
+    },
+    {
+      "from": "DEC-033",
+      "to": "DEC-032",
+      "type": "supersedes",
+      "created_at": "2026-08-23T00:38:36+00:00"
+    },
+    {
+      "from": "TASK-034",
+      "to": "ISS-026",
+      "type": "addresses",
+      "created_at": "2026-08-23T00:38:36+00:00"
+    },
+    {
+      "from": "ISS-026",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-23T00:38:36+00:00"
+    },
+    {
+      "from": "CHG-027",
+      "to": "TASK-034",
+      "type": "implements",
+      "created_at": "2026-08-23T00:46:38+00:00"
+    },
+    {
+      "from": "CHG-027",
+      "to": "ISS-026",
+      "type": "resolves",
+      "created_at": "2026-08-23T00:46:38+00:00"
     }
   ]
 }
