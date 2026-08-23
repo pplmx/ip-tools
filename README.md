@@ -653,6 +653,11 @@ performs no network I/O.
   diagnosis** (Medium for expired, Low for expiring within 30 days) — so a
   scripted/CI `diagnose --strict` run surfaces a certificate that will break
   the service, not just an annotation in the rendered TLS row.
+- A **certificate whose SANs do not cover the presented hostname** (wrong-host
+  cert, wildcard/apex mismatch, or no SANs) is also reported as a `Certificate`
+  diagnosis (Medium) — this is what catches a mismatch under `--insecure`,
+  where chain validation is skipped and the `covers <sni>: no` row would
+  otherwise be the only visible signal.
 
 **`ip-tools` does not claim a network failure is censorship merely because a
 connection fails.** Many mundane explanations (CDN node failure, routing

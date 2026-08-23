@@ -175,7 +175,7 @@ pub fn render_tls(observations: &[TlsObservation]) -> String {
 /// `IPAddress` SAN exactly, and a DNS `SNI` matches a `DNSName` SAN
 /// case-insensitively, where a leading `*.` wildcard matches only a single
 /// left-most label.
-fn cert_covers_hostname(sni: &str, sans: &[String]) -> bool {
+pub(crate) fn cert_covers_hostname(sni: &str, sans: &[String]) -> bool {
     if let Ok(ip) = sni.parse::<std::net::IpAddr>() {
         return sans.iter().any(|san| san.parse::<std::net::IpAddr>().ok() == Some(ip));
     }

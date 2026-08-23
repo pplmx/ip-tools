@@ -49,6 +49,7 @@ pub fn diagnose(input: &DiagnosticInput) -> Vec<Diagnosis> {
     connectivity::family_rules(input, &mut out);
     layer::tls_layer_rules(input, &mut out);
     layer::certificate_lifetime_rules(input, &mut out);
+    layer::certificate_coverage_rules(input, &mut out);
     layer::http_layer_rules(input, &mut out);
     layer::truncated_body_rules(input, &mut out);
     layer::quic_rules(input, &mut out);

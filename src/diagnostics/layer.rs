@@ -229,6 +229,58 @@ pub(super) fn certificate_lifetime_rules(input: &DiagnosticInput, out: &mut Vec<
     }
 }
 
+/// Automated certificate hostname-coverage diagnosis: a serving certificate
+/// whose SANs do not cover the SNI the client presented (a wrong-host cert, or
+/// a wildcard/exact mismatch) is a real misconfiguration — especially under
+/// `--insecure`, where chain validation is skipped and the mismatch would
+/// otherwise be silent. Reuses the report's matcher so `diagnose` and the
+/// human `covers <sni>: yes/no` row always agree.
+pub(super) fn certificate_coverage_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosis>) {
+    for t in input.tls {
+        let Some(cert) = t.certificate.as_ref() else { continue };
+        // A certificate with no SAN data cannot be matched; treat as not
+        // covered (it would not validate for the host anyway).
+        if cert.sans.is_empty() {
+            out.push(Diagnosis {
+                severity: Severity::Medium,
+                category: DiagnosticCategory::Certificate,
+                confidence: Confidence::Medium,
+                summary: format!(
+                    "Certificate for {} has no Subject Alternative Names (subject {})",
+                    t.sni, cert.subject
+                ),
+                evidence: vec![Evidence {
+                    detail: "the served certificate lists no SANs to match the presented hostname".into(),
+                }],
+                possible_causes: vec![
+                    "mis-issued certificate without SANs (needs SANs for modern validation)".into(),
+                    "server is presenting the wrong leaf certificate".into(),
+                ],
+            });
+            continue;
+        }
+        if !crate::report::cert_covers_hostname(&t.sni, &cert.sans) {
+            out.push(Diagnosis {
+                severity: Severity::Medium,
+                category: DiagnosticCategory::Certificate,
+                confidence: Confidence::Medium,
+                summary: format!(
+                    "Certificate for {} does not cover the presented hostname (subject {})",
+                    t.sni, cert.subject
+                ),
+                evidence: vec![Evidence {
+                    detail: format!("SANs {} do not match presented SNI {}", cert.sans.join(", "), t.sni),
+                }],
+                possible_causes: vec![
+                    "wrong-host or shared-host certificate presented".into(),
+                    "wildcard/exact SAN mismatch for the requested hostname".into(),
+                    "connection is to an IP that the certificate does not cover".into(),
+                ],
+            });
+        }
+    }
+}
+
 /// Summarize the classified failure counts of a probe result.
 fn failure_summary_opt(p: &ProbeResult) -> String {
     if p.failure_counts.is_empty() {
@@ -705,5 +757,76 @@ mod tests {
         let mut out = Vec::new();
         certificate_lifetime_rules(&input(&far, &[], &[]), &mut out);
         assert!(out.is_empty(), "far expiry must not raise a verdict: {out:?}");
+    }
+
+    #[test]
+    fn certificate_coverage_raises_wrong_host_wildcard_and_ip_mismatch() {
+        // A cert whose SANs do not cover the presented SNI must raise a
+        // Certificate diagnosis (the coverage check is separate from expiry,
+        // which the lifetime rule owns).
+        let cert_with_sans = |sans: Vec<String>| TlsObservation {
+            destination: "1.1.1.1:443".parse().unwrap(),
+            sni: "example.com".into(),
+            success: true,
+            version: Some("TLSv1.3".into()),
+            cipher: Some("AES_256_GCM".into()),
+            alpn: Some("h2".into()),
+            certificate: Some(crate::model::CertificateSummary {
+                subject: "CN=other.invalid".into(),
+                issuer: "CN=CA".into(),
+                not_before_utc: None,
+                not_after_utc: Some(crate::report::rfc3339_days_from_now(400)),
+                sans,
+            }),
+            latency_ms: Some(7),
+            failure: None,
+        };
+
+        // Exact hostname mismatch -> raises.
+        let mut out = Vec::new();
+        certificate_coverage_rules(
+            &input(&[cert_with_sans(vec!["other.invalid".into()])], &[], &[]),
+            &mut out,
+        );
+        let d = out
+            .iter()
+            .find(|d| d.category == DiagnosticCategory::Certificate)
+            .expect("wrong-host verdict");
+        assert_eq!(d.severity, Severity::Medium);
+        assert!(d.summary.contains("does not cover"), "summary: {}", d.summary);
+
+        // Wildcard for the wrong apex -> raises.
+        let mut out = Vec::new();
+        certificate_coverage_rules(
+            &input(&[cert_with_sans(vec!["*.other.invalid".into()])], &[], &[]),
+            &mut out,
+        );
+        assert!(
+            out.iter().any(|d| d.category == DiagnosticCategory::Certificate),
+            "wrong-apex wildcard mismatch must raise: {out:?}"
+        );
+
+        // A cert that DOES cover the hostname must not raise.
+        let mut out = Vec::new();
+        certificate_coverage_rules(
+            &input(
+                &[cert_with_sans(vec!["example.com".into(), "*.example.com".into()])],
+                &[],
+                &[],
+            ),
+            &mut out,
+        );
+        assert!(
+            out.iter().all(|d| d.category != DiagnosticCategory::Certificate),
+            "covering cert must not raise: {out:?}"
+        );
+
+        // Empty SANs (no data to match) -> raises.
+        let mut out = Vec::new();
+        certificate_coverage_rules(&input(&[cert_with_sans(Vec::new())], &[], &[]), &mut out);
+        assert!(
+            out.iter().any(|d| d.category == DiagnosticCategory::Certificate),
+            "cert with no SANs must be flagged: {out:?}"
+        );
     }
 }
