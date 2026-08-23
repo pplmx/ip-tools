@@ -105,6 +105,7 @@ pub ip_tools::model::dns::DnsRecord::Mx
 pub ip_tools::model::dns::DnsRecord::Mx::exchange: alloc::string::String
 pub ip_tools::model::dns::DnsRecord::Mx::preference: u16
 pub ip_tools::model::dns::DnsRecord::Ns(alloc::string::String)
+pub ip_tools::model::dns::DnsRecord::Ptr(alloc::string::String)
 pub ip_tools::model::dns::DnsRecord::Soa(alloc::string::String)
 pub ip_tools::model::dns::DnsRecord::Srv
 pub ip_tools::model::dns::DnsRecord::Srv::port: u16
@@ -125,6 +126,7 @@ pub ip_tools::model::dns::DnsRecordType::Caa
 pub ip_tools::model::dns::DnsRecordType::Cname
 pub ip_tools::model::dns::DnsRecordType::Mx
 pub ip_tools::model::dns::DnsRecordType::Ns
+pub ip_tools::model::dns::DnsRecordType::Ptr
 pub ip_tools::model::dns::DnsRecordType::Soa
 pub ip_tools::model::dns::DnsRecordType::Srv
 pub ip_tools::model::dns::DnsRecordType::Txt
@@ -255,6 +257,7 @@ pub ip_tools::model::DnsRecord::Mx
 pub ip_tools::model::DnsRecord::Mx::exchange: alloc::string::String
 pub ip_tools::model::DnsRecord::Mx::preference: u16
 pub ip_tools::model::DnsRecord::Ns(alloc::string::String)
+pub ip_tools::model::DnsRecord::Ptr(alloc::string::String)
 pub ip_tools::model::DnsRecord::Soa(alloc::string::String)
 pub ip_tools::model::DnsRecord::Srv
 pub ip_tools::model::DnsRecord::Srv::port: u16
@@ -275,6 +278,7 @@ pub ip_tools::model::DnsRecordType::Caa
 pub ip_tools::model::DnsRecordType::Cname
 pub ip_tools::model::DnsRecordType::Mx
 pub ip_tools::model::DnsRecordType::Ns
+pub ip_tools::model::DnsRecordType::Ptr
 pub ip_tools::model::DnsRecordType::Soa
 pub ip_tools::model::DnsRecordType::Srv
 pub ip_tools::model::DnsRecordType::Txt
@@ -490,6 +494,7 @@ pub ip_tools::DnsRecord::Mx
 pub ip_tools::DnsRecord::Mx::exchange: alloc::string::String
 pub ip_tools::DnsRecord::Mx::preference: u16
 pub ip_tools::DnsRecord::Ns(alloc::string::String)
+pub ip_tools::DnsRecord::Ptr(alloc::string::String)
 pub ip_tools::DnsRecord::Soa(alloc::string::String)
 pub ip_tools::DnsRecord::Srv
 pub ip_tools::DnsRecord::Srv::port: u16
@@ -510,6 +515,7 @@ pub ip_tools::DnsRecordType::Caa
 pub ip_tools::DnsRecordType::Cname
 pub ip_tools::DnsRecordType::Mx
 pub ip_tools::DnsRecordType::Ns
+pub ip_tools::DnsRecordType::Ptr
 pub ip_tools::DnsRecordType::Soa
 pub ip_tools::DnsRecordType::Srv
 pub ip_tools::DnsRecordType::Txt

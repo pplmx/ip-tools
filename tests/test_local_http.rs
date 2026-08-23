@@ -842,6 +842,55 @@ fn dns_cli_queries_doh_fixture_endpoint() {
 }
 
 #[test]
+fn dns_cli_ptr_reverse_lookup_uses_auto_built_reverse_zone() {
+    // `dns --record-type PTR <ip>` auto-builds the reverse-zone name
+    // (RFC 1035 `in-addr.arpa`) from the literal and issues a PTR query. The
+    // fixture's canned PTR endpoint answers `192.0.2.77` with `host.example`,
+    // so the resolved pointer must surface, labeled by the target IP (not the
+    // reverse-zone name).
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let endpoint = format!("https://{}/dns-ptr-query", fixture.tcp_addr());
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "dns",
+            "192.0.2.77",
+            "--record-type",
+            "PTR",
+            "--doh",
+            &endpoint,
+            "--insecure",
+            "--timeout",
+            "2000",
+        ])
+        .output()
+        .expect("run dns --record-type PTR --doh");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "dns --record-type PTR should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.contains("host.example"),
+        "the PTR record (host.example) should surface: {stdout}"
+    );
+    assert!(
+        stdout.contains("192.0.2.77"),
+        "the target IP should label the observation: {stdout}"
+    );
+    assert!(
+        stdout.contains("PTR"),
+        "the PTR record type should be labeled: {stdout}"
+    );
+}
+
+#[test]
 fn output_body_respects_raised_max_body_bytes() {
     // With the default 1 MiB cap, --output-body writes only ~1 MiB of the
     // fixture's 2 MiB big.invalid body; raising --max-body-bytes captures the

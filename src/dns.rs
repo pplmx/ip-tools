@@ -257,6 +257,7 @@ async fn resolver_lookup(
         DnsRecordType::Soa => RecordType::SOA,
         DnsRecordType::Caa => RecordType::CAA,
         DnsRecordType::Srv => RecordType::SRV,
+        DnsRecordType::Ptr => RecordType::PTR,
     };
     let lookup = resolver.lookup(host, rt).await?;
     Ok(lookup
@@ -299,6 +300,7 @@ fn record_from_rdata(record_type: DnsRecordType, rdata: &RData) -> Option<DnsRec
                 value: String::from_utf8_lossy(&caa.value).into_owned(),
             })
         }
+        (DnsRecordType::Ptr, RData::PTR(name)) => Some(DnsRecord::Ptr(name.to_string())),
         (DnsRecordType::Srv, RData::SRV(srv)) => Some(DnsRecord::Srv {
             priority: srv.priority,
             weight: srv.weight,
@@ -839,6 +841,7 @@ fn build_query(host: &str, record_type: DnsRecordType) -> Result<Vec<u8>, String
         DnsRecordType::Soa => 6,
         DnsRecordType::Caa => 257,
         DnsRecordType::Srv => 33,
+        DnsRecordType::Ptr => 12,
     };
     out.extend_from_slice(&qtype.to_be_bytes());
     out.extend_from_slice(&1u16.to_be_bytes()); // CLASS IN
@@ -897,6 +900,7 @@ fn parse_dns_response(bytes: &[u8], want: DnsRecordType) -> Result<ParsedDnsResp
             ))),
             5 if want == DnsRecordType::Cname => Some(DnsRecord::Cname(read_name(bytes, rdata_start)?.0)),
             2 if want == DnsRecordType::Ns => Some(DnsRecord::Ns(read_name(bytes, rdata_start)?.0)),
+            12 if want == DnsRecordType::Ptr => Some(DnsRecord::Ptr(read_name(bytes, rdata_start)?.0)),
             15 if want == DnsRecordType::Mx && rdlen >= 3 => {
                 let preference = u16::from_be_bytes([rdata[0], rdata[1]]);
                 let (exchange, _) = read_name(bytes, rdata_start + 2)?;
@@ -1386,6 +1390,9 @@ mod tests {
         // AAAA uses qtype 28
         let q6 = build_query("host.example", DnsRecordType::Aaaa).unwrap();
         assert_eq!(&q6[q6.len() - 4..], &[0, 28, 0, 1]);
+        // PTR uses qtype 12
+        let qptr = build_query("77.2.0.192.in-addr.arpa", DnsRecordType::Ptr).unwrap();
+        assert_eq!(&qptr[qptr.len() - 4..], &[0, 12, 0, 1]);
         assert!(build_query("foo..example", DnsRecordType::A).is_err()); // empty label
         assert!(build_query(&"a".repeat(64), DnsRecordType::A).is_err()); // label > 63 bytes
         assert!(build_query("", DnsRecordType::A).is_err());
@@ -1481,8 +1488,12 @@ mod tests {
         // CNAME and NS carry a single (possibly compressed) name.
         let parsed = parse_dns_response(&response_with(&[(5, name_ptr.clone())]), DnsRecordType::Cname).unwrap();
         assert_eq!(parsed.records, vec![DnsRecord::Cname("host.example".into())]);
-        let parsed = parse_dns_response(&response_with(&[(2, name_ptr)]), DnsRecordType::Ns).unwrap();
+        let parsed = parse_dns_response(&response_with(&[(2, name_ptr.clone())]), DnsRecordType::Ns).unwrap();
         assert_eq!(parsed.records, vec![DnsRecord::Ns("host.example".into())]);
+
+        // PTR (12) also carries a single (possibly compressed) name.
+        let parsed = parse_dns_response(&response_with(&[(12, name_ptr)]), DnsRecordType::Ptr).unwrap();
+        assert_eq!(parsed.records, vec![DnsRecord::Ptr("host.example".into())]);
 
         // MX is a 2-byte preference followed by a name.
         let mx = vec![0, 10, 0xC0, 0x0C];

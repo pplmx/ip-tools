@@ -93,11 +93,12 @@ const fn rt_label(rt: DnsRecordType) -> &'static str {
         DnsRecordType::Soa => "SOA",
         DnsRecordType::Caa => "CAA",
         DnsRecordType::Srv => "SRV",
+        DnsRecordType::Ptr => "PTR",
     }
 }
 
 /// Canonical order in which DNS record types are rendered.
-const ALL_DNS_RECORD_TYPES: [DnsRecordType; 9] = [
+const ALL_DNS_RECORD_TYPES: [DnsRecordType; 10] = [
     DnsRecordType::A,
     DnsRecordType::Aaaa,
     DnsRecordType::Cname,
@@ -107,6 +108,7 @@ const ALL_DNS_RECORD_TYPES: [DnsRecordType; 9] = [
     DnsRecordType::Soa,
     DnsRecordType::Caa,
     DnsRecordType::Srv,
+    DnsRecordType::Ptr,
 ];
 
 /// Render TCP observations as human text.

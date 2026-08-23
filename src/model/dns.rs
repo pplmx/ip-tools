@@ -40,6 +40,8 @@ pub enum DnsRecordType {
     Caa,
     /// Service (SRV) record.
     Srv,
+    /// Reverse-lookup (PTR) pointer record.
+    Ptr,
 }
 
 impl std::fmt::Display for DnsRecordType {
@@ -54,6 +56,7 @@ impl std::fmt::Display for DnsRecordType {
             Self::Soa => "SOA",
             Self::Caa => "CAA",
             Self::Srv => "SRV",
+            Self::Ptr => "PTR",
         })
     }
 }
@@ -88,6 +91,9 @@ pub enum DnsRecord {
         port: u16,
         target: String,
     },
+    /// Reverse-lookup pointer (PTR): the hostname mapped to the queried
+    /// address (used for reverse DNS).
+    Ptr(String),
 }
 
 impl DnsRecord {
@@ -107,7 +113,7 @@ impl std::fmt::Display for DnsRecord {
         match self {
             Self::A(ip) => write!(f, "{ip}"),
             Self::Aaaa(ip) => write!(f, "{ip}"),
-            Self::Cname(name) | Self::Ns(name) => write!(f, "{name}"),
+            Self::Cname(name) | Self::Ns(name) | Self::Ptr(name) => write!(f, "{name}"),
             Self::Mx { preference, exchange } => write!(f, "{preference} {exchange}"),
             Self::Txt(text) => write!(f, "{text:?}"),
             Self::Soa(s) => write!(f, "{s}"),

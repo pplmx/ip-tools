@@ -86,10 +86,14 @@ and `--count` repeat rows use the aggregated latency stats — so a DNS sweep
 loads into a spreadsheet.
 
 By default `dns` queries `A` and `AAAA`. `--record-type TYPE` queries a single
-specific type — `A`, `AAAA`, `CNAME`, `MX`, `TXT`, `NS`, `SOA`, `CAA` or `SRV`
+specific type — `A`, `AAAA`, `CNAME`, `MX`, `TXT`, `NS`, `SOA`, `CAA`, `SRV`
+or `PTR`
 — so you can inspect mail routing (`MX`), `SPF`/`DKIM` (`TXT`), aliasing
 (`CNAME`), authority (`NS`/`SOA`), which CAs may issue certs (`CAA`), or
 service endpoints like SIP/XMPP/LDAP (`SRV`) the same way you check addresses.
+`PTR` is reverse DNS: `dns --record-type PTR 192.0.2.77` auto-builds the
+`in-addr.arpa`/`ip6.arpa` reverse-zone name for an IP target and resolves the
+hostname(s) mapped to it (e.g. for rDNS / mail anti-spam checks).
 `--ipv6` is the shorthand for `--record-type AAAA`; the two conflict.
 
 An IP-literal target is shorthand for "this is already an address": `dns

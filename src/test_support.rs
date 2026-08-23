@@ -243,6 +243,20 @@ const DOH_RESPONSE: &[u8] = &[
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x77,
 ];
 
+/// Canned reverse-lookup (PTR) response served by the fixture at
+/// `/dns-ptr-query`: answers the `192.0.2.77` reverse zone
+/// (`77.2.0.192.in-addr.arpa`) with the pointer `host.example`.
+const DOH_PTR_RESPONSE: &[u8] = &[
+    // header: id 0x1234, flags 0x8180, QD=1, AN=1, NS=0, AR=0
+    0x12, 0x34, 0x81, 0x80, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+    // question name: 77.2.0.192.in-addr.arpa
+    0x02, b'7', b'7', 0x01, b'2', 0x01, b'0', 0x03, b'1', b'9', b'2', 0x07, b'i', b'n', b'-', b'a', b'd', b'd', b'r',
+    0x04, b'a', b'r', b'p', b'a', 0x00, // qtype PTR, qclass IN
+    0x00, 0x0C, 0x00, 0x01, // answer 1: pointer to the question name, type PTR, class IN, ttl 60, rdlen 14
+    0xC0, 0x0C, 0x00, 0x0C, 0x00, 0x01, 0x00, 0x00, 0x00, 0x3C, 0x00, 0x0E, // rdata name: host.example
+    0x04, b'h', b'o', b's', b't', 0x07, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 0x00,
+];
+
 /// Accept TLS connections and serve HTTP/1.1 or HTTP/2 chosen by negotiated
 /// ALPN.
 async fn run_tcp_server(listener: tokio::net::TcpListener, acceptor: tokio_rustls::TlsAcceptor) {
@@ -271,6 +285,16 @@ async fn run_tcp_server(listener: tokio::net::TcpListener, acceptor: tokio_rustl
                         .header("content-type", "application/dns-message")
                         .body(http_body_util::Full::new(bytes::Bytes::from_static(DOH_RESPONSE)).boxed())
                         .expect("static doh response");
+                    return Ok::<_, std::convert::Infallible>(resp);
+                }
+                if req.uri().path().starts_with("/dns-ptr-query") {
+                    // Serve a canned DNS-over-HTTPS reverse-lookup (PTR)
+                    // response addressing `192.0.2.77` with `host.example`.
+                    let resp = hyper::Response::builder()
+                        .status(200)
+                        .header("content-type", "application/dns-message")
+                        .body(http_body_util::Full::new(bytes::Bytes::from_static(DOH_PTR_RESPONSE)).boxed())
+                        .expect("static doh ptr response");
                     return Ok::<_, std::convert::Infallible>(resp);
                 }
                 match route_for(&req) {

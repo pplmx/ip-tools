@@ -197,6 +197,35 @@ async fn dns_compute(
     let repeat = literal.is_none() && count > 1;
 
     if let Some(literal) = literal {
+        // Reverse lookup: `--record-type PTR <ip>` builds the reverse-zone
+        // name of the literal and queries PTR through the normal resolver
+        // pipeline, reporting the user's literal target as the hostname so
+        // the output stays stable.
+        if record_types.len() == 1 && record_types[0] == DnsRecordType::Ptr {
+            let query_name = reverse_zone(literal);
+            let client = DnsClient::new(custom, timeout, 1);
+            let mut observations = client.resolve(&query_name, DnsRecordType::Ptr).await;
+            observations.extend(
+                encrypted_dns(
+                    doh_endpoints,
+                    dot_eps,
+                    &query_name,
+                    DnsRecordType::Ptr,
+                    timeout,
+                    insecure,
+                )
+                .await,
+            );
+            for o in &mut observations {
+                o.hostname.clone_from(&target.host);
+            }
+            return TargetDns {
+                host: target.host.clone(),
+                repeat: false,
+                observations,
+                results: Vec::new(),
+            };
+        }
         return TargetDns {
             host: target.host.clone(),
             repeat: false,
@@ -399,7 +428,33 @@ fn parse_record_type(s: &str) -> Option<DnsRecordType> {
         "SOA" => Some(DnsRecordType::Soa),
         "CAA" => Some(DnsRecordType::Caa),
         "SRV" => Some(DnsRecordType::Srv),
+        "PTR" => Some(DnsRecordType::Ptr),
         _ => None,
+    }
+}
+
+/// Build the reverse-zone name for an IP address: RFC 1035 `in-addr.arpa`
+/// for IPv4 (reversed octets) and RFC 3596 `ip6.arpa` for IPv6 (reversed hex
+/// nibbles), so a PTR (reverse DNS) lookup can be issued for a literal target.
+fn reverse_zone(ip: IpAddr) -> String {
+    match ip {
+        IpAddr::V4(v4) => {
+            let o = v4.octets();
+            format!("{}.{}.{}.{}.in-addr.arpa", o[3], o[2], o[1], o[0])
+        }
+        IpAddr::V6(v6) => {
+            let mut s = String::with_capacity(32 * 2 + 9);
+            for &b in v6.octets().iter().rev() {
+                // Low nibble first, then high: reverse-DNS reads the nibbles
+                // of the address from least-significant to most.
+                for n in [b & 0x0F, b >> 4] {
+                    s.push(char::from_digit(u32::from(n), 16).expect("nibble in 0..=15"));
+                    s.push('.');
+                }
+            }
+            s.push_str("ip6.arpa");
+            s
+        }
     }
 }
 
@@ -453,5 +508,27 @@ mod tests {
         let obs_v6_only = literal_observations("1.1.1.1", v4, &[DnsRecordType::Aaaa]);
         assert_eq!(obs_v6_only.len(), 1);
         assert!(obs_v6_only[0].records.is_empty());
+    }
+
+    #[test]
+    fn reverse_zone_builds_ipv4_and_ipv6_arpa_names() {
+        // RFC 1035: IPv4 octets reversed under `.in-addr.arpa`.
+        let v4: IpAddr = "192.0.2.77".parse().unwrap();
+        assert_eq!(reverse_zone(v4), "77.2.0.192.in-addr.arpa");
+
+        // RFC 3596: IPv6 hex nibbles reversed under `.ip6.arpa` (32 nibbles).
+        let v6: IpAddr = "2001:db8::1".parse().unwrap();
+        assert_eq!(
+            reverse_zone(v6),
+            "1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa"
+        );
+    }
+
+    #[test]
+    fn parse_record_type_accepts_ptr() {
+        assert_eq!(parse_record_type("PTR"), Some(DnsRecordType::Ptr));
+        assert_eq!(parse_record_type("ptr"), Some(DnsRecordType::Ptr));
+        assert_eq!(parse_record_type("A"), Some(DnsRecordType::A));
+        assert_eq!(parse_record_type("PT"), None);
     }
 }
