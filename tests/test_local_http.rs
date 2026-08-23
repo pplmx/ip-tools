@@ -987,6 +987,53 @@ fn diagnose_reverse_surfaces_ptr_evidence() {
 }
 
 #[test]
+fn diagnose_reverse_applies_to_hostname_targets() {
+    // `--reverse` must not be silently ignored for a hostname target: it
+    // reverses each resolved address. The fixture's `/dns-query` resolves
+    // `host.example` to 192.0.2.77 and `/dns-ptr-query` answers that address's
+    // PTR, so the reverse evidence (`host.example` from a PTR row) must appear.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let addr = fixture.tcp_addr();
+    let forward = format!("https://{addr}/dns-query");
+    let rev = format!("https://{addr}/dns-ptr-query");
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "diagnose",
+            "host.example",
+            "--reverse",
+            "--doh",
+            &forward,
+            "--doh",
+            &rev,
+            "--insecure",
+            "--timeout",
+            "2000",
+        ])
+        .output()
+        .expect("run diagnose hostname --reverse");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "diagnose hostname --reverse should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.contains("PTR") && stdout.contains("host.example"),
+        "hostname --reverse must surface the PTR evidence (not be silently ignored): {stdout}"
+    );
+    assert!(
+        stdout.contains("192.0.2.77"),
+        "the reversed address should be labeled: {stdout}"
+    );
+}
+
+#[test]
 fn output_body_respects_raised_max_body_bytes() {
     // With the default 1 MiB cap, --output-body writes only ~1 MiB of the
     // fixture's 2 MiB big.invalid body; raising --max-body-bytes captures the

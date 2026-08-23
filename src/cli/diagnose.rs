@@ -248,19 +248,23 @@ async fn diagnose_one(
         );
         return None;
     }
-    // `--reverse`: an IP-literal target gets its reverse-DNS (PTR) name added
-    // to the DNS evidence stack, so the operator can see what hostname rDNS
-    // maps it to (reusing the shared reverse-zone builder). Evidence only —
-    // an absent PTR is normal for many addresses, so it never raises an
-    // anomaly and `--strict` is unaffected.
+    // `--reverse`: add reverse-DNS (PTR) names to the DNS evidence stack so
+    // the operator can see what hostname rDNS maps an address to. An IP-literal
+    // target reverses itself; a hostname target reverses each resolved address
+    // (--reverse is never silently ignored). Each row is labeled with the
+    // address being reversed. Evidence only — an absent PTR is normal for many
+    // addresses, so it never raises an anomaly and `--strict` is unaffected.
     if reverse {
-        if let Ok(ip_literal) = target
+        // An IP-literal target reverses itself; a hostname target reverses each
+        // resolved address (so --reverse is never silently ignored).
+        let reverse_addresses: Vec<IpAddr> = target
             .host
             .trim_start_matches('[')
             .trim_end_matches(']')
             .parse::<IpAddr>()
-        {
-            let query_name = super::dns::reverse_zone(ip_literal);
+            .map_or_else(|_| addresses.clone(), |ip| vec![ip]);
+        for ip in reverse_addresses {
+            let query_name = super::dns::reverse_zone(ip);
             let mut rev_obs = dns_client.resolve(&query_name, DnsRecordType::Ptr).await;
             for endpoint in doh_endpoints {
                 rev_obs
@@ -271,7 +275,7 @@ async fn diagnose_one(
                     .push(ip_tools::dns::dot_query(endpoint, &query_name, DnsRecordType::Ptr, timeout, insecure).await);
             }
             for o in &mut rev_obs {
-                o.hostname.clone_from(&target.host);
+                o.hostname.clone_from(&ip.to_string());
             }
             dns_obs.extend(rev_obs);
         }
