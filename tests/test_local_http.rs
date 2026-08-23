@@ -1475,13 +1475,67 @@ fn http_cli_csv_export_renders_status_rows() {
     let mut lines = stdout.lines();
     assert_eq!(
         lines.next(),
-        Some("host,destination,protocol,status,location,body_bytes,ttfb_ms,latency_ms,failure"),
+        Some(
+            "host,destination,protocol,status,location,body_bytes,ttfb_ms,latency_ms,sni,version,cipher,alpn,subject,issuer,not_after_utc,failure"
+        ),
         "CSV header: {stdout}"
     );
     assert!(
         lines.any(|l| l.starts_with("127.0.0.1,") && l.contains(",200,")),
         "expected a row with status 200: {stdout}"
     );
+}
+
+#[test]
+fn http_cli_csv_exposes_negotiated_tls_details() {
+    // The HTTPS probes embed the negotiated TLS handshake in each observation,
+    // so the HTTP CSV must surface it (version/cipher/ALPN/cert, mirroring
+    // `tls --csv`) — an HTTPS fleet sweep shouldn't lose that evidence.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let addr = fixture.tcp_addr().to_string();
+
+    for cmd in ["http", "http2", "http3"] {
+        let dest = if cmd == "http3" {
+            fixture.udp_addr().to_string()
+        } else {
+            addr.clone()
+        };
+        let out = Command::cargo_bin("ip-tools")
+            .expect("ip-tools binary")
+            .args([cmd, &dest, "--insecure", "--csv", "--timeout", "2000"])
+            .output()
+            .unwrap_or_else(|e| panic!("run {cmd} --csv: {e}"));
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            out.status.success(),
+            "{cmd} --csv should exit 0: {stdout}
+{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(
+            stdout.contains("version,cipher,alpn,subject,issuer,not_after_utc"),
+            "{cmd} --csv must carry the TLS header: {stdout}"
+        );
+        // The fixture negotiates TLS with a populated cipher and a cert whose
+        // subject names the fixture — assert the negotiated row carries them.
+        assert!(
+            stdout.contains(",TLSv1.3,") || stdout.contains(",TLSv1.2,"),
+            "{cmd} --csv must expose the negotiated TLS version: {stdout}"
+        );
+        // HTTP/1.1 and HTTP/2 carry the full certificate summary in their
+        // embedded observation; HTTP/3's QUIC summary is minimal (version +
+        // ALPN only), so only the TCP-based probes must expose the subject.
+        if cmd != "http3" {
+            assert!(
+                stdout.contains("subject=") || stdout.contains("CN="),
+                "{cmd} --csv must expose the certificate subject: {stdout}"
+            );
+        }
+    }
 }
 
 #[test]

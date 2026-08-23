@@ -86,9 +86,14 @@ pub(super) async fn run_http(sub_m: &ArgMatches) -> ExitCode {
 /// destination, with the response status/protocol/TTFB when present. Shared
 /// by `http`, `http2` and `http3`.
 pub(super) fn render_http_csv(per_target: &[(String, Vec<HttpObservation>)]) -> String {
-    let mut out = String::from("host,destination,protocol,status,location,body_bytes,ttfb_ms,latency_ms,failure\n");
+    let mut out =
+        String::from("host,destination,protocol,status,location,body_bytes,ttfb_ms,latency_ms,sni,version,cipher,alpn,subject,issuer,not_after_utc,failure\n");
     for (host, results) in per_target {
         for o in results {
+            // The HTTPS probes embed the negotiated TLS handshake in each
+            // observation, so expose it in CSV (mirroring `tls --csv`) — a
+            // fleet sweep otherwise loses the cert/protocol-version evidence.
+            let tls = o.tls.as_ref();
             out.push_str(&csv_field(host));
             out.push(',');
             out.push_str(&csv_field(&o.destination.to_string()));
@@ -104,6 +109,21 @@ pub(super) fn render_http_csv(per_target: &[(String, Vec<HttpObservation>)]) -> 
             out.push_str(&csv_field(&opt(o.ttfb_ms)));
             out.push(',');
             out.push_str(&csv_field(&opt(o.latency_ms)));
+            out.push(',');
+            out.push_str(&csv_field(tls.map_or("", |t| t.sni.as_str())));
+            out.push(',');
+            out.push_str(&csv_field(tls.and_then(|t| t.version.as_deref()).unwrap_or("")));
+            out.push(',');
+            out.push_str(&csv_field(tls.and_then(|t| t.cipher.as_deref()).unwrap_or("")));
+            out.push(',');
+            out.push_str(&csv_field(tls.and_then(|t| t.alpn.as_deref()).unwrap_or("")));
+            let cert = tls.and_then(|t| t.certificate.as_ref());
+            out.push(',');
+            out.push_str(&csv_field(cert.map_or("", |c| c.subject.as_str())));
+            out.push(',');
+            out.push_str(&csv_field(cert.map_or("", |c| c.issuer.as_str())));
+            out.push(',');
+            out.push_str(&csv_field(cert.and_then(|c| c.not_after_utc.as_deref()).unwrap_or("")));
             out.push(',');
             out.push_str(&csv_field(
                 &o.failure.as_ref().map_or_else(String::new, |e| e.kind.to_string()),
