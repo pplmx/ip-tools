@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-23T08:12:33+00:00",
+  "updated_at": "2026-08-23T08:19:16+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -2930,6 +2930,54 @@
       "touched_round": 0,
       "commit": "5e966b28c31d5e288975349f5513f28a9d047913",
       "summary": "Added a ttl column to dns --csv: render_dns_csv now emits host,resolver,record_type,attempts,success_rate,latency_p50_ms,latency_p95_ms,latency_max_ms,failures,ttl, populating the field from DnsObservation.ttl on single-shot rows and leaving it empty for --count repeat rows (which aggregate away the per-answer TTL), so the spreadsheet export matches the human/JSON TTL feature."
+    },
+    "ISS-049": {
+      "id": "ISS-049",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T08:19:10+00:00",
+      "updated_at": "2026-08-23T08:19:16+00:00",
+      "touched_round": 0,
+      "severity": "low",
+      "summary": "The response-header feature (observed headers bounded to 24) surfaces in the human http/http2/http3 report and --json, but the single-shot --csv exporter (render_http_csv) still emits only host,destination,protocol,status,location,body_bytes,ttfb_ms,latency_ms,sni,version,cipher,alpn,subject,issuer,not_after_utc,failure -- a spreadsheet fleet sweep loses the server/edge/caching evidence that human and JSON show."
+    },
+    "TASK-057": {
+      "id": "TASK-057",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T08:19:10+00:00",
+      "updated_at": "2026-08-23T08:19:16+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.15,
+      "unlock_factor": 1,
+      "summary": "Add a headers column to http/http2/http3 --csv: emit the observed response headers (the diagnostic-relevant set the human report curates: server, via, cf-ray, cache-control, set-cookie, ...) as Name: value pairs joined by '; ', RFC-4180 quoted per the shared csv_field helper. Renderer-only, no public API change. Pinned by the http --csv fixture test asserting the fixture's server: ip-tools-fixture response header appears in the row."
+    },
+    "DEC-056": {
+      "id": "DEC-056",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T08:19:10+00:00",
+      "updated_at": "2026-08-23T08:19:10+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-23): surface observed HTTP response headers across output formats. The headers are captured and curated in the http/http2/http3 human report and carried in --json, but dropped by the single-shot --csv exporter -- leaving the spreadsheet fleet sweep blind to server identity / CDN hops / caching markers that an operator needs to compare many endpoints at once. Same format-parity pattern the loop closed for TTL (DEC-055) and the probe status feature (DEC-052).",
+      "alternatives_rejected": "leaving the http CSV without a headers column (the exporters would disagree on what the probes observe); a separate non-default flag just for headers (one column belongs in the existing exporter); dumping all 24 bounded headers into the cell (the curated set matches the human view and keeps rows tight)."
+    },
+    "CHG-050": {
+      "id": "CHG-050",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T08:19:16+00:00",
+      "updated_at": "2026-08-23T08:19:16+00:00",
+      "touched_round": 0,
+      "commit": "e2aca4a79d15afc86d842f52159fc4ac1021c13b",
+      "summary": "Added a headers column to http/http2/http3 --csv: render_http_csv now emits host,...,not_after_utc,headers,failure, populating the field from the observed response headers (the curated diagnostic-relevant set) as 'Name: value' pairs joined by '; ' via a shared curated_headers_csv helper, so a spreadsheet fleet sweep retains the server/edge/caching evidence."
     }
   },
   "edges": [
@@ -4942,6 +4990,42 @@
       "to": "ISS-048",
       "type": "resolves",
       "created_at": "2026-08-23T08:12:27+00:00"
+    },
+    {
+      "from": "ISS-049",
+      "to": "COMP-http",
+      "type": "located_in",
+      "created_at": "2026-08-23T08:19:16+00:00"
+    },
+    {
+      "from": "TASK-057",
+      "to": "ISS-049",
+      "type": "addresses",
+      "created_at": "2026-08-23T08:19:16+00:00"
+    },
+    {
+      "from": "DEC-056",
+      "to": "TASK-057",
+      "type": "governs",
+      "created_at": "2026-08-23T08:19:16+00:00"
+    },
+    {
+      "from": "DEC-056",
+      "to": "DEC-055",
+      "type": "supersedes",
+      "created_at": "2026-08-23T08:19:16+00:00"
+    },
+    {
+      "from": "CHG-050",
+      "to": "TASK-057",
+      "type": "implements",
+      "created_at": "2026-08-23T08:19:16+00:00"
+    },
+    {
+      "from": "CHG-050",
+      "to": "ISS-049",
+      "type": "resolves",
+      "created_at": "2026-08-23T08:19:16+00:00"
     }
   ]
 }
