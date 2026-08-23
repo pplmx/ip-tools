@@ -247,11 +247,14 @@ pub(super) fn latency_instability_rules(input: &DiagnosticInput, out: &mut Vec<D
         // measure: a healthy distribution is tight (ratio near 1), while a
         // bimodal or long-tailed one (some attempts much slower than the
         // median) is flapping and worth surfacing. 3x is a defensible "slow
-        // tail" threshold that tolerates normal variance.
+        // tail" threshold that tolerates normal variance. A sub-millisecond
+        // median (p50 == 0 on a fast endpoint) must not disqualify a real
+        // slow tail, so the scale base is floored at 1 ms.
         let (Some(p50), Some(p95)) = (p.latency.p50, p.latency.p95) else {
             continue;
         };
-        if p50 == 0 || p95 < 3 * p50 {
+        let base = p50.max(1);
+        if p95 < 3 * base {
             continue;
         }
         out.push(Diagnosis {
