@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-23T06:08:09+00:00",
+  "updated_at": "2026-08-23T06:21:00+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -2834,6 +2834,54 @@
       "touched_round": 0,
       "commit": "8989bacb8058b075892a11c010bc96a8d43a140a",
       "summary": "Added target-list-from-file/stdin support to every multi-target fleet command via a shared parse_targets helper in the cli (each positional target expands @path to the file lines, skipping blanks and # comments, and - to stdin lines), replacing the three duplicated inline target loops in run_probe_flow/diagnose/dns. No public API change; README + CHANGELOG updated. Pinned by a fixture-gated CLI test: dns @file and dns - (stdin) each resolve 1.1.1.1 + 8.8.8.8."
+    },
+    "ISS-047": {
+      "id": "ISS-047",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T06:13:09+00:00",
+      "updated_at": "2026-08-23T06:21:00+00:00",
+      "touched_round": 0,
+      "severity": "low",
+      "summary": "The dns diagnostic does not report record time-to-live (TTL) anywhere: hickory answers (which carry TTL) are reduced to DnsRecord values and the DoH/DoT wire parser skips the TTL field. TTL is a standard, useful DNS data point (cache duration, propagation timing, diagnosing stale/shadowing records) that dig reports by default, so the tool's DNS output is missing a core field."
+    },
+    "TASK-055": {
+      "id": "TASK-055",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T06:13:09+00:00",
+      "updated_at": "2026-08-23T06:21:00+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.4,
+      "unlock_factor": 1,
+      "summary": "Surface DNS record TTL: add a ttl field to DnsObservation, populate it from the hickory system/--server lookup (first matching answer's TTL) and from the DoH/DoT wire parser (the answer TTL already in the message), and render it in the dns human report and JSON. No new dependency. Public API change (DnsObservation gains ttl; api-baseline regenerated). Pinned by a wire-parser TTL unit test and a fixture-gated CLI test asserting the fixture DoH answer's TTL renders."
+    },
+    "DEC-054": {
+      "id": "DEC-054",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T06:13:09+00:00",
+      "updated_at": "2026-08-23T06:13:09+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-23): surface DNS TTL. The tool reports every record type but not TTL -- the caching/propagation datum dig shows by default -- so DNS output is missing a core field. Capture it from the hickory lookup answers and from the DoH/DoT wire parser (the 4-byte TTL is already in each answer), store it on DnsObservation, and render it. No new dependency. Public API change (regenerate api-baseline).",
+      "alternatives_rejected": "per-record DnsRecord variants carrying TTL (changes every variant; a per-observation TTL from the first answer is simpler and matches how a single A/AAAA lookup reports); a TTL-multiplication helper (not the tool's job); leaving TTL out (a standard DNS field a diagnostics tool should report)."
+    },
+    "CHG-048": {
+      "id": "CHG-048",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T06:21:00+00:00",
+      "updated_at": "2026-08-23T06:21:00+00:00",
+      "touched_round": 0,
+      "commit": "ebfd00f7d9e993b41366bec934d0f7d5e9844c30",
+      "summary": "Added DNS record TTL to dns output: DnsObservation gains a ttl: Option<u32> field, populated from the hickory system/--server lookup (first matching answer's ttl) and from the DoH/DoT wire parser (the first answer's TTL, which the parser previously skipped). Render_dns shows '..., ttl Ns' and --json carries it. Public API change (api-baseline regenerated); no new dependency. Pinned by a wire-parser TTL unit test and the DoH fixture CLI test asserting the canned 60s TTL renders."
     }
   },
   "edges": [
@@ -4774,6 +4822,42 @@
       "to": "ISS-046",
       "type": "resolves",
       "created_at": "2026-08-23T06:08:09+00:00"
+    },
+    {
+      "from": "ISS-047",
+      "to": "COMP-dns",
+      "type": "located_in",
+      "created_at": "2026-08-23T06:13:09+00:00"
+    },
+    {
+      "from": "TASK-055",
+      "to": "ISS-047",
+      "type": "addresses",
+      "created_at": "2026-08-23T06:13:09+00:00"
+    },
+    {
+      "from": "DEC-054",
+      "to": "TASK-055",
+      "type": "governs",
+      "created_at": "2026-08-23T06:13:09+00:00"
+    },
+    {
+      "from": "DEC-054",
+      "to": "DEC-053",
+      "type": "supersedes",
+      "created_at": "2026-08-23T06:13:10+00:00"
+    },
+    {
+      "from": "CHG-048",
+      "to": "TASK-055",
+      "type": "implements",
+      "created_at": "2026-08-23T06:21:00+00:00"
+    },
+    {
+      "from": "CHG-048",
+      "to": "ISS-047",
+      "type": "resolves",
+      "created_at": "2026-08-23T06:21:00+00:00"
     }
   ]
 }
