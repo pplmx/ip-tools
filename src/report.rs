@@ -229,12 +229,14 @@ fn render_cert(cert: &CertificateSummary) -> String {
 }
 
 /// Number of days before expiry the certificate report flags as expiring.
-const RENDER_CERT_EXPIRY_WINDOW_DAYS: i64 = 30;
+/// Shared with the diagnostic engine so a `diagnose` health sweep raises the
+/// same expiry window the human TLS report annotates.
+pub(crate) const RENDER_CERT_EXPIRY_WINDOW_DAYS: i64 = 30;
 
 /// Days from today until the date encoded in an RFC 3339 UTC timestamp
 /// (`YYYY-MM-DDTHH:MM:SSZ`); negative when that date is already past.
 /// `None` when the string is not recognizably that shape.
-fn days_until_from_rfc3339(rfc3339: &str) -> Option<i64> {
+pub(crate) fn days_until_from_rfc3339(rfc3339: &str) -> Option<i64> {
     let date = rfc3339.get(0..10)?;
     let (y, mo, d) = (date.get(0..4)?, date.get(5..7)?, date.get(8..10)?);
     let (year, month, day): (i64, i64, i64) = (y.parse().ok()?, mo.parse().ok()?, d.parse().ok()?);
@@ -249,9 +251,25 @@ fn days_until_from_rfc3339(rfc3339: &str) -> Option<i64> {
     Some(days_from_civil(year, month, day) - now_days)
 }
 
+/// Build an RFC 3339 UTC date string `N` days from today (negative = past),
+/// shared by the TLS report tests and the diagnostic engine tests.
+#[cfg(test)]
+pub(crate) fn rfc3339_days_from_now(days: i64) -> String {
+    let now_days = i64::try_from(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("epoch")
+            .as_secs()
+            / 86_400,
+    )
+    .expect("days fit i64");
+    let (y, m, d) = civil_from_days(now_days + days);
+    format!("{y:04}-{m:02}-{d:02}T00:00:00Z")
+}
+
 /// Days since 1970-01-01 for a proleptic-Gregorian civil date (Hinnant's
 /// algorithm, the inverse of `tls.rs format_utc`).
-const fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
+pub(crate) const fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     let y = if m <= 2 { y - 1 } else { y };
     let era = y.div_euclid(400);
     let yoe = y.rem_euclid(400);
@@ -493,6 +511,23 @@ pub fn render_diagnoses(diagnoses: &[Diagnosis]) -> String {
     out
 }
 
+#[cfg(test)]
+pub(crate) fn civil_from_days(days: i64) -> (i64, u32, u32) {
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    (
+        if m <= 2 { y + 1 } else { y },
+        u32::try_from(m).expect("month"),
+        u32::try_from(d).expect("day"),
+    )
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1161,24 +1196,5 @@ mod tests {
             / 86_400;
         let (y, m, d) = civil_from_days(i64::try_from(now_days).expect("days fit i64") + offset);
         format!("{y:04}-{m:02}-{d:02}T00:00:00Z")
-    }
-
-    /// Civil (y, m, d) for a day count since the epoch (Hinnant's algorithm,
-    /// the inverse of the production `days_from_civil`).
-    fn civil_from_days(days: i64) -> (i64, u32, u32) {
-        let z = days + 719_468;
-        let era = z.div_euclid(146_097);
-        let doe = z.rem_euclid(146_097);
-        let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-        let y = yoe + era * 400;
-        let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-        let mp = (5 * doy + 2) / 153;
-        let d = doy - (153 * mp + 2) / 5 + 1;
-        let m = if mp < 10 { mp + 3 } else { mp - 9 };
-        (
-            if m <= 2 { y + 1 } else { y },
-            u32::try_from(m).expect("month"),
-            u32::try_from(d).expect("day"),
-        )
     }
 }

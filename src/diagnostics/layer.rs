@@ -179,6 +179,56 @@ pub(super) fn intermittent_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosi
     }
 }
 
+/// Automated certificate-lifetime diagnosis: a serving certificate that is
+/// already expired, or expires within the same 30-day window the human TLS
+/// report annotates, should surface from `diagnose` so an automated /
+/// scripted health sweep can catch it — not just appear in the rendered cert
+/// row. Uses the shared day-diff helper from the report layer so the engine
+/// and the report agree on "expired" vs "expires in N day(s)".
+pub(super) fn certificate_lifetime_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosis>) {
+    for t in input.tls {
+        let Some(cert) = t.certificate.as_ref() else { continue };
+        let Some(not_after) = cert.not_after_utc.as_deref() else {
+            continue;
+        };
+        let Some(days) = crate::report::days_until_from_rfc3339(not_after) else {
+            continue;
+        };
+        if days < 0 {
+            out.push(Diagnosis {
+                severity: Severity::Medium,
+                category: DiagnosticCategory::Certificate,
+                confidence: Confidence::High,
+                summary: format!(
+                    "Certificate for {} expired {} day(s) ago (subject {})",
+                    t.sni, -days, cert.subject
+                ),
+                evidence: vec![Evidence {
+                    detail: format!("peer certificate notAfter is in the past: {not_after}"),
+                }],
+                possible_causes: vec![
+                    "certificate not renewed before its notAfter".into(),
+                    "operator is serving a stale/revoked deployment".into(),
+                ],
+            });
+        } else if days <= crate::report::RENDER_CERT_EXPIRY_WINDOW_DAYS {
+            out.push(Diagnosis {
+                severity: Severity::Low,
+                category: DiagnosticCategory::Certificate,
+                confidence: Confidence::Medium,
+                summary: format!(
+                    "Certificate for {} expires in {days} day(s) (subject {})",
+                    t.sni, cert.subject
+                ),
+                evidence: vec![Evidence {
+                    detail: format!("peer certificate notAfter is in {days} day(s): {not_after}"),
+                }],
+                possible_causes: vec!["certificate approaching its renewal date".into()],
+            });
+        }
+    }
+}
+
 /// Summarize the classified failure counts of a probe result.
 fn failure_summary_opt(p: &ProbeResult) -> String {
     if p.failure_counts.is_empty() {
@@ -603,5 +653,57 @@ mod tests {
         assert_eq!(d.unwrap().confidence, Confidence::High);
         // The failure distribution is reported in the evidence.
         assert_eq!(d.unwrap().evidence.len(), 2);
+    }
+
+    fn tls_with_cert(not_after: &str) -> TlsObservation {
+        TlsObservation {
+            destination: "1.1.1.1:443".parse().unwrap(),
+            sni: "example.com".into(),
+            success: true,
+            version: Some("TLSv1.3".into()),
+            cipher: Some("AES_256_GCM".into()),
+            alpn: Some("h2".into()),
+            certificate: Some(crate::model::CertificateSummary {
+                subject: "CN=example.com".into(),
+                issuer: "CN=CA".into(),
+                not_before_utc: None,
+                not_after_utc: Some(not_after.into()),
+                sans: Vec::new(),
+            }),
+            latency_ms: Some(7),
+            failure: None,
+        }
+    }
+
+    #[test]
+    fn certificate_lifetime_raises_expired_and_expiring() {
+        // An expired cert is a High-confidence Medium diagnosis.
+        let expired = [tls_with_cert(&crate::report::rfc3339_days_from_now(-5))];
+        let mut out = Vec::new();
+        certificate_lifetime_rules(&input(&expired, &[], &[]), &mut out);
+        let d = out
+            .iter()
+            .find(|d| d.category == DiagnosticCategory::Certificate)
+            .expect("expired verdict");
+        assert_eq!(d.severity, Severity::Medium);
+        assert_eq!(d.confidence, Confidence::High);
+        assert!(d.summary.contains("expired"), "summary names expiry: {}", d.summary);
+
+        // A cert expiring within the 30-day window is a Low diagnosis.
+        let near = [tls_with_cert(&crate::report::rfc3339_days_from_now(5))];
+        let mut out = Vec::new();
+        certificate_lifetime_rules(&input(&near, &[], &[]), &mut out);
+        let d = out
+            .iter()
+            .find(|d| d.category == DiagnosticCategory::Certificate)
+            .expect("near verdict");
+        assert_eq!(d.severity, Severity::Low);
+        assert!(d.summary.contains("expires in"), "summary names expiry: {}", d.summary);
+
+        // A comfortably-far cert does not raise a verdict.
+        let far = [tls_with_cert(&crate::report::rfc3339_days_from_now(400))];
+        let mut out = Vec::new();
+        certificate_lifetime_rules(&input(&far, &[], &[]), &mut out);
+        assert!(out.is_empty(), "far expiry must not raise a verdict: {out:?}");
     }
 }

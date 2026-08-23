@@ -53,6 +53,8 @@ pub enum DiagnosticCategory {
     Tcp,
     /// TLS-layer failures.
     Tls,
+    /// Serving certificate is expired or expiring soon.
+    Certificate,
     /// HTTP/application-layer failures.
     Http,
     /// Failures appear only on the QUIC/UDP path.

@@ -649,6 +649,10 @@ performs no network I/O.
   usually broken IPv6 / routing / firewall, not censorship.
 - Different addresses of the same hostname are tested independently (CDN,
   anycast, load balancing, partial filtering).
+- An **expired or expiring serving certificate is reported as a `Certificate`
+  diagnosis** (Medium for expired, Low for expiring within 30 days) — so a
+  scripted/CI `diagnose --strict` run surfaces a certificate that will break
+  the service, not just an annotation in the rendered TLS row.
 
 **`ip-tools` does not claim a network failure is censorship merely because a
 connection fails.** Many mundane explanations (CDN node failure, routing

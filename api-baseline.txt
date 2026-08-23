@@ -66,6 +66,7 @@ pub ip_tools::model::diagnosis::Confidence::Medium
 pub ip_tools::model::diagnosis::Confidence::Unknown
 pub enum ip_tools::model::diagnosis::DiagnosticCategory
 pub ip_tools::model::diagnosis::DiagnosticCategory::AddressFamily
+pub ip_tools::model::diagnosis::DiagnosticCategory::Certificate
 pub ip_tools::model::diagnosis::DiagnosticCategory::Dns
 pub ip_tools::model::diagnosis::DiagnosticCategory::Healthy
 pub ip_tools::model::diagnosis::DiagnosticCategory::Http
@@ -230,6 +231,7 @@ pub ip_tools::model::Confidence::Medium
 pub ip_tools::model::Confidence::Unknown
 pub enum ip_tools::model::DiagnosticCategory
 pub ip_tools::model::DiagnosticCategory::AddressFamily
+pub ip_tools::model::DiagnosticCategory::Certificate
 pub ip_tools::model::DiagnosticCategory::Dns
 pub ip_tools::model::DiagnosticCategory::Healthy
 pub ip_tools::model::DiagnosticCategory::Http
@@ -464,6 +466,7 @@ pub ip_tools::Confidence::Medium
 pub ip_tools::Confidence::Unknown
 pub enum ip_tools::DiagnosticCategory
 pub ip_tools::DiagnosticCategory::AddressFamily
+pub ip_tools::DiagnosticCategory::Certificate
 pub ip_tools::DiagnosticCategory::Dns
 pub ip_tools::DiagnosticCategory::Healthy
 pub ip_tools::DiagnosticCategory::Http
