@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-23T08:24:31+00:00",
+  "updated_at": "2026-08-23T08:35:17+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -3026,6 +3026,54 @@
       "touched_round": 0,
       "commit": "6a6a67d4abde1572431691c54ab120d9aa5d793e",
       "summary": "Added evidence and possible_causes columns to diagnose --csv: render_csv now emits host,severity,category,confidence,summary,evidence,possible_causes, joining each diagnosis's Evidence.detail entries and possible_causes into semicolon-separated cells via a shared join_semis helper (RFC-4180 quoted), so a spreadsheet fleet sweep keeps the reasoning behind each verdict."
+    },
+    "ISS-051": {
+      "id": "ISS-051",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T08:35:10+00:00",
+      "updated_at": "2026-08-23T08:35:17+00:00",
+      "touched_round": 0,
+      "severity": "medium",
+      "summary": "The repeated HTTP probes surface a status distribution (ProbeResult.status_counts, TASK-052/DEC-051), but the diagnostic engine ignores it: interrupt_status_flapping -- a transport-healthy endpoint that flaps between 2xx and non-2xx (degraded backend, A/B/partial deployment, capacity/rate-limit cycling) is invisible because intermittent_rules only fires when transport attempts actually fail. diagnose also never collected an HTTP status repeat (only tcp_repeat), so the signal was unreachable end-to-end."
+    },
+    "TASK-059": {
+      "id": "TASK-059",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T08:35:10+00:00",
+      "updated_at": "2026-08-23T08:35:17+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.7,
+      "confidence": 1,
+      "effort": 0.5,
+      "unlock_factor": 1,
+      "summary": "Flag HTTP status flapping: add an http_status_flapping_rules engine rule that raises an Intermittent (High) diagnosis when a repeat probe has >=2 attempts, a non-empty status_counts, and observes both 2xx and non-2xx classes; and make diagnose's probe phase collect an HTTP/1.1 status repeat alongside the TCP repeat so the signal is reachable end-to-end. No public API change. Pinned by engine unit tests (flap fires on mixed classes; uniform/single stay silent) and a fixture-gated CLI test: diagnose --sni flap.invalid alternates 200/503 and surfaces the verdict."
+    },
+    "DEC-058": {
+      "id": "DEC-058",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T08:35:10+00:00",
+      "updated_at": "2026-08-23T08:35:10+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-23): act on the HTTP status distribution instead of just surfacing it. The probe path reports status_counts (TASK-052) but the diagnostic engine never used them -- only transport failures trigger Intermittent -- so a backend flapping 200<->503 on a transport-healthy path went undiagnosed, exactly the instability an operator running a stability repeat cares about. Also wire an HTTP status repeat into diagnose so the rule is reachable through the flagship command, not just a library API.",
+      "alternatives_rejected": "leaving the status distribution purely informational (it would stay invisible to diagnose for exactly the flapping case it exists to reveal); reusing the transport Intermittent rule (status class is unrelated to transport success/failure); adding the HTTP repeat to every protocol (h1 status repeat is the canonical signal and bounds diagnose's added cost)."
+    },
+    "CHG-052": {
+      "id": "CHG-052",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T08:35:16+00:00",
+      "updated_at": "2026-08-23T08:35:16+00:00",
+      "touched_round": 0,
+      "commit": "1fc1e512edec4912d617ec193c10650817341ca5",
+      "summary": "Added HTTP status flapping detection: new http_status_flapping_rules engine rule raises an Intermittent (High) diagnosis when a repeat probe has >=2 attempts and observed both 2xx and non-2xx status classes (reading ProbeResult.status_counts); and diagnose's probe phase now runs an HTTP/1.1 status repeat alongside the TCP repeat so the rule is reachable end-to-end. Added a fixture 'flap.invalid' route that alternates 200/503 (separate TCP/QUIC counters)."
     }
   },
   "edges": [
@@ -5110,6 +5158,42 @@
       "to": "ISS-050",
       "type": "resolves",
       "created_at": "2026-08-23T08:24:31+00:00"
+    },
+    {
+      "from": "ISS-051",
+      "to": "COMP-http",
+      "type": "located_in",
+      "created_at": "2026-08-23T08:35:16+00:00"
+    },
+    {
+      "from": "TASK-059",
+      "to": "ISS-051",
+      "type": "addresses",
+      "created_at": "2026-08-23T08:35:16+00:00"
+    },
+    {
+      "from": "DEC-058",
+      "to": "TASK-059",
+      "type": "governs",
+      "created_at": "2026-08-23T08:35:16+00:00"
+    },
+    {
+      "from": "DEC-058",
+      "to": "DEC-057",
+      "type": "supersedes",
+      "created_at": "2026-08-23T08:35:16+00:00"
+    },
+    {
+      "from": "CHG-052",
+      "to": "TASK-059",
+      "type": "implements",
+      "created_at": "2026-08-23T08:35:16+00:00"
+    },
+    {
+      "from": "CHG-052",
+      "to": "ISS-051",
+      "type": "resolves",
+      "created_at": "2026-08-23T08:35:16+00:00"
     }
   ]
 }
