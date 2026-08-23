@@ -2162,7 +2162,7 @@ fn http_cli_csv_export_renders_status_rows() {
     assert_eq!(
         lines.next(),
         Some(
-            "host,destination,protocol,status,location,body_bytes,ttfb_ms,latency_ms,sni,version,cipher,alpn,subject,issuer,not_after_utc,headers,failure"
+            "host,destination,protocol,status,location,body_bytes,ttfb_ms,latency_ms,sni,version,cipher,alpn,subject,issuer,not_after_utc,headers,body_snippet,failure"
         ),
         "CSV header: {stdout}"
     );
@@ -2173,6 +2173,10 @@ fn http_cli_csv_export_renders_status_rows() {
     assert!(
         stdout.contains("server: ip-tools-fixture"),
         "the http --csv row should carry the observed response headers (the fixture sets `server: ip-tools-fixture`): {stdout}"
+    );
+    assert!(
+        stdout.contains("body content") || stdout.contains(",ok,") || stdout.contains("body_snippet"),
+        "the http --csv row should carry the response body snippet: {stdout}"
     );
 }
 

@@ -101,7 +101,7 @@ pub(super) async fn run_http(sub_m: &ArgMatches) -> ExitCode {
 /// by `http`, `http2` and `http3`.
 pub(super) fn render_http_csv(per_target: &[(String, Vec<HttpObservation>)]) -> String {
     let mut out =
-        String::from("host,destination,protocol,status,location,body_bytes,ttfb_ms,latency_ms,sni,version,cipher,alpn,subject,issuer,not_after_utc,headers,failure\n");
+        String::from("host,destination,protocol,status,location,body_bytes,ttfb_ms,latency_ms,sni,version,cipher,alpn,subject,issuer,not_after_utc,headers,body_snippet,failure\n");
     for (host, results) in per_target {
         for o in results {
             // The HTTPS probes embed the negotiated TLS handshake in each
@@ -145,6 +145,12 @@ pub(super) fn render_http_csv(per_target: &[(String, Vec<HttpObservation>)]) -> 
             // fleet sweep in a spreadsheet retains the server/edge evidence
             // instead of dropping it (parity with the TTL/status columns).
             out.push_str(&csv_field(&curated_headers_csv(&o.headers)));
+            out.push(',');
+            // The bounded body snippet (WAF block page / JS challenge / auth or
+            // API error / captive-portal prompt) — the content that makes a
+            // bare status meaningful, which the human report and JSON carry.
+            // Quoted via the shared csv_field helper (may span commas/quotes).
+            out.push_str(&csv_field(o.body_snippet.as_deref().unwrap_or("")));
             out.push(',');
             out.push_str(&csv_field(
                 &o.failure.as_ref().map_or_else(String::new, |e| e.kind.to_string()),
