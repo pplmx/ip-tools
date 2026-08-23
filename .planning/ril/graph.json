@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-23T05:25:23+00:00",
+  "updated_at": "2026-08-23T05:35:23+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -2546,6 +2546,54 @@
       "touched_round": 0,
       "commit": "d16565792a4ab1d09aaea6866e521c9dcee276b6",
       "summary": "Added http_consistency_rules to the diagnostic engine: raises a Low Http diagnosis (Medium confidence) when completed responses diverge across wire protocols on the same destination (2xx on one, non-2xx on another) or across address families (one family all-2xx, the other any non-2xx). Only completed responses (status present, no failure) are compared and bucketed 2xx-vs-non-2xx so negotiation failures/stalls stay owned by their own rules and benign status-detail differences are ignored. Wired into diagnose dispatch; CHANGELOG updated. Pinned by unit tests for cross-protocol, cross-family, and quiet healthy/negotiation-failure/single-protocol cases."
+    },
+    "ISS-041": {
+      "id": "ISS-041",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T05:35:08+00:00",
+      "updated_at": "2026-08-23T05:35:23+00:00",
+      "touched_round": 0,
+      "severity": "low",
+      "summary": "dns --record-type PTR <ip> silently ignores --count N: the reverse-lookup branch always returns a single-shot observation, unlike every other record type which --count aggregates into per-resolver latency/failure stats. A user repeating a reverse lookup to gauge stability would get misleading single-shot output with a silently-dropped flag."
+    },
+    "TASK-049": {
+      "id": "TASK-049",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T05:35:08+00:00",
+      "updated_at": "2026-08-23T05:35:23+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.15,
+      "unlock_factor": 1,
+      "summary": "Make dns --count work for PTR reverse lookups: when the target is an IP literal and --count > 1, route the PTR query on the auto-built reverse-zone name through the existing resolve_repeat + encrypted_repeat aggregation (reporting the user's IP as the report host), so reverse-lookup stability is aggregated exactly like every other record type. Pinned by a fixture-gated CLI test: dns --record-type PTR 192.0.2.77 --doh ... --count 3 renders a 3/3 repeat row."
+    },
+    "DEC-048": {
+      "id": "DEC-048",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T05:35:08+00:00",
+      "updated_at": "2026-08-23T05:35:08+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-23): complete PTR --count parity. The PTR milestone (DEC-046) shipped single-shot reverse lookups but silently ignored --count, diverging from every forward record type that aggregates repeats. Route IP-literal PTR repeats through the existing resolve_repeat/encrypted_repeat path on the reverse-zone name, keeping TargetDns.host as the user's IP. Small, robust, no new dependency; reuses the exact aggregation every other type uses.",
+      "alternatives_rejected": "clamping/rejecting --count on PTR (worse DX — the flag should just work, and the aggregation is already generic); a manual repeat loop (already provided by resolve_repeat/encrypted_repeat); keeping the silent ignore (a documented-elsewhere silently dropped flag is a correctness bug)."
+    },
+    "CHG-042": {
+      "id": "CHG-042",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T05:35:23+00:00",
+      "updated_at": "2026-08-23T05:35:23+00:00",
+      "touched_round": 0,
+      "commit": "8bf11fd674c1c204bd9629016be7174f3b88f588",
+      "summary": "Made dns --count work for PTR reverse lookups: an IP-literal PTR target with --count > 1 now routes the reverse-zone query through the existing resolve_repeat + encrypted_repeat aggregation (reporting the user's IP as the report host) instead of silently ignoring the count. Updated the PTR CHANGELOG entry. Pinned by a fixture-gated CLI test asserting --count 3 renders a 3/3 repeat row labeled with the target IP."
     }
   },
   "edges": [
@@ -4270,6 +4318,42 @@
       "to": "ISS-040",
       "type": "resolves",
       "created_at": "2026-08-23T05:25:23+00:00"
+    },
+    {
+      "from": "ISS-041",
+      "to": "COMP-dns",
+      "type": "located_in",
+      "created_at": "2026-08-23T05:35:08+00:00"
+    },
+    {
+      "from": "TASK-049",
+      "to": "ISS-041",
+      "type": "addresses",
+      "created_at": "2026-08-23T05:35:08+00:00"
+    },
+    {
+      "from": "DEC-048",
+      "to": "TASK-049",
+      "type": "governs",
+      "created_at": "2026-08-23T05:35:08+00:00"
+    },
+    {
+      "from": "DEC-048",
+      "to": "DEC-047",
+      "type": "supersedes",
+      "created_at": "2026-08-23T05:35:08+00:00"
+    },
+    {
+      "from": "CHG-042",
+      "to": "TASK-049",
+      "type": "implements",
+      "created_at": "2026-08-23T05:35:23+00:00"
+    },
+    {
+      "from": "CHG-042",
+      "to": "ISS-041",
+      "type": "resolves",
+      "created_at": "2026-08-23T05:35:23+00:00"
     }
   ]
 }
