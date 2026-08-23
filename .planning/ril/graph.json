@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-23T04:43:50+00:00",
+  "updated_at": "2026-08-23T04:55:20+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -2306,6 +2306,54 @@
       "touched_round": 0,
       "commit": "7fefc307d8c49f908bcb735bb272de7e1f27c47c",
       "summary": "Added a not-yet-valid certificate rule to the lifetime family: when a peer cert's notBefore is in the future (integer-day days_until > 0), raise a Medium Certificate diagnosis naming how far off validity starts, with misissuance / clock-skew / premature-deployment causes. Unit-tested (future notBefore raises; past notBefore silent)."
+    },
+    "ISS-036": {
+      "id": "ISS-036",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T04:55:08+00:00",
+      "updated_at": "2026-08-23T04:55:20+00:00",
+      "touched_round": 0,
+      "severity": "low",
+      "summary": "diagnose runs a multi-target fleet sweep sequentially (for target in targets), so with N hosts each waits for the previous host's full pipeline. dns already gained --concurrency for its multi-target sweep (DEC-040) but diagnose never did -- a large health sweep is needlessly slow and does not scale."
+    },
+    "TASK-044": {
+      "id": "TASK-044",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T04:55:08+00:00",
+      "updated_at": "2026-08-23T04:55:20+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.35,
+      "unlock_factor": 1,
+      "summary": "Parallelize diagnose across targets: run the per-host pipeline concurrently bounded by the existing --concurrency flag (1 = strictly sequential), re-sorting reports back to the given target order so human/JSON/CSV output stays deterministic. Reuses parallel_map + index re-sort exactly like dns --concurrency (DEC-040). Pinned by a fixture test asserting input order is preserved under --concurrency 4."
+    },
+    "DEC-043": {
+      "id": "DEC-043",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T04:55:08+00:00",
+      "updated_at": "2026-08-23T04:55:08+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-23): make diagnose's fleet sweep scale by sweeping hosts concurrently. dns already gained --concurrency for its multi-target sweep (DEC-040) and the operator values it; diagnose is the fleet/health command so it should too. Reuse the existing --concurrency flag (also bounds per-host address probes), re-sort reports by input index so output stays deterministic, and keep --concurrency 1 as the strictly-sequential baseline. No API/format change.",
+      "alternatives_rejected": "a separate flag (--concurrency already exists and reads naturally as a global probe bound); changing output order (no — index re-sort preserves it); touching the probe subcommands (out of scope; they already use concurrency for addresses)"
+    },
+    "CHG-037": {
+      "id": "CHG-037",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T04:55:20+00:00",
+      "updated_at": "2026-08-23T04:55:20+00:00",
+      "touched_round": 0,
+      "commit": "9c2f4b95ad7dc8885d0a289c4a89b8271ac9f238",
+      "summary": "Parallelized the diagnose multi-target sweep: the per-host pipeline now runs concurrently bounded by --concurrency (1 stays strictly sequential), using parallel_map + index re-sort so human/JSON/CSV output stays in input order (mirrors dns --concurrency, DEC-040). Updated --concurrency docs in README; pinned by a fixture test asserting input order is preserved under --concurrency 4."
     }
   },
   "edges": [
@@ -3850,6 +3898,42 @@
       "to": "ISS-035",
       "type": "resolves",
       "created_at": "2026-08-23T04:43:50+00:00"
+    },
+    {
+      "from": "ISS-036",
+      "to": "COMP-diagnose",
+      "type": "located_in",
+      "created_at": "2026-08-23T04:55:08+00:00"
+    },
+    {
+      "from": "TASK-044",
+      "to": "ISS-036",
+      "type": "addresses",
+      "created_at": "2026-08-23T04:55:08+00:00"
+    },
+    {
+      "from": "DEC-043",
+      "to": "TASK-044",
+      "type": "governs",
+      "created_at": "2026-08-23T04:55:08+00:00"
+    },
+    {
+      "from": "DEC-043",
+      "to": "DEC-042",
+      "type": "supersedes",
+      "created_at": "2026-08-23T04:55:08+00:00"
+    },
+    {
+      "from": "CHG-037",
+      "to": "TASK-044",
+      "type": "implements",
+      "created_at": "2026-08-23T04:55:20+00:00"
+    },
+    {
+      "from": "CHG-037",
+      "to": "ISS-036",
+      "type": "resolves",
+      "created_at": "2026-08-23T04:55:20+00:00"
     }
   ]
 }
