@@ -334,10 +334,13 @@ async fn encrypted_repeat(
 /// row per (resolver, record type). Single-shot rows are attempts=1; repeat
 /// rows use the aggregated latency statistics and carry the minimum record
 /// TTL observed across the successful answers (the caching-relevant bound).
+/// A `records` column carries the actual resolved values (addresses, CNAME,
+/// MX, TXT, ...) on single-shot rows; repeat rows leave it empty because the
+/// aggregation does not retain which records each attempt answered.
 fn render_dns_csv(outputs: &[TargetDns]) -> String {
     use std::fmt::Write as _;
     let mut out = String::from(
-        "host,resolver,record_type,attempts,success_rate,latency_p50_ms,latency_p95_ms,latency_max_ms,failures,ttl\n",
+        "host,resolver,record_type,attempts,success_rate,latency_p50_ms,latency_p95_ms,latency_max_ms,failures,ttl,records\n",
     );
     for o in outputs {
         if o.repeat {
@@ -361,6 +364,7 @@ fn render_dns_csv(outputs: &[TargetDns]) -> String {
                 out.push_str(&r.failures.to_string());
                 out.push(',');
                 out.push_str(&r.ttl.map_or_else(String::new, |t| t.to_string()));
+                out.push(','); // repeat rows aggregate; no per-answer records
                 out.push('\n');
             }
         } else {
@@ -384,6 +388,9 @@ fn render_dns_csv(outputs: &[TargetDns]) -> String {
                 out.push(if obs.error.is_some() { '1' } else { '0' });
                 out.push(',');
                 out.push_str(&obs.ttl.map_or_else(String::new, |t| t.to_string()));
+                out.push(',');
+                let records: Vec<String> = obs.records.iter().map(ToString::to_string).collect();
+                out.push_str(&csv_field(&records.join(", ")));
                 out.push('\n');
             }
         }

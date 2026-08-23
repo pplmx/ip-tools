@@ -912,14 +912,21 @@ fn dns_cli_csv_carries_record_ttl() {
         String::from_utf8_lossy(&out.stderr)
     );
     assert!(
-        stdout.lines().next() == Some("host,resolver,record_type,attempts,success_rate,latency_p50_ms,latency_p95_ms,latency_max_ms,failures,ttl"),
-        "CSV header should include ttl: {stdout}"
+        stdout.lines().next()
+            == Some(
+                "host,resolver,record_type,attempts,success_rate,latency_p50_ms,latency_p95_ms,latency_max_ms,failures,ttl,records"
+            ),
+        "CSV header should include ttl and records: {stdout}"
     );
     assert!(
         stdout
             .lines()
-            .any(|l| l.starts_with("host.example,") && l.ends_with(",60")),
+            .any(|l| l.starts_with("host.example,") && l.contains(",60,")),
         "the single-shot DoH row should carry the 60s TTL field: {stdout}"
+    );
+    assert!(
+        stdout.contains("192.0.2.77") && stdout.contains("2001:db8::77"),
+        "the single-shot DoH rows should carry the resolved A and AAAA records: {stdout}"
     );
 }
 
@@ -1639,7 +1646,7 @@ fn dns_cli_csv_export_renders_rows() {
     assert_eq!(
         lines.next(),
         Some(
-            "host,resolver,record_type,attempts,success_rate,latency_p50_ms,latency_p95_ms,latency_max_ms,failures,ttl"
+            "host,resolver,record_type,attempts,success_rate,latency_p50_ms,latency_p95_ms,latency_max_ms,failures,ttl,records"
         ),
         "CSV header: {stdout}"
     );
@@ -1689,7 +1696,7 @@ fn dns_cli_repeat_csv_carries_min_ttl() {
         String::from_utf8_lossy(&out.stderr)
     );
     assert!(
-        stdout.lines().any(|l| l.contains(",3,1.0000") && l.ends_with(",60")),
+        stdout.lines().any(|l| l.contains(",3,1.0000") && l.contains(",60,")),
         "the repeat CSV row should aggregate 3 attempts and carry ttl=60: {stdout}"
     );
 }

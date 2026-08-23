@@ -85,11 +85,12 @@ Every multi-target command also reads a target list from a file or stdin:
 comments skipped) and `-` reads them from stdin, so a big sweep doesn't need
 one giant shell command line.
 `--csv` emits a `host,resolver,record_type,attempts,success_rate,p50,p95,max,
-failures,ttl` row per (resolver, record type) — single-shot rows are
-attempts=1 and carry the record TTL, while `--count` repeat rows use the
+failures,ttl,records` row per (resolver, record type) — single-shot rows are
+attempts=1 and carry the record TTL **and the resolved records** (the actual
+addresses/CNAME/MX/TXT/… values), while `--count` repeat rows use the
 aggregated latency stats and carry the **minimum TTL** observed across the
 successful answers (the caching-relevant bound) — so a DNS sweep loads into a
-spreadsheet with the TTL on every row.
+spreadsheet with both the timing and the answers.
 
 By default `dns` queries `A` and `AAAA`. `--record-type TYPE` queries a single
 specific type — `A`, `AAAA`, `CNAME`, `MX`, `TXT`, `NS`, `SOA`, `CAA`, `SRV`
