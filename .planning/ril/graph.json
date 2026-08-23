@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-23T09:39:07+00:00",
+  "updated_at": "2026-08-23T12:50:01+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -3470,6 +3470,54 @@
       "touched_round": 0,
       "commit": "002a8911e6b661b4f5de652d2b27622baa7d858a",
       "summary": "Added diagnose --count N (default 3, 0 rejected) and threaded it through diagnose_one's repeat phase for both the TCP transport repeat and the HTTP status repeat. CLI-only, no public API change; added a fixture-gated CLI test proving --count 1 suppresses the status-flapping verdict while --count 5 surfaces it."
+    },
+    "DEC-067": {
+      "id": "DEC-067",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T12:40:38+00:00",
+      "updated_at": "2026-08-23T12:40:38+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-23): surface the certificate SANs and covers <sni> verdict in the tls/http/http2/http3 --csv exports. The SANs (DEC-024) and the hostname-coverage verdict (DEC-025) already ship in the human report and --json (and the http family human/JSON since DEC-039), but both CSV exporters still drop them: a fleet sweep loaded into a spreadsheet loses the wrong-host/wildcard-mismatch signal exactly where cross-host comparisons happen. One sans cell + one covers cell per row matches the tls-columns/headers pattern and needs no new dependency.",
+      "alternatives_rejected": "not adding covers to the http csv (the cert column exists but the verdict is the actual diagnostic signal); not slowing the repeated probe (renderer-only change, zero probe-path impact)"
+    },
+    "ISS-060": {
+      "id": "ISS-060",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T12:41:55+00:00",
+      "updated_at": "2026-08-23T12:50:01+00:00",
+      "touched_round": 0,
+      "severity": "low",
+      "summary": "The tls --csv and the shared http/http2/http3 --csv exporters carry subject/issuer/not_after (and the http family the TLS columns) but drop the certificate SANs and the covers <sni> verdict -- even though the human report and --json both surface them (DEC-024/DEC-025/DEC-039). A spreadsheet fleet sweep does the cross-host wrong-certificate/wildcard-mismatch comparison in a pivot table; without the SANs and verdict columns that evidence is lost at the export boundary."
+    },
+    "TASK-068": {
+      "id": "TASK-068",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T12:43:20+00:00",
+      "updated_at": "2026-08-23T12:50:01+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.1,
+      "unlock_factor": 1,
+      "summary": "Append sans and covers columns to the tls/http/http2/http3 --csv exporters (renderer-only): a sans cell with the CertificateSummary.sans joined by ';' and a covers cell with 'yes' when cert_covers_hostname(sni, sans) holds, blank otherwise -- completed rows cover the SNI, mismatched rows (wrong host / wildcard) leave covers blank as the signal. Make cert_covers_hostname pub (binary crate reaches it via ip_tools::report). No public API change (renderer-only + visibility of an existing helper). Pinned by unit tests in src/cli/tls.rs and src/cli/http.rs and the updated http --csv fixture header."
+    },
+    "CHG-061": {
+      "id": "CHG-061",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T12:49:20+00:00",
+      "updated_at": "2026-08-23T12:49:20+00:00",
+      "touched_round": 0,
+      "commit": "5f89b4b1d712ef63cd439bd12b8c578cac549c5a",
+      "summary": "tls/http/http2/http3 --csv carry cert SANs (';'-joined) and the covers verdict ('yes'/blank), mirroring the human report + --json; cert_covers_hostname widened to pub for the CLI exporter"
     }
   },
   "edges": [
@@ -5878,6 +5926,42 @@
       "to": "ISS-059",
       "type": "resolves",
       "created_at": "2026-08-23T09:39:07+00:00"
+    },
+    {
+      "from": "DEC-067",
+      "to": "TASK-068",
+      "type": "governs",
+      "created_at": "2026-08-23T12:46:06+00:00"
+    },
+    {
+      "from": "DEC-067",
+      "to": "DEC-066",
+      "type": "supersedes",
+      "created_at": "2026-08-23T12:46:06+00:00"
+    },
+    {
+      "from": "TASK-068",
+      "to": "ISS-060",
+      "type": "addresses",
+      "created_at": "2026-08-23T12:46:06+00:00"
+    },
+    {
+      "from": "ISS-060",
+      "to": "COMP-http",
+      "type": "located_in",
+      "created_at": "2026-08-23T12:46:06+00:00"
+    },
+    {
+      "from": "CHG-061",
+      "to": "TASK-068",
+      "type": "implements",
+      "created_at": "2026-08-23T12:50:01+00:00"
+    },
+    {
+      "from": "CHG-061",
+      "to": "ISS-060",
+      "type": "resolves",
+      "created_at": "2026-08-23T12:50:01+00:00"
     }
   ]
 }
