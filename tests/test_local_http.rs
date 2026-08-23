@@ -1808,12 +1808,52 @@ fn probe_cli_csv_export_renders_rows() {
     let mut lines = stdout.lines();
     assert_eq!(
         lines.next(),
-        Some("host,destination,attempts,success_rate,latency_p50_ms,latency_p95_ms,latency_max_ms,jitter_ms,failures"),
+        Some("host,destination,attempts,success_rate,latency_p50_ms,latency_p95_ms,latency_max_ms,jitter_ms,failures,statuses"),
         "CSV header: {stdout}"
     );
     assert!(
         stdout.lines().any(|l| l.contains(&format!("{addr},3,1.0000,"))),
         "expected a 3/3 success row for {addr}: {stdout}"
+    );
+}
+
+#[test]
+fn probe_http_csv_export_includes_statuses() {
+    // `probe --protocol http --csv` must carry the HTTP status distribution
+    // (the fixture's Normal route answers 200) in its own column, so a
+    // spreadsheet repeat-probe load reveals statuses, not just pass/fail.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let addr = fixture.tcp_addr().to_string();
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "probe",
+            &addr,
+            "--protocol",
+            "http",
+            "--count",
+            "3",
+            "--insecure",
+            "--csv",
+            "--timeout",
+            "2000",
+        ])
+        .output()
+        .expect("run probe --protocol http --csv");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "probe --protocol http --csv should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.lines().any(|l| l.contains("200x3")),
+        "the HTTP status distribution must appear in the CSV: {stdout}"
     );
 }
 

@@ -113,13 +113,13 @@ pub(super) async fn run_probe(sub_m: &ArgMatches) -> ExitCode {
 }
 
 /// Render every repeated-probe result as CSV: a header then one
-/// `host,destination,attempts,success_rate,latency_p50_ms,latency_p95_ms,latency_max_ms,jitter_ms,failures`
+/// `host,destination,attempts,success_rate,latency_p50_ms,latency_p95_ms,latency_max_ms,jitter_ms,failures,statuses`
 /// row per destination across every target. Latency statistics come from the
 /// `--count` aggregation (only successful attempts).
 fn render_probe_csv(per_target: &[(String, Vec<ProbeResult>)]) -> String {
     use std::fmt::Write as _;
     let mut out = String::from(
-        "host,destination,attempts,success_rate,latency_p50_ms,latency_p95_ms,latency_max_ms,jitter_ms,failures\n",
+        "host,destination,attempts,success_rate,latency_p50_ms,latency_p95_ms,latency_max_ms,jitter_ms,failures,statuses\n",
     );
     for (host, results) in per_target {
         for r in results {
@@ -140,6 +140,20 @@ fn render_probe_csv(per_target: &[(String, Vec<ProbeResult>)]) -> String {
             out.push_str(&opt64(r.latency.jitter));
             out.push(',');
             out.push_str(&r.failures.to_string());
+            out.push(',');
+            if r.status_counts.is_empty() {
+                // tcp/tls transport-repeat probes carry no HTTP statuses, so
+                // the statuses field is left empty (the comma already opened
+                // it and the trailing newline closes it).
+            } else {
+                let dist: String = r
+                    .status_counts
+                    .iter()
+                    .map(|s| format!("{}x{}", s.status, s.count))
+                    .collect::<Vec<_>>()
+                    .join(";");
+                out.push_str(&csv_field(&dist));
+            }
             out.push('\n');
         }
     }
