@@ -29,6 +29,9 @@ pub(super) async fn run_http(sub_m: &ArgMatches) -> ExitCode {
         }
     };
     let output_body = sub_m.try_get_one::<String>("output-body").ok().flatten().cloned();
+    let max_body_bytes = *sub_m
+        .get_one::<u64>("max-body-bytes")
+        .expect("max-body-bytes has default");
     run_probe_flow(
         sub_m,
         render_http,
@@ -43,37 +46,9 @@ pub(super) async fn run_http(sub_m: &ArgMatches) -> ExitCode {
             let output_body = output_body.clone();
             async move {
                 let header_refs: Vec<(&str, &str)> = headers.iter().map(|(n, v)| (n.as_str(), v.as_str())).collect();
-                if let Some(out) = output_body.as_deref() {
-                    let out = std::path::Path::new(out);
-                    if insecure {
-                        ip_http::probe_insecure_with_version_output(
-                            dest,
-                            &host,
-                            &method,
-                            &path,
-                            &header_refs,
-                            body.as_deref(),
-                            timeout,
-                            protocol,
-                            out,
-                        )
-                        .await
-                    } else {
-                        ip_http::probe_with_version_output(
-                            dest,
-                            &host,
-                            &method,
-                            &path,
-                            &header_refs,
-                            body.as_deref(),
-                            timeout,
-                            protocol,
-                            out,
-                        )
-                        .await
-                    }
-                } else if insecure {
-                    ip_http::probe_insecure_with_version(
+                let output = output_body.as_deref().map(std::path::Path::new);
+                if insecure {
+                    ip_http::probe_insecure_with_version_output(
                         dest,
                         &host,
                         &method,
@@ -82,10 +57,12 @@ pub(super) async fn run_http(sub_m: &ArgMatches) -> ExitCode {
                         body.as_deref(),
                         timeout,
                         protocol,
+                        max_body_bytes,
+                        output,
                     )
                     .await
                 } else {
-                    ip_http::probe_with_version(
+                    ip_http::probe_with_version_output(
                         dest,
                         &host,
                         &method,
@@ -94,6 +71,8 @@ pub(super) async fn run_http(sub_m: &ArgMatches) -> ExitCode {
                         body.as_deref(),
                         timeout,
                         protocol,
+                        max_body_bytes,
+                        output,
                     )
                     .await
                 }

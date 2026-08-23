@@ -377,10 +377,16 @@ message, a JS challenge, a captive-portal prompt — surfacing it completes the
 HTTP observation (request control, headers, status, and now content).
 
 `--output-body FILE` (on `http`/`http2`/`http3`) additionally writes the
-full response body (bounded to the same 1 MiB read cap) verbatim to a file,
-so an operator can inspect the actual bytes of a block page, challenge, or
-API error without re-running in curl — the in-memory report still shows only
-the 1 KiB snippet and the total byte count.
+full response body (bounded to the request's body-read cap) verbatim to a
+file, so an operator can inspect the actual bytes of a block page, challenge,
+or API error without re-running in curl — the in-memory report still shows
+only the 1 KiB snippet and the total byte count.
+
+`--max-body-bytes N` raises or lowers that response-body read cap (default
+`1048576`, i.e. 1 MiB) and the `--output-body` write together, so a genuinely
+large API error, page, or download (the fixture's `big.invalid` serves 2 MiB)
+can be captured in full without weakening the default safety bound for
+everyone.
 
 Example output:
 

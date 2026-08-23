@@ -38,6 +38,7 @@ pub async fn probe(
         timeout,
         crate::tls::TlsMode::Roots(&crate::tls::roots()),
         crate::tls::TlsProtocol::Auto,
+        MAX_BODY_BYTES,
         None,
     )
     .await
@@ -65,6 +66,7 @@ pub async fn probe_with_version(
         timeout,
         crate::tls::TlsMode::Roots(&crate::tls::roots()),
         protocol,
+        MAX_BODY_BYTES,
         None,
     )
     .await
@@ -92,6 +94,7 @@ pub async fn probe_with_roots(
         timeout,
         crate::tls::TlsMode::Roots(roots),
         crate::tls::TlsProtocol::Auto,
+        MAX_BODY_BYTES,
         None,
     )
     .await
@@ -117,14 +120,15 @@ pub async fn probe_insecure(
         timeout,
         crate::tls::TlsMode::Insecure,
         crate::tls::TlsProtocol::Auto,
+        MAX_BODY_BYTES,
         None,
     )
     .await
 }
 
-/// [`probe_with_version`] that also writes the bounded response body to
-/// `output` (the `--output-body` flag).
-#[allow(clippy::too_many_arguments)] // destination/host/method/path/headers/body/timeout/protocol/output
+/// [`probe_with_version`] with a configurable body-read cap and optional
+/// `--output-body` capture.
+#[allow(clippy::too_many_arguments)] // destination/host/method/path/headers/body/timeout/protocol/max/output
 pub async fn probe_with_version_output(
     destination: SocketAddr,
     host: &str,
@@ -134,7 +138,8 @@ pub async fn probe_with_version_output(
     body: Option<&[u8]>,
     timeout: Duration,
     protocol: crate::tls::TlsProtocol,
-    output: &std::path::Path,
+    max_body_bytes: u64,
+    output: Option<&std::path::Path>,
 ) -> HttpObservation {
     probe_impl(
         destination,
@@ -146,7 +151,8 @@ pub async fn probe_with_version_output(
         timeout,
         crate::tls::TlsMode::Roots(&crate::tls::roots()),
         protocol,
-        Some(output),
+        max_body_bytes,
+        output,
     )
     .await
 }
@@ -173,14 +179,15 @@ pub async fn probe_insecure_with_version(
         timeout,
         crate::tls::TlsMode::Insecure,
         protocol,
+        MAX_BODY_BYTES,
         None,
     )
     .await
 }
 
-/// [`probe_insecure_with_version`] that also writes the bounded response body
-/// to `output` (the `--output-body` flag).
-#[allow(clippy::too_many_arguments)] // destination/host/method/path/headers/body/timeout/protocol/output
+/// [`probe_insecure_with_version`] with a configurable body-read cap and
+/// optional `--output-body` capture.
+#[allow(clippy::too_many_arguments)] // destination/host/method/path/headers/body/timeout/protocol/max/output
 pub async fn probe_insecure_with_version_output(
     destination: SocketAddr,
     host: &str,
@@ -190,7 +197,8 @@ pub async fn probe_insecure_with_version_output(
     body: Option<&[u8]>,
     timeout: Duration,
     protocol: crate::tls::TlsProtocol,
-    output: &std::path::Path,
+    max_body_bytes: u64,
+    output: Option<&std::path::Path>,
 ) -> HttpObservation {
     probe_impl(
         destination,
@@ -202,7 +210,8 @@ pub async fn probe_insecure_with_version_output(
         timeout,
         crate::tls::TlsMode::Insecure,
         protocol,
-        Some(output),
+        max_body_bytes,
+        output,
     )
     .await
 }
@@ -219,6 +228,7 @@ async fn probe_impl(
     timeout: Duration,
     mode: crate::tls::TlsMode<'_>,
     protocol: crate::tls::TlsProtocol,
+    max_body_bytes: u64,
     body_output: Option<&std::path::Path>,
 ) -> HttpObservation {
     let start = Instant::now();
@@ -339,7 +349,7 @@ async fn probe_impl(
             full_body.extend_from_slice(&chunk[..]);
         }
         let _ = body.flow_control().release_capacity(chunk.len());
-        if bytes_read >= MAX_BODY_BYTES {
+        if bytes_read >= max_body_bytes {
             ended = true;
             break;
         }

@@ -97,6 +97,7 @@ fn parser() -> ArgMatches {
                 header_arg(),
                 body_arg(),
                 output_body_arg(),
+                max_body_bytes_arg(),
                 ipv4_arg(),
                 ipv6_arg(),
                 csv_arg(),
@@ -134,6 +135,7 @@ fn parser() -> ArgMatches {
                 header_arg(),
                 body_arg(),
                 output_body_arg(),
+                max_body_bytes_arg(),
                 ipv4_arg(),
                 ipv6_arg(),
                 csv_arg(),
@@ -152,6 +154,7 @@ fn parser() -> ArgMatches {
                 header_arg(),
                 body_arg(),
                 output_body_arg(),
+                max_body_bytes_arg(),
                 ipv4_arg(),
                 ipv6_arg(),
                 csv_arg(),
@@ -398,6 +401,17 @@ fn output_body_arg() -> Arg {
         .value_name("FILE")
         .action(ArgAction::Set)
         .help("write the bounded response body verbatim to FILE")
+}
+
+/// `--max-body-bytes` argument: bound the HTTP response-body read (and the
+/// `--output-body` write). Defaults to the crate's 1 MiB cap.
+fn max_body_bytes_arg() -> Arg {
+    Arg::new("max-body-bytes")
+        .long("max-body-bytes")
+        .value_name("BYTES")
+        .value_parser(clap::value_parser!(u64))
+        .default_value("1048576")
+        .help("bound the HTTP response-body read (default 1048576) and any --output-body write")
 }
 
 /// `--csv` argument for `diagnose`: emit per-diagnosis rows in CSV.

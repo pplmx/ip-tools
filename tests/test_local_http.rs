@@ -842,6 +842,91 @@ fn dns_cli_queries_doh_fixture_endpoint() {
 }
 
 #[test]
+fn output_body_respects_raised_max_body_bytes() {
+    // With the default 1 MiB cap, --output-body writes only ~1 MiB of the
+    // fixture's 2 MiB big.invalid body; raising --max-body-bytes captures the
+    // full 2 MiB. This proves the cap is configurable and the write honors it.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let addr = fixture.tcp_addr().to_string();
+
+    let dir = std::env::temp_dir();
+    let p_default = dir.join(format!("ip-tools-max-default-{}.bin", std::process::id()));
+    let p_raised = dir.join(format!("ip-tools-max-raised-{}.bin", std::process::id()));
+    let _ = std::fs::remove_file(&p_default);
+    let _ = std::fs::remove_file(&p_raised);
+
+    // Default cap: the written body is ~1 MiB (truncated).
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "http",
+            &addr,
+            "--insecure",
+            "--sni",
+            "big.invalid",
+            "--output-body",
+            p_default.to_str().unwrap(),
+            "--timeout",
+            "3000",
+        ])
+        .output()
+        .expect("run http big.invalid default cap");
+    assert!(
+        out.status.success(),
+        "http big.invalid default cap should exit 0: {}
+{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let def_len = std::fs::metadata(&p_default)
+        .map(|m| m.len())
+        .expect("default body file");
+    assert!(
+        ((1024 * 1024)..2 * 1024 * 1024).contains(&def_len),
+        "default cap should write ~1 MiB (truncated), got {def_len}"
+    );
+
+    // Raised cap: full 2 MiB is written.
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "http",
+            &addr,
+            "--insecure",
+            "--sni",
+            "big.invalid",
+            "--output-body",
+            p_raised.to_str().unwrap(),
+            "--max-body-bytes",
+            "3000000",
+            "--timeout",
+            "4000",
+        ])
+        .output()
+        .expect("run http big.invalid raised cap");
+    assert!(
+        out.status.success(),
+        "http big.invalid raised cap should exit 0: {}
+{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let raised_len = std::fs::metadata(&p_raised).map(|m| m.len()).expect("raised body file");
+    assert_eq!(
+        raised_len,
+        2 * 1024 * 1024,
+        "raised cap should write the full 2 MiB body"
+    );
+
+    let _ = std::fs::remove_file(&p_default);
+    let _ = std::fs::remove_file(&p_raised);
+}
+
+#[test]
 fn probe_command_resolves_through_doh_fixture_endpoint() {
     // The per-address probe commands must resolve the target through the
     // encrypted `--doh`/`--dot` resolvers (parity with `dns`/`diagnose`). The

@@ -69,6 +69,7 @@ pub async fn probe(
         body,
         timeout,
         crate::tls::TlsMode::Roots(&crate::tls::roots()),
+        MAX_BODY_BYTES,
         None,
     )
     .await
@@ -95,6 +96,7 @@ pub async fn probe_with_roots(
         body,
         timeout,
         crate::tls::TlsMode::Roots(roots),
+        MAX_BODY_BYTES,
         None,
     )
     .await
@@ -119,14 +121,15 @@ pub async fn probe_insecure(
         body,
         timeout,
         crate::tls::TlsMode::Insecure,
+        MAX_BODY_BYTES,
         None,
     )
     .await
 }
 
-/// [`probe`] that also writes the bounded response body to `output` (the
-/// `--output-body` flag).
-#[allow(clippy::too_many_arguments)] // destination/host/method/path/headers/body/timeout/output
+/// [`probe`] with a configurable body-read cap and optional `--output-body`
+/// capture.
+#[allow(clippy::too_many_arguments)] // destination/host/method/path/headers/body/timeout/max/output
 pub async fn probe_output(
     destination: SocketAddr,
     host: &str,
@@ -135,7 +138,8 @@ pub async fn probe_output(
     headers: &[(&str, &str)],
     body: Option<&[u8]>,
     timeout: Duration,
-    output: &std::path::Path,
+    max_body_bytes: u64,
+    output: Option<&std::path::Path>,
 ) -> HttpObservation {
     probe_impl(
         destination,
@@ -146,14 +150,15 @@ pub async fn probe_output(
         body,
         timeout,
         crate::tls::TlsMode::Roots(&crate::tls::roots()),
-        Some(output),
+        max_body_bytes,
+        output,
     )
     .await
 }
 
-/// [`probe_insecure`] that also writes the bounded response body to `output`
-/// (the `--output-body` flag).
-#[allow(clippy::too_many_arguments)] // destination/host/method/path/headers/body/timeout/output
+/// [`probe_insecure`] with a configurable body-read cap and optional
+/// `--output-body` capture.
+#[allow(clippy::too_many_arguments)] // destination/host/method/path/headers/body/timeout/max/output
 pub async fn probe_insecure_output(
     destination: SocketAddr,
     host: &str,
@@ -162,7 +167,8 @@ pub async fn probe_insecure_output(
     headers: &[(&str, &str)],
     body: Option<&[u8]>,
     timeout: Duration,
-    output: &std::path::Path,
+    max_body_bytes: u64,
+    output: Option<&std::path::Path>,
 ) -> HttpObservation {
     probe_impl(
         destination,
@@ -173,7 +179,8 @@ pub async fn probe_insecure_output(
         body,
         timeout,
         crate::tls::TlsMode::Insecure,
-        Some(output),
+        max_body_bytes,
+        output,
     )
     .await
 }
@@ -189,6 +196,7 @@ async fn probe_impl(
     body: Option<&[u8]>,
     timeout: Duration,
     mode: crate::tls::TlsMode<'_>,
+    max_body_bytes: u64,
     body_output: Option<&std::path::Path>,
 ) -> HttpObservation {
     let start = Instant::now();
@@ -338,7 +346,7 @@ async fn probe_impl(
         if body_output.is_some() {
             full_body.extend_from_slice(chunk.chunk());
         }
-        if bytes_read >= MAX_BODY_BYTES {
+        if bytes_read >= max_body_bytes {
             ended = true;
             break;
         }
