@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-23T05:57:07+00:00",
+  "updated_at": "2026-08-23T06:02:44+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -2738,6 +2738,54 @@
       "touched_round": 0,
       "commit": "42644a4baa8fb9b60cb993b6c87265b1b66a475c",
       "summary": "Added an HTTP status distribution to the repeat probes: repeat_impl now carries each attempt's status and aggregates a status_counts histogram (new StatusCount model + ProbeResult.status_counts), rendered in the probe human report (status: 200xN, ...) and JSON, so repeat-probing an HTTP endpoint reveals status flapping that transport pass/fail counts hide. Transport-success semantics preserved (a completed response with any status still counts as a successful exchange). Public API change (api-baseline regenerated); tcp/tls repeats keep an empty list. Pinned by an aggregation unit test and a fixture-gated CLI test surfacing 200x3."
+    },
+    "ISS-045": {
+      "id": "ISS-045",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T06:02:29+00:00",
+      "updated_at": "2026-08-23T06:02:44+00:00",
+      "touched_round": 0,
+      "severity": "low",
+      "summary": "probe --protocol http now surfaces the HTTP status distribution in human and JSON output (TASK-052), but the probe --csv exporter still emits only host,destination,attempts,success_rate,latency...failures -- the statuses added to the feature are missing from the CSV path, so a spreadsheet repeat-probe load cannot see statuses, an inconsistency within the delivered feature."
+    },
+    "TASK-053": {
+      "id": "TASK-053",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T06:02:29+00:00",
+      "updated_at": "2026-08-23T06:02:44+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.15,
+      "unlock_factor": 1,
+      "summary": "Add a statuses column to probe --csv: emit the ProbeResult.status_counts distribution (e.g. 200x3;503x2) per destination row, empty for the tcp/tls transport repeats, so the CSV path is consistent with the human/JSON output of the status feature. Pinned by a fixture-gated CLI test: probe --protocol http --count 3 --csv carries 200x3, and the existing tcp --csv header/rows were updated to include the column."
+    },
+    "DEC-052": {
+      "id": "DEC-052",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T06:02:29+00:00",
+      "updated_at": "2026-08-23T06:02:29+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-23): complete the probe status feature across output formats. TASK-052 delivered the status distribution to human + JSON but not the probe --csv exporter, leaving an inconsistency (a spreadsheet repeat-probe load cannot see statuses). Add a statuses column to render_probe_csv (empty for tcp/tls repeats, '200x3;503x2' semicolon-joined for HTTP), keeping the RFC-4180 quoting convention. No public API change (renderer only).",
+      "alternatives_rejected": "leaving CSV without statuses (the feature is inconsistent across formats); a separate --csv flag just for statuses (one column belongs in the existing exporter); piping statuses through a fragile multi-row format (a single semicolon-joined column is clean and CSV-safe)."
+    },
+    "CHG-046": {
+      "id": "CHG-046",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T06:02:44+00:00",
+      "updated_at": "2026-08-23T06:02:44+00:00",
+      "touched_round": 0,
+      "commit": "1d4cd895f6f47aaf6de88cc4003b4b34188d9da9",
+      "summary": "Added a statuses column to probe --csv: render_probe_csv now emits the ProbeResult.status_counts distribution (e.g. 200x3;503x2, semicolon-joined, RFC-4180 quoted) per destination row, empty for the tcp/tls transport repeats, matching the human/JSON output of the status feature. Updated the CSV test's expected header and added a fixture-gated CLI test (probe --protocol http --count 3 --csv carries 200x3). Renderer-only, no public API change; CHANGELOG updated."
     }
   },
   "edges": [
@@ -4606,6 +4654,42 @@
       "to": "ISS-044",
       "type": "resolves",
       "created_at": "2026-08-23T05:57:07+00:00"
+    },
+    {
+      "from": "ISS-045",
+      "to": "COMP-probe",
+      "type": "located_in",
+      "created_at": "2026-08-23T06:02:29+00:00"
+    },
+    {
+      "from": "TASK-053",
+      "to": "ISS-045",
+      "type": "addresses",
+      "created_at": "2026-08-23T06:02:29+00:00"
+    },
+    {
+      "from": "DEC-052",
+      "to": "TASK-053",
+      "type": "governs",
+      "created_at": "2026-08-23T06:02:29+00:00"
+    },
+    {
+      "from": "DEC-052",
+      "to": "DEC-051",
+      "type": "supersedes",
+      "created_at": "2026-08-23T06:02:29+00:00"
+    },
+    {
+      "from": "CHG-046",
+      "to": "TASK-053",
+      "type": "implements",
+      "created_at": "2026-08-23T06:02:44+00:00"
+    },
+    {
+      "from": "CHG-046",
+      "to": "ISS-045",
+      "type": "resolves",
+      "created_at": "2026-08-23T06:02:44+00:00"
     }
   ]
 }
