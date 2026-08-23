@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-23T01:06:20+00:00",
+  "updated_at": "2026-08-23T01:14:48+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -1970,6 +1970,54 @@
       "touched_round": 0,
       "commit": "0e7dd72acc56bb7e4b5f3931711ae6e96ec4ae8c",
       "summary": "Extended http/http2/http3 --csv to expose negotiated TLS columns (sni,version,cipher,alpn,subject,issuer,not_after_utc) from the embedded TlsObservation, mirroring tls --csv; renderer-only, no API change; fixture test."
+    },
+    "ISS-029": {
+      "id": "ISS-029",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T01:08:34+00:00",
+      "updated_at": "2026-08-23T01:14:48+00:00",
+      "touched_round": 0,
+      "severity": "low",
+      "summary": "The diagnose engine flags TLS handshake failures but has no automated verdict for an expiring or already-expired serving certificate — the TLS report annotates the remaining lifetime, yet a diagnose health sweep returns Healthy (or unrelated verdicts) instead of surfacing the expiring/expired cert, so an operator's automated monitoring misses a certificate that will break a service."
+    },
+    "TASK-037": {
+      "id": "TASK-037",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T01:08:34+00:00",
+      "updated_at": "2026-08-23T01:14:48+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.3,
+      "unlock_factor": 1,
+      "summary": "Add an automated certificate-lifetime diagnosis: introduce DiagnosticCategory::Certificate, and a rule that scans TLS observations' certificates and raises a diagnosis when not_after is past (expired) or within 30 days (expiring), reusing the day-diff logic already used by the TLS report; render the new category and pin with unit tests (expired/expiring/far) plus api-baseline regeneration (public API change)."
+    },
+    "DEC-036": {
+      "id": "DEC-036",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T01:08:34+00:00",
+      "updated_at": "2026-08-23T01:08:34+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-23): automated certificate-expiry diagnosis in the deterministic engine. The TLS report already annotates an expiring/expired cert, but diagnose returns Healthy or unrelated verdicts — so an automated health sweep cannot catch a cert that will break the service. Add DiagnosticCategory::Certificate + a certificate_lifetime_rules pass that reuses the report's day-diff (shared helper), raising an expired (Medium) or expiring-within-30-days (Low) verdict. Public API change (new category variant), regenerated api-baseline.",
+      "alternatives_rejected": "leaving it to the human report (automated diagnose stays blind to cert expiry); over-engineering (per-cert chain inspection, revocation checks — out of scope and untestable); guessing a category name that implies path reachability (Certificate is distinct from Tls handshake)."
+    },
+    "CHG-030": {
+      "id": "CHG-030",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T01:14:48+00:00",
+      "updated_at": "2026-08-23T01:14:48+00:00",
+      "touched_round": 0,
+      "commit": "bdcefaddff5c1655174b8209f0dce7d131305439",
+      "summary": "Added automated certificate-expiry diagnosis: DiagnosticCategory::Certificate + certificate_lifetime_rules (Medium expired / Low expiring within 30d) reusing the report's shared day-diff helpers; api-baseline regenerated; unit tests."
     }
   },
   "edges": [
@@ -3262,6 +3310,42 @@
       "to": "ISS-028",
       "type": "resolves",
       "created_at": "2026-08-23T01:06:20+00:00"
+    },
+    {
+      "from": "DEC-036",
+      "to": "TASK-037",
+      "type": "governs",
+      "created_at": "2026-08-23T01:08:34+00:00"
+    },
+    {
+      "from": "DEC-036",
+      "to": "DEC-035",
+      "type": "supersedes",
+      "created_at": "2026-08-23T01:08:34+00:00"
+    },
+    {
+      "from": "TASK-037",
+      "to": "ISS-029",
+      "type": "addresses",
+      "created_at": "2026-08-23T01:08:34+00:00"
+    },
+    {
+      "from": "ISS-029",
+      "to": "COMP-diagnose",
+      "type": "located_in",
+      "created_at": "2026-08-23T01:08:34+00:00"
+    },
+    {
+      "from": "CHG-030",
+      "to": "TASK-037",
+      "type": "implements",
+      "created_at": "2026-08-23T01:14:48+00:00"
+    },
+    {
+      "from": "CHG-030",
+      "to": "ISS-029",
+      "type": "resolves",
+      "created_at": "2026-08-23T01:14:48+00:00"
     }
   ]
 }
