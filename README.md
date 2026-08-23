@@ -325,7 +325,10 @@ ip-tools diagnose example.com --method HEAD --header 'authorization: Bearer abc1
 `diagnose` accepts the same request-control flags as the HTTP probes —
 `--method`, `--path`, `--header`, `--body` (plus `--sni` above), and
 `--tls-version 1.2|1.3` to scope the TLS and HTTP/1.1+HTTP/2 evidence to a
-forced protocol version — so the HTTP
+forced protocol version. It also accepts `--max-body-bytes N` to bound the
+HTTP phase's response-body reads (default 1 MiB), exactly like the single-shot
+`http`/`http2`/`http3` probes — so a `diagnose` run can observe a larger
+response body — so the HTTP
 evidence the engine reasons over can be scoped to a specific request: a
 `/healthz` behind a WAF, an authenticated endpoint, a HEAD-only route, or a
 `POST`/API endpoint that requires a body. The rest of the pipeline

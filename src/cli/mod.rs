@@ -197,6 +197,7 @@ fn parser() -> ArgMatches {
                 body_arg(),
                 csv_arg(),
                 tls_version_arg(),
+                max_body_bytes_arg(),
             ],
         ))
         .get_matches()

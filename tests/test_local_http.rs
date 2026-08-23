@@ -927,6 +927,92 @@ fn output_body_respects_raised_max_body_bytes() {
 }
 
 #[test]
+fn diagnose_max_body_bytes_bounds_http_phase() {
+    // diagnose's HTTP phase runs the same http/http2/http3 probes as the
+    // single-shot commands, so --max-body-bytes must bound the response-body
+    // read there too: against the fixture's 2 MiB big.invalid route, the
+    // default 1 MiB cap yields a truncated ~1 MiB body_bytes, while a raised
+    // cap captures the full 2 MiB. Parse the HTTP evidence from the JSON.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let addr = fixture.tcp_addr().to_string();
+
+    let run = |max: Option<&str>| {
+        let mut args = vec![
+            "diagnose".to_string(),
+            addr.clone(),
+            "--insecure".to_string(),
+            "--sni".to_string(),
+            "big.invalid".to_string(),
+            "--timeout".to_string(),
+            "4000".to_string(),
+            "--json".to_string(),
+        ];
+        if let Some(m) = max {
+            args.push("--max-body-bytes".to_string());
+            args.push(m.to_string());
+        }
+        Command::cargo_bin("ip-tools")
+            .expect("ip-tools binary")
+            .args(&args)
+            .output()
+            .unwrap_or_else(|e| panic!("run diagnose big.invalid: {e}"))
+    };
+
+    let out = run(None);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "diagnose big.invalid default cap should exit 0: {stdout}
+{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.contains("body_bytes"),
+        "default diagnose JSON must carry http body_bytes: {stdout}"
+    );
+    // Default 1 MiB cap: the served 2 MiB body is truncated to under 2 MiB
+    // (chunked reads stop once past the cap, so not exactly 1 MiB).
+    let default_bytes: Option<u64> = parse_body_bytes(&stdout);
+    let default_bytes = default_bytes.expect("default body_bytes present");
+    assert!(
+        ((1024 * 1024)..2 * 1024 * 1024).contains(&default_bytes),
+        "default cap should bound the body under 2 MiB, got {default_bytes}"
+    );
+
+    let out = run(Some("3000000"));
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "diagnose big.invalid raised cap should exit 0: {stdout}
+{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let raised_bytes = parse_body_bytes(&stdout).expect("raised body_bytes present");
+    assert_eq!(
+        raised_bytes,
+        2 * 1024 * 1024,
+        "raised cap should yield the full 2 MiB body_bytes: {stdout}"
+    );
+}
+
+/// Extract the first top-level http `body_bytes` value from a diagnose JSON
+/// string (the diagnose report is an object with an `http` array of
+/// observations).
+fn parse_body_bytes(json: &str) -> Option<u64> {
+    // Find the first occurrence of "body_bytes" and read its numeric value.
+    let needle = r#""body_bytes":"#;
+    let idx = json.find(needle)?;
+    let rest = &json[idx + needle.len()..];
+    let trimmed = rest.trim_start();
+    let num: String = trimmed.chars().take_while(char::is_ascii_digit).collect();
+    num.parse().ok()
+}
+
+#[test]
 fn probe_command_resolves_through_doh_fixture_endpoint() {
     // The per-address probe commands must resolve the target through the
     // encrypted `--doh`/`--dot` resolvers (parity with `dns`/`diagnose`). The

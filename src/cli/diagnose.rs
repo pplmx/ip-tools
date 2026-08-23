@@ -33,6 +33,9 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
     let csv = sub_m.get_flag("csv");
     let insecure = sub_m.get_flag("insecure");
     let tls_protocol = super::parse_tls_protocol(sub_m);
+    let max_body_bytes = *sub_m
+        .get_one::<u64>("max-body-bytes")
+        .expect("max-body-bytes has default");
     let timeout_ms = *sub_m.get_one::<u64>("timeout").expect("timeout has default");
     let concurrency = *sub_m.get_one::<usize>("concurrency").expect("concurrency has default");
     let timeout = Duration::from_millis(timeout_ms);
@@ -109,6 +112,7 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
             concurrency,
             insecure,
             tls_protocol,
+            max_body_bytes,
         )
         .await
         {
@@ -173,6 +177,7 @@ async fn diagnose_one(
     concurrency: usize,
     insecure: bool,
     tls_protocol: ip_tools::tls::TlsProtocol,
+    max_body_bytes: u64,
 ) -> Option<DiagnoseReport> {
     // Resolve once: the DNS observations and the probed addresses come from
     // the same lookups. Custom `--server`/`--doh`/`--dot` resolvers are
@@ -254,6 +259,7 @@ async fn diagnose_one(
         timeout,
         insecure,
         tls_protocol,
+        max_body_bytes,
     )
     .await;
 
@@ -359,6 +365,7 @@ async fn collect_http_probes(
     timeout: Duration,
     insecure: bool,
     tls_protocol: ip_tools::tls::TlsProtocol,
+    max_body_bytes: u64,
 ) -> Vec<HttpObservation> {
     // Each `parallel_map` closure is `move` and spawns `'static` futures, so
     // every captured value (host, method, path, headers) must be an owned
@@ -384,7 +391,7 @@ async fn collect_http_probes(
         async move {
             let header_refs: Vec<(&str, &str)> = headers.iter().map(|(n, v)| (n.as_str(), v.as_str())).collect();
             if insecure {
-                ip_http::probe_insecure_with_version(
+                ip_http::probe_insecure_with_version_output(
                     d,
                     &host,
                     &method,
@@ -393,10 +400,12 @@ async fn collect_http_probes(
                     body.as_deref(),
                     timeout,
                     tls_protocol,
+                    max_body_bytes,
+                    None,
                 )
                 .await
             } else {
-                ip_http::probe_with_version(
+                ip_http::probe_with_version_output(
                     d,
                     &host,
                     &method,
@@ -405,6 +414,8 @@ async fn collect_http_probes(
                     body.as_deref(),
                     timeout,
                     tls_protocol,
+                    max_body_bytes,
+                    None,
                 )
                 .await
             }
@@ -423,7 +434,7 @@ async fn collect_http_probes(
         async move {
             let header_refs: Vec<(&str, &str)> = headers.iter().map(|(n, v)| (n.as_str(), v.as_str())).collect();
             if insecure {
-                ip_http2::probe_insecure_with_version(
+                ip_http2::probe_insecure_with_version_output(
                     d,
                     &host,
                     &method,
@@ -432,10 +443,12 @@ async fn collect_http_probes(
                     body.as_deref(),
                     timeout,
                     tls_protocol,
+                    max_body_bytes,
+                    None,
                 )
                 .await
             } else {
-                ip_http2::probe_with_version(
+                ip_http2::probe_with_version_output(
                     d,
                     &host,
                     &method,
@@ -444,6 +457,8 @@ async fn collect_http_probes(
                     body.as_deref(),
                     timeout,
                     tls_protocol,
+                    max_body_bytes,
+                    None,
                 )
                 .await
             }
@@ -462,9 +477,31 @@ async fn collect_http_probes(
         async move {
             let header_refs: Vec<(&str, &str)> = headers.iter().map(|(n, v)| (n.as_str(), v.as_str())).collect();
             if insecure {
-                ip_http3::probe_insecure(d, &host, &method, &path, &header_refs, body.as_deref(), timeout).await
+                ip_http3::probe_insecure_output(
+                    d,
+                    &host,
+                    &method,
+                    &path,
+                    &header_refs,
+                    body.as_deref(),
+                    timeout,
+                    max_body_bytes,
+                    None,
+                )
+                .await
             } else {
-                ip_http3::probe(d, &host, &method, &path, &header_refs, body.as_deref(), timeout).await
+                ip_http3::probe_output(
+                    d,
+                    &host,
+                    &method,
+                    &path,
+                    &header_refs,
+                    body.as_deref(),
+                    timeout,
+                    max_body_bytes,
+                    None,
+                )
+                .await
             }
         }
     })
