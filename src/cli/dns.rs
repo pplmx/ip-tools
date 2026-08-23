@@ -330,13 +330,14 @@ async fn encrypted_repeat(
 }
 
 /// Render every DNS row across every target as CSV: a header then one
-/// `host,resolver,record_type,attempts,success_rate,latency_p50_ms,latency_p95_ms,latency_max_ms,failures`
+/// `host,resolver,record_type,attempts,success_rate,latency_p50_ms,latency_p95_ms,latency_max_ms,failures,ttl`
 /// row per (resolver, record type). Single-shot rows are attempts=1; repeat
-/// rows use the aggregated latency statistics.
+/// rows use the aggregated latency statistics and carry the record TTL only
+/// on single-shot rows (repeat aggregation discards the per-answer TTL).
 fn render_dns_csv(outputs: &[TargetDns]) -> String {
     use std::fmt::Write as _;
     let mut out = String::from(
-        "host,resolver,record_type,attempts,success_rate,latency_p50_ms,latency_p95_ms,latency_max_ms,failures\n",
+        "host,resolver,record_type,attempts,success_rate,latency_p50_ms,latency_p95_ms,latency_max_ms,failures,ttl\n",
     );
     for o in outputs {
         if o.repeat {
@@ -358,6 +359,7 @@ fn render_dns_csv(outputs: &[TargetDns]) -> String {
                 out.push_str(&opt64(r.latency.max));
                 out.push(',');
                 out.push_str(&r.failures.to_string());
+                out.push(','); // repeat rows aggregate across attempts, so TTL is omitted
                 out.push('\n');
             }
         } else {
@@ -379,6 +381,8 @@ fn render_dns_csv(outputs: &[TargetDns]) -> String {
                 out.push_str(&opt64(obs.latency_ms));
                 out.push(',');
                 out.push(if obs.error.is_some() { '1' } else { '0' });
+                out.push(',');
+                out.push_str(&obs.ttl.map_or_else(String::new, |t| t.to_string()));
                 out.push('\n');
             }
         }

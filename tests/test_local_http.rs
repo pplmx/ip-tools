@@ -846,6 +846,50 @@ fn dns_cli_queries_doh_fixture_endpoint() {
 }
 
 #[test]
+fn dns_cli_csv_carries_record_ttl() {
+    // `dns --csv` must carry the record TTL on single-shot rows so the
+    // spreadsheet export is consistent with the human/JSON TTL feature
+    // (parity with how the probe status distribution reached --csv).
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let endpoint = format!("https://{}/dns-query", fixture.tcp_addr());
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "dns",
+            "host.example",
+            "--doh",
+            &endpoint,
+            "--insecure",
+            "--timeout",
+            "2000",
+            "--csv",
+        ])
+        .output()
+        .expect("run dns --doh --csv");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "dns --doh --csv should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.lines().next() == Some("host,resolver,record_type,attempts,success_rate,latency_p50_ms,latency_p95_ms,latency_max_ms,failures,ttl"),
+        "CSV header should include ttl: {stdout}"
+    );
+    assert!(
+        stdout
+            .lines()
+            .any(|l| l.starts_with("host.example,") && l.ends_with(",60")),
+        "the single-shot DoH row should carry the 60s TTL field: {stdout}"
+    );
+}
+
+#[test]
 fn dns_cli_ptr_reverse_lookup_uses_auto_built_reverse_zone() {
     // `dns --record-type PTR <ip>` auto-builds the reverse-zone name
     // (RFC 1035 `in-addr.arpa`) from the literal and issues a PTR query. The
@@ -1560,7 +1604,9 @@ fn dns_cli_csv_export_renders_rows() {
     let mut lines = stdout.lines();
     assert_eq!(
         lines.next(),
-        Some("host,resolver,record_type,attempts,success_rate,latency_p50_ms,latency_p95_ms,latency_max_ms,failures"),
+        Some(
+            "host,resolver,record_type,attempts,success_rate,latency_p50_ms,latency_p95_ms,latency_max_ms,failures,ttl"
+        ),
         "CSV header: {stdout}"
     );
     assert!(
