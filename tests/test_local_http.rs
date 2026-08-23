@@ -891,6 +891,59 @@ fn dns_cli_ptr_reverse_lookup_uses_auto_built_reverse_zone() {
 }
 
 #[test]
+fn dns_cli_ptr_repeat_honors_count() {
+    // `dns --record-type PTR <ip> --count N` must aggregate N reverse lookups
+    // like every other record type rather than silently ignoring `--count`:
+    // the repeat row reports the user's IP target with attempts=N.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let endpoint = format!("https://{}/dns-ptr-query", fixture.tcp_addr());
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "dns",
+            "192.0.2.77",
+            "--record-type",
+            "PTR",
+            "--count",
+            "3",
+            "--doh",
+            &endpoint,
+            "--insecure",
+            "--timeout",
+            "1500",
+        ])
+        .output()
+        .expect("run dns --record-type PTR --count 3");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "dns --record-type PTR --count 3 should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.contains("Repeated DNS 192.0.2.77"),
+        "the repeat report must label the target IP: {stdout}"
+    );
+    assert!(
+        stdout.contains(&endpoint) && stdout.contains("PTR"),
+        "the DoH PTR repeat row must render: {stdout}"
+    );
+    assert!(
+        stdout.contains("attempts: 3"),
+        "--count 3 must be honored with 3 attempts: {stdout}"
+    );
+    assert!(
+        stdout.contains("success:  3 (100.0%)"),
+        "3 canned DoH PTR lookups should all succeed: {stdout}"
+    );
+}
+
+#[test]
 fn output_body_respects_raised_max_body_bytes() {
     // With the default 1 MiB cap, --output-body writes only ~1 MiB of the
     // fixture's 2 MiB big.invalid body; raising --max-body-bytes captures the

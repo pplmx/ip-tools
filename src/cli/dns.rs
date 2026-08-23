@@ -204,6 +204,30 @@ async fn dns_compute(
         if record_types.len() == 1 && record_types[0] == DnsRecordType::Ptr {
             let query_name = reverse_zone(literal);
             let client = DnsClient::new(custom, timeout, 1);
+            // `--count N` repeats the reverse lookup and aggregates
+            // per-resolver latency/failure statistics exactly like any other
+            // record type; the user's IP target labels the report.
+            if count > 1 {
+                let mut results = client.resolve_repeat(&query_name, DnsRecordType::Ptr, count).await;
+                results.extend(
+                    encrypted_repeat(
+                        doh_endpoints,
+                        dot_eps,
+                        &query_name,
+                        DnsRecordType::Ptr,
+                        count,
+                        timeout,
+                        insecure,
+                    )
+                    .await,
+                );
+                return TargetDns {
+                    host: target.host.clone(),
+                    repeat: true,
+                    observations: Vec::new(),
+                    results,
+                };
+            }
             let mut observations = client.resolve(&query_name, DnsRecordType::Ptr).await;
             observations.extend(
                 encrypted_dns(
