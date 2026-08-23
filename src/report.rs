@@ -66,7 +66,8 @@ fn render_dns_one(obs: &DnsObservation) -> String {
                 format!("no records ({ms} ms)")
             } else {
                 let addrs: Vec<String> = obs.records.iter().map(ToString::to_string).collect();
-                format!("{} ({} ms)", addrs.join(", "), ms)
+                let ttl = obs.ttl.map_or_else(String::new, |t| format!(", ttl {t}s"));
+                format!("{}{} ({} ms)", addrs.join(", "), ttl, ms)
             }
         }
         (None, None) => "no records".to_string(),
@@ -571,6 +572,7 @@ mod tests {
             hostname: "example.com".into(),
             resolver,
             record_type: rt,
+            ttl: Some(60),
             records: addrs
                 .iter()
                 .map(|a| match a.parse::<std::net::IpAddr>().unwrap() {
@@ -655,6 +657,7 @@ mod tests {
             hostname: "example.com".into(),
             resolver: ResolverKind::System,
             record_type: DnsRecordType::Mx,
+            ttl: Some(60),
             records: vec![DnsRecord::Mx {
                 preference: 10,
                 exchange: "mail.example.com".into(),
@@ -666,6 +669,7 @@ mod tests {
             hostname: "example.com".into(),
             resolver: ResolverKind::System,
             record_type: DnsRecordType::Txt,
+            ttl: Some(60),
             records: vec![DnsRecord::Txt("v=spf1 include:spf.example ~all".into())],
             latency_ms: Some(4),
             error: None,
@@ -686,6 +690,7 @@ mod tests {
             hostname: "example.com".into(),
             resolver: ResolverKind::System,
             record_type: DnsRecordType::Caa,
+            ttl: Some(60),
             records: vec![DnsRecord::Caa {
                 flags: 0,
                 tag: "issue".into(),
@@ -698,6 +703,7 @@ mod tests {
             hostname: "_sip._tcp.example.com".into(),
             resolver: ResolverKind::System,
             record_type: DnsRecordType::Srv,
+            ttl: Some(60),
             records: vec![DnsRecord::Srv {
                 priority: 1,
                 weight: 2,

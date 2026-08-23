@@ -104,6 +104,7 @@ mod tests {
             resolver: ResolverKind::System,
             record_type: kind,
             records: vec![addr_rec(ip)],
+            ttl: Some(60),
             latency_ms: Some(5),
             error: None,
         }
@@ -115,6 +116,7 @@ mod tests {
             resolver: ResolverKind::System,
             record_type: DnsRecordType::A,
             records: vec![],
+            ttl: None,
             latency_ms: None,
             error: Some(ProbeError {
                 kind: FailureKind::Dns,
@@ -552,6 +554,7 @@ mod tests {
                 resolver: ResolverKind::Custom("9.9.9.9:53".parse().unwrap()),
                 record_type: DnsRecordType::A,
                 records: vec![addr_rec("12.12.12.12")],
+                ttl: None,
                 latency_ms: Some(5),
                 error: None,
             },

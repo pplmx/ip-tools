@@ -144,6 +144,7 @@ pub ip_tools::model::dns::DnsObservation::latency_ms: core::option::Option<u64>
 pub ip_tools::model::dns::DnsObservation::record_type: ip_tools::model::dns::DnsRecordType
 pub ip_tools::model::dns::DnsObservation::records: alloc::vec::Vec<ip_tools::model::dns::DnsRecord>
 pub ip_tools::model::dns::DnsObservation::resolver: ip_tools::model::dns::ResolverKind
+pub ip_tools::model::dns::DnsObservation::ttl: core::option::Option<u32>
 pub struct ip_tools::model::dns::DnsRepeatResult
 pub ip_tools::model::dns::DnsRepeatResult::attempts: usize
 pub ip_tools::model::dns::DnsRepeatResult::failure_counts: alloc::vec::Vec<ip_tools::model::probe::FailureCount>
@@ -337,6 +338,7 @@ pub ip_tools::model::DnsObservation::latency_ms: core::option::Option<u64>
 pub ip_tools::model::DnsObservation::record_type: ip_tools::model::dns::DnsRecordType
 pub ip_tools::model::DnsObservation::records: alloc::vec::Vec<ip_tools::model::dns::DnsRecord>
 pub ip_tools::model::DnsObservation::resolver: ip_tools::model::dns::ResolverKind
+pub ip_tools::model::DnsObservation::ttl: core::option::Option<u32>
 pub struct ip_tools::model::DnsRepeatResult
 pub ip_tools::model::DnsRepeatResult::attempts: usize
 pub ip_tools::model::DnsRepeatResult::failure_counts: alloc::vec::Vec<ip_tools::model::probe::FailureCount>
@@ -585,6 +587,7 @@ pub ip_tools::DnsObservation::latency_ms: core::option::Option<u64>
 pub ip_tools::DnsObservation::record_type: ip_tools::model::dns::DnsRecordType
 pub ip_tools::DnsObservation::records: alloc::vec::Vec<ip_tools::model::dns::DnsRecord>
 pub ip_tools::DnsObservation::resolver: ip_tools::model::dns::ResolverKind
+pub ip_tools::DnsObservation::ttl: core::option::Option<u32>
 pub struct ip_tools::Evidence
 pub ip_tools::Evidence::detail: alloc::string::String
 pub struct ip_tools::HttpObservation

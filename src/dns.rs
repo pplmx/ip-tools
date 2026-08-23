@@ -210,11 +210,12 @@ async fn query(
     let start = Instant::now();
     let outcome = tokio::time::timeout(timeout, resolver_lookup(&resolver, &host, record_type)).await;
 
-    let (latency_ms, records, error) = match outcome {
-        Ok(Ok(records)) => (Some(start.elapsed().as_millis() as u64), records, None),
+    let (latency_ms, records, ttl, error) = match outcome {
+        Ok(Ok((records, ttl))) => (Some(start.elapsed().as_millis() as u64), records, ttl, None),
         Ok(Err(e)) => (
             None,
             Vec::new(),
+            None,
             Some(ProbeError {
                 kind: FailureKind::Dns,
                 message: e.to_string(),
@@ -223,6 +224,7 @@ async fn query(
         Err(_elapsed) => (
             None,
             Vec::new(),
+            None,
             Some(ProbeError {
                 kind: FailureKind::Timeout,
                 message: format!("dns lookup of {host} ({record_type}) timed out after {timeout:?}"),
@@ -235,6 +237,7 @@ async fn query(
         resolver: kind,
         record_type,
         latency_ms,
+        ttl,
         records,
         error,
     }
@@ -246,7 +249,7 @@ async fn resolver_lookup(
     resolver: &TokioResolver,
     host: &str,
     record_type: DnsRecordType,
-) -> Result<Vec<DnsRecord>, hickory_resolver::net::NetError> {
+) -> Result<(Vec<DnsRecord>, Option<u32>), hickory_resolver::net::NetError> {
     let rt = match record_type {
         DnsRecordType::A => RecordType::A,
         DnsRecordType::Aaaa => RecordType::AAAA,
@@ -260,11 +263,17 @@ async fn resolver_lookup(
         DnsRecordType::Ptr => RecordType::PTR,
     };
     let lookup = resolver.lookup(host, rt).await?;
-    Ok(lookup
-        .answers()
-        .iter()
-        .filter_map(|rec| record_from_rdata(record_type, &rec.data))
-        .collect())
+    let mut records = Vec::new();
+    let mut ttl = None;
+    for rec in lookup.answers() {
+        if let Some(record) = record_from_rdata(record_type, &rec.data) {
+            if ttl.is_none() {
+                ttl = Some(rec.ttl);
+            }
+            records.push(record);
+        }
+    }
+    Ok((records, ttl))
 }
 
 /// Convert a raw hickory `RData` answer into the requested record type's
@@ -359,6 +368,7 @@ pub async fn doh_query(
         resolver: ResolverKind::Doh(endpoint.to_string()),
         record_type,
         records: Vec::new(),
+        ttl: None,
         latency_ms: None,
         error: None,
     };
@@ -491,6 +501,7 @@ pub async fn doh_query(
     DnsObservation {
         records: parsed.records,
         latency_ms: Some(start.elapsed().as_millis() as u64),
+        ttl: parsed.ttl,
         ..base
     }
 }
@@ -542,6 +553,7 @@ pub async fn dot_query(
         resolver: ResolverKind::Dot(endpoint.to_string()),
         record_type,
         records: Vec::new(),
+        ttl: None,
         latency_ms: None,
         error: None,
     };
@@ -675,6 +687,7 @@ pub async fn dot_query(
     DnsObservation {
         records: parsed.records,
         latency_ms: Some(start.elapsed().as_millis() as u64),
+        ttl: parsed.ttl,
         ..base
     }
 }
@@ -855,6 +868,8 @@ struct ParsedDnsResponse {
     /// `0` means `NOERROR`; 1-5 are `FORMERR`..`REFUSED`; anything else is an
     /// extension code.
     rcode: u8,
+    /// TTL (seconds) of the first answer record, when any answer is present.
+    ttl: Option<u32>,
     /// Records of the wanted record type found in the answers.
     records: Vec<DnsRecord>,
 }
@@ -862,6 +877,7 @@ struct ParsedDnsResponse {
 /// Parse a DNS response message (RFC 1035 §4.1.3, with name compression
 /// support), returning the response code and the wanted record type's
 /// addresses from the answer section.
+#[allow(clippy::too_many_lines)] // one record-type decode per answer reads clearer inline
 fn parse_dns_response(bytes: &[u8], want: DnsRecordType) -> Result<ParsedDnsResponse, String> {
     if bytes.len() < 12 {
         return Err("message shorter than the 12-byte header".to_string());
@@ -875,13 +891,22 @@ fn parse_dns_response(bytes: &[u8], want: DnsRecordType) -> Result<ParsedDnsResp
         pos += 4; // qtype + qclass
     }
     let mut recs = Vec::new();
+    let mut first_ttl: Option<u32> = None;
     for _ in 0..ancount {
         pos = skip_name(bytes, pos)?; // answer name (possibly a pointer)
         if pos + 10 > bytes.len() {
             return Err("truncated answer header".to_string());
         }
         let rtype = u16::from_be_bytes([bytes[pos], bytes[pos + 1]]);
-        // skip class (2) + ttl (4)
+        // Capture the first answer's TTL (class(2) + ttl(4) precede rdlength).
+        if first_ttl.is_none() {
+            first_ttl = Some(u32::from_be_bytes([
+                bytes[pos + 4],
+                bytes[pos + 5],
+                bytes[pos + 6],
+                bytes[pos + 7],
+            ]));
+        }
         let rdlen = u16::from_be_bytes([bytes[pos + 8], bytes[pos + 9]]) as usize;
         pos += 10;
         let rdata_start = pos;
@@ -954,7 +979,11 @@ fn parse_dns_response(bytes: &[u8], want: DnsRecordType) -> Result<ParsedDnsResp
             recs.push(rec);
         }
     }
-    Ok(ParsedDnsResponse { rcode, records: recs })
+    Ok(ParsedDnsResponse {
+        rcode,
+        ttl: first_ttl,
+        records: recs,
+    })
 }
 
 /// Decode a TXT rdata blob: a sequence of length-prefixed character-strings
@@ -1281,6 +1310,7 @@ mod tests {
                 resolver: ResolverKind::Custom(addr),
                 record_type: DnsRecordType::A,
                 records: vec![addr_rec("192.0.2.1")],
+                ttl: Some(60),
                 latency_ms: Some(3),
                 error: None,
             },
@@ -1289,6 +1319,7 @@ mod tests {
                 resolver: ResolverKind::Custom(addr),
                 record_type: DnsRecordType::A,
                 records: Vec::new(),
+                ttl: None,
                 latency_ms: None,
                 error: Some(ProbeError {
                     kind: crate::model::FailureKind::Dns,
@@ -1300,6 +1331,7 @@ mod tests {
                 resolver: ResolverKind::Custom(addr),
                 record_type: DnsRecordType::A,
                 records: Vec::new(),
+                ttl: None,
                 latency_ms: None,
                 error: Some(ProbeError {
                     kind: crate::model::FailureKind::Timeout,
@@ -1525,6 +1557,15 @@ mod tests {
                 "host.example host.example serial 2 refresh 3 retry 4 expire 5 minimum 6".into()
             )]
         );
+    }
+
+    #[test]
+    fn parse_dns_response_captures_ttl() {
+        // The response_with helper stamps TTL 60 on every answer; the parser
+        // captures it from the first answer.
+        let parsed = parse_dns_response(&response_with(&[(1, vec![192, 0, 2, 1])]), DnsRecordType::A).unwrap();
+        assert_eq!(parsed.ttl, Some(60));
+        assert_eq!(parsed.records, vec![DnsRecord::A(Ipv4Addr::new(192, 0, 2, 1))]);
     }
 
     #[test]

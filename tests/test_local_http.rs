@@ -839,6 +839,10 @@ fn dns_cli_queries_doh_fixture_endpoint() {
         stdout.contains(&endpoint),
         "DoH endpoint should be labeled in output: {stdout}"
     );
+    assert!(
+        stdout.contains("ttl 60s"),
+        "the canned DoH answer's TTL (60s) should be surfaced: {stdout}"
+    );
 }
 
 #[test]

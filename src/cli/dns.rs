@@ -427,6 +427,7 @@ fn literal_observations(host: &str, literal: IpAddr, record_types: &[DnsRecordTy
                 (DnsRecordType::Aaaa, IpAddr::V6(v6)) => vec![DnsRecord::Aaaa(v6)],
                 _ => Vec::new(),
             },
+            ttl: None,
             latency_ms: Some(0),
             error: None,
         })

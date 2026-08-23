@@ -148,6 +148,9 @@ pub struct DnsObservation {
     pub record_type: DnsRecordType,
     /// Records returned (empty on failure).
     pub records: Vec<DnsRecord>,
+    /// Time-to-live in seconds of the first answering record, when the query
+    /// succeeded (`None` on failure or a literal short-circuit).
+    pub ttl: Option<u32>,
     /// Query latency in milliseconds, when the query succeeded.
     pub latency_ms: Option<u64>,
     /// Failure detail, when the query failed.
