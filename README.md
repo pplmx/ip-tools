@@ -506,12 +506,19 @@ ip-tools diagnose example.com
 ip-tools diagnose example.com --json
 ip-tools diagnose 192.0.2.77 --reverse   # add reverse-DNS (PTR) evidence for an IP target
 ip-tools diagnose example.com --count 30 # longer stability window (default 3)
+ip-tools diagnose 10.0.0.5:8080 --plain  # cleartext HTTP endpoint (no TLS)
 ```
 
 `--count N` sizes the stability phase — the repeated TCP and HTTP attempts per
 address that drive the intermittent / status-flapping / latency-instability
 rules (default `3`, matching the sample those rules were validated against). A
 larger count gives a longer observation window for subtler instability.
+
+`--plain` runs the whole pipeline against a **cleartext HTTP/1.1** endpoint
+(the same probe `http --plain` uses): the TLS observation phase is skipped
+(so the endpoint is not falsely diagnosed as "TLS handshake fails where TCP
+connects") and the HTTP phase + stability repeat probe the endpoint over plain
+HTTP/1.1 — for internal services, captive portals and HTTP-only health checks.
 
 `diagnose` accepts **multiple targets** — a fleet/health sweep. Hosts are
 probed concurrently (bounded by `--concurrency`, which also bounds the

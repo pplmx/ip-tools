@@ -203,6 +203,7 @@ fn parser() -> ArgMatches {
                 tls_version_arg(),
                 max_body_bytes_arg(),
                 reverse_arg(),
+                plain_arg(),
             ],
         ))
         .get_matches()

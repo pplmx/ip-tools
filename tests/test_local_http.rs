@@ -2101,6 +2101,56 @@ fn probe_cli_plain_repeats_cleartext_http() {
 }
 
 #[test]
+fn diagnose_cli_plain_probes_cleartext_http_end_to_end() {
+    // The full pipeline with --plain must observe a cleartext endpoint
+    // truthfully: without --plain it would raise a false "TLS handshake fails
+    // where TCP connects" verdict (the fixture's plain listener does no TLS),
+    // but with --plain it skips the TLS phase and probes HTTP/1.1 over
+    // cleartext, so the endpoint is seen as healthy.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let addr = fixture.plain_addr().to_string();
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args(["diagnose", &addr, "--plain", "--count", "2", "--timeout", "2000"])
+        .output()
+        .expect("run diagnose --plain");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "diagnose --plain should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    // The cleartext HTTP phase must observe the 200 response.
+    assert!(
+        stdout.contains("200"),
+        "diagnose --plain should see the cleartext 200: {stdout}"
+    );
+    assert!(
+        stdout.contains("server: ip-tools-plain") || stdout.contains("body content"),
+        "the cleartext response (headers/body) must surface: {stdout}"
+    );
+
+    // Without --plain the same endpoint must be diagnosed as TLS-failing (the
+    // plain listener does no handshake) — proving --plain is what changes the
+    // observation, not the fixture.
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args(["diagnose", &addr, "--insecure", "--timeout", "2000"])
+        .output()
+        .expect("run diagnose without --plain");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("TLS handshake fails where TCP connects"),
+        "without --plain the plaintext endpoint must be TLS-failing: {stdout}"
+    );
+}
+
+#[test]
 fn http_cli_report_shows_certificate_and_covers_verdict() {
     // The HTTPS human report must surface the serving certificate and the
     // SAN-coverage verdict (parity with `tls`), not just TLS/ALPN. Against the

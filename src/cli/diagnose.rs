@@ -32,6 +32,7 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
     let json = sub_m.get_flag("json");
     let csv = sub_m.get_flag("csv");
     let insecure = sub_m.get_flag("insecure");
+    let plain = sub_m.get_flag("plain");
     let reverse = sub_m.get_flag("reverse");
     let tls_protocol = super::parse_tls_protocol(sub_m);
     let max_body_bytes = *sub_m
@@ -124,6 +125,7 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
                     timeout,
                     concurrency,
                     insecure,
+                    plain,
                     tls_protocol,
                     max_body_bytes,
                     reverse,
@@ -198,6 +200,7 @@ async fn diagnose_one(
     timeout: Duration,
     concurrency: usize,
     insecure: bool,
+    plain: bool,
     tls_protocol: ip_tools::tls::TlsProtocol,
     max_body_bytes: u64,
     reverse: bool,
@@ -291,18 +294,26 @@ async fn diagnose_one(
     .await;
 
     let sni = presented.to_string();
-    let tls_obs: Vec<TlsObservation> = parallel_map(destinations.clone(), concurrency, move |d| {
-        let sni = sni.clone();
-        let tls_protocol = tls_protocol;
-        async move {
-            if insecure {
-                ip_tls::probe_insecure_with_version(d, &sni, timeout, tls_protocol).await
-            } else {
-                ip_tls::probe_with_version(d, &sni, timeout, tls_protocol).await
+    // `--plain`: the endpoint is cleartext HTTP, so there is no TLS handshake
+    // to observe — running it would only raise a false "handshake fails where
+    // TCP connects" verdict. The TLS evidence stack is left empty and the HTTP
+    // phase + stability repeat probe the endpoint over cleartext HTTP/1.1.
+    let tls_obs: Vec<TlsObservation> = if plain {
+        Vec::new()
+    } else {
+        parallel_map(destinations.clone(), concurrency, move |d| {
+            let sni = sni.clone();
+            let tls_protocol = tls_protocol;
+            async move {
+                if insecure {
+                    ip_tls::probe_insecure_with_version(d, &sni, timeout, tls_protocol).await
+                } else {
+                    ip_tls::probe_with_version(d, &sni, timeout, tls_protocol).await
+                }
             }
-        }
-    })
-    .await;
+        })
+        .await
+    };
 
     let http_obs = collect_http_probes(
         destinations.clone(),
@@ -314,6 +325,7 @@ async fn diagnose_one(
         concurrency,
         timeout,
         insecure,
+        plain,
         tls_protocol,
         max_body_bytes,
     )
@@ -345,19 +357,27 @@ async fn diagnose_one(
         );
         async move {
             let header_refs: Vec<(&str, &str)> = headers.iter().map(|(n, v)| (n.as_str(), v.as_str())).collect();
-            let http = ip_probe::http_repeat_with_version(
-                d,
-                &host,
-                &method,
-                &path,
-                &header_refs,
-                body.as_deref(),
-                count,
-                timeout,
-                insecure,
-                tls_protocol,
-            )
-            .await;
+            // `--plain`: the stability repeat probes cleartext HTTP/1.1 (no
+            // handshake), so a plaintext endpoint's status/latency stability
+            // is observed truthfully instead of failing at the handshake.
+            let http = if plain {
+                ip_probe::http_repeat_plain(d, &host, &method, &path, &header_refs, body.as_deref(), count, timeout)
+                    .await
+            } else {
+                ip_probe::http_repeat_with_version(
+                    d,
+                    &host,
+                    &method,
+                    &path,
+                    &header_refs,
+                    body.as_deref(),
+                    count,
+                    timeout,
+                    insecure,
+                    tls_protocol,
+                )
+                .await
+            };
             [ip_probe::tcp_repeat(d, count, timeout).await, http]
         }
     })
@@ -479,6 +499,7 @@ async fn collect_http_probes(
     concurrency: usize,
     timeout: Duration,
     insecure: bool,
+    plain: bool,
     tls_protocol: ip_tools::tls::TlsProtocol,
     max_body_bytes: u64,
 ) -> Vec<HttpObservation> {
@@ -505,7 +526,23 @@ async fn collect_http_probes(
         );
         async move {
             let header_refs: Vec<(&str, &str)> = headers.iter().map(|(n, v)| (n.as_str(), v.as_str())).collect();
-            if insecure {
+            if plain {
+                // `--plain`: cleartext HTTP/1.1 only (no TLS handshake), the
+                // same probe `http --plain` uses — http2/http3 are TLS-only
+                // protocols and are skipped below.
+                ip_http::probe_plain_output(
+                    d,
+                    &host,
+                    &method,
+                    &path,
+                    &header_refs,
+                    body.as_deref(),
+                    timeout,
+                    max_body_bytes,
+                    None,
+                )
+                .await
+            } else if insecure {
                 ip_http::probe_insecure_with_version_output(
                     d,
                     &host,
@@ -623,7 +660,11 @@ async fn collect_http_probes(
     .await;
 
     let mut out = http1;
-    out.extend(http2);
-    out.extend(http3);
+    if !plain {
+        // http2/http3 are TLS-only protocols — under `--plain` they cannot
+        // probe (cleartext h2c is a separate, larger feature and out of scope).
+        out.extend(http2);
+        out.extend(http3);
+    }
     out
 }
