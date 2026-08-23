@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-23T00:57:54+00:00",
+  "updated_at": "2026-08-23T01:06:20+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -1922,6 +1922,54 @@
       "touched_round": 0,
       "commit": "b6d27f21a01441ad1e359bd901ced219a6b2c327",
       "summary": "Added --max-body-bytes N to http/http2/http3: maxim_body_bytes threaded through probe_impl and the configurable *output entry points (now take max_body_bytes + optional output), driving both read cap and --output-body write; api-baseline regenerated; fixture test."
+    },
+    "ISS-028": {
+      "id": "ISS-028",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T01:03:51+00:00",
+      "updated_at": "2026-08-23T01:06:20+00:00",
+      "touched_round": 0,
+      "severity": "low",
+      "summary": "The http/http2/http3 --csv output omits the negotiated TLS handshake details (version, cipher, ALPN, certificate subject/issuer/not_after) even though each HttpObservation already carries tls: Option<TlsObservation>, while tls --csv exposes them — so an HTTPS fleet sweep loaded into a spreadsheet loses the exact TLS evidence (protocol version, cipher, cert) that a TLS-only sweep gets."
+    },
+    "TASK-036": {
+      "id": "TASK-036",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T01:03:51+00:00",
+      "updated_at": "2026-08-23T01:06:20+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.2,
+      "unlock_factor": 1,
+      "summary": "Extend render_http_csv (shared by http/http2/http3) to append TLS handshake columns (sni,version,cipher,alpn,subject,issuer,not_after_utc) sourced from each observation's embedded TlsObservation, mirroring tls --csv, so an HTTPS fleet sweep exposes the negotiated TLS evidence in CSV."
+    },
+    "DEC-035": {
+      "id": "DEC-035",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T01:03:52+00:00",
+      "updated_at": "2026-08-23T01:03:52+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-23): surface negotiated TLS handshake details in http/http2/http3 --csv. Each HttpObservation already embeds a TlsObservation, so the HTTP CSV can simply reuse it to expose version/cipher/ALPN/cert (matching tls --csv), closing a fleet-sweep observability gap without any new I/O or API change. No public API change (renderer-only).",
+      "alternatives_rejected": "adding a separate http-tls subcommand (redundant with the embedded observation); duplicating the whole tls row set (kept to the same core handshake columns tls --csv uses); leaving it out (HTTPS sweeps lose cert/version evidence in spreadsheets)."
+    },
+    "CHG-029": {
+      "id": "CHG-029",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T01:06:20+00:00",
+      "updated_at": "2026-08-23T01:06:20+00:00",
+      "touched_round": 0,
+      "commit": "0e7dd72acc56bb7e4b5f3931711ae6e96ec4ae8c",
+      "summary": "Extended http/http2/http3 --csv to expose negotiated TLS columns (sni,version,cipher,alpn,subject,issuer,not_after_utc) from the embedded TlsObservation, mirroring tls --csv; renderer-only, no API change; fixture test."
     }
   },
   "edges": [
@@ -3178,6 +3226,42 @@
       "to": "ISS-027",
       "type": "resolves",
       "created_at": "2026-08-23T00:57:54+00:00"
+    },
+    {
+      "from": "DEC-035",
+      "to": "TASK-036",
+      "type": "governs",
+      "created_at": "2026-08-23T01:03:52+00:00"
+    },
+    {
+      "from": "DEC-035",
+      "to": "DEC-034",
+      "type": "supersedes",
+      "created_at": "2026-08-23T01:03:52+00:00"
+    },
+    {
+      "from": "TASK-036",
+      "to": "ISS-028",
+      "type": "addresses",
+      "created_at": "2026-08-23T01:03:52+00:00"
+    },
+    {
+      "from": "ISS-028",
+      "to": "COMP-http",
+      "type": "located_in",
+      "created_at": "2026-08-23T01:03:52+00:00"
+    },
+    {
+      "from": "CHG-029",
+      "to": "TASK-036",
+      "type": "implements",
+      "created_at": "2026-08-23T01:06:20+00:00"
+    },
+    {
+      "from": "CHG-029",
+      "to": "ISS-028",
+      "type": "resolves",
+      "created_at": "2026-08-23T01:06:20+00:00"
     }
   ]
 }
