@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-23T08:19:16+00:00",
+  "updated_at": "2026-08-23T08:24:31+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -2978,6 +2978,54 @@
       "touched_round": 0,
       "commit": "e2aca4a79d15afc86d842f52159fc4ac1021c13b",
       "summary": "Added a headers column to http/http2/http3 --csv: render_http_csv now emits host,...,not_after_utc,headers,failure, populating the field from the observed response headers (the curated diagnostic-relevant set) as 'Name: value' pairs joined by '; ' via a shared curated_headers_csv helper, so a spreadsheet fleet sweep retains the server/edge/caching evidence."
+    },
+    "ISS-050": {
+      "id": "ISS-050",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T08:24:16+00:00",
+      "updated_at": "2026-08-23T08:24:31+00:00",
+      "touched_round": 0,
+      "severity": "low",
+      "summary": "The diagnose command's human report and --json carry each verdict's evidence + possible_causes, but the diagnose --csv exporter (render_csv) emits only host,severity,category,confidence,summary -- a spreadsheet fleet sweep loses the reasoning behind each verdict (the observations that support it and the mundane alternatives that remain). Same format-parity gap the loop closed for TTL (DEC-055), http headers (DEC-056) and the probe status."
+    },
+    "TASK-058": {
+      "id": "TASK-058",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T08:24:16+00:00",
+      "updated_at": "2026-08-23T08:24:31+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.12,
+      "unlock_factor": 1,
+      "summary": "Add evidence and possible_causes columns to diagnose --csv: emit each Diagnosis's evidence details and possible causes as semicolon-joined cells (RFC-4180 quoted via the shared csv_field), so a spreadsheet fleet sweep keeps the reasoning behind each verdict. Renderer-only, no public API change. Pinned by a fixture-gated CLI test: the diagnose --csv row carries the fixture QUIC verdict's evidence and possible causes."
+    },
+    "DEC-057": {
+      "id": "DEC-057",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T08:24:21+00:00",
+      "updated_at": "2026-08-23T08:24:21+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-23): surface each diagnosis's evidence and possible causes across output formats. A diagnose fleet sweep in a spreadsheet currently gets only a category + summary -- the WHY (the observations that support the verdict and the alternatives that remain) that the human report and --json carry is dropped, so an operator comparing many hosts cannot tell from the CSV what evidence drove a verdict. Same format-parity pattern the loop closed for TTL, http headers and the probe status.",
+      "alternatives_rejected": "leaving the diagnose CSV without evidence (the exporters would disagree on what a diagnosis conveys); a separate --evidence flag (the columns belong in the existing exporter); splitting evidence into multi-line cells (one cell per diagnosis keeps rows pivotable on host)."
+    },
+    "CHG-051": {
+      "id": "CHG-051",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T08:24:31+00:00",
+      "updated_at": "2026-08-23T08:24:31+00:00",
+      "touched_round": 0,
+      "commit": "6a6a67d4abde1572431691c54ab120d9aa5d793e",
+      "summary": "Added evidence and possible_causes columns to diagnose --csv: render_csv now emits host,severity,category,confidence,summary,evidence,possible_causes, joining each diagnosis's Evidence.detail entries and possible_causes into semicolon-separated cells via a shared join_semis helper (RFC-4180 quoted), so a spreadsheet fleet sweep keeps the reasoning behind each verdict."
     }
   },
   "edges": [
@@ -5026,6 +5074,42 @@
       "to": "ISS-049",
       "type": "resolves",
       "created_at": "2026-08-23T08:19:16+00:00"
+    },
+    {
+      "from": "ISS-050",
+      "to": "COMP-http",
+      "type": "located_in",
+      "created_at": "2026-08-23T08:24:31+00:00"
+    },
+    {
+      "from": "TASK-058",
+      "to": "ISS-050",
+      "type": "addresses",
+      "created_at": "2026-08-23T08:24:31+00:00"
+    },
+    {
+      "from": "DEC-057",
+      "to": "TASK-058",
+      "type": "governs",
+      "created_at": "2026-08-23T08:24:31+00:00"
+    },
+    {
+      "from": "DEC-057",
+      "to": "DEC-056",
+      "type": "supersedes",
+      "created_at": "2026-08-23T08:24:31+00:00"
+    },
+    {
+      "from": "CHG-051",
+      "to": "TASK-058",
+      "type": "implements",
+      "created_at": "2026-08-23T08:24:31+00:00"
+    },
+    {
+      "from": "CHG-051",
+      "to": "ISS-050",
+      "type": "resolves",
+      "created_at": "2026-08-23T08:24:31+00:00"
     }
   ]
 }
