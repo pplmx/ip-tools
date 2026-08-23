@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-23T09:33:19+00:00",
+  "updated_at": "2026-08-23T09:39:07+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -3422,6 +3422,54 @@
       "touched_round": 0,
       "commit": "1f1d4a84e24b525b3030948a4805a1d4c32793fb",
       "summary": "Added a body_snippet column to render_http_csv and the HTTP family header: fleet rows now carry the bounded response-body text (RFC-4180 quoted) alongside the status/headers/TLS columns. Renderer-only, no public API change; extended the http --csv fixture test to assert the snippet is present."
+    },
+    "ISS-059": {
+      "id": "ISS-059",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T09:39:00+00:00",
+      "updated_at": "2026-08-23T09:39:07+00:00",
+      "touched_round": 0,
+      "severity": "low",
+      "summary": "The diagnose command's stability phase hard-codes 3 repeated attempts per address for both the TCP transport repeat and the HTTP status repeat. An operator diagnosing incidental flapping, latency instability or intermittency cannot lengthen the observation window (more attempts make subtler instability visible) or shorten it to bound runtime -- unlike probe --count and dns --count which are configurable."
+    },
+    "TASK-067": {
+      "id": "TASK-067",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T09:39:00+00:00",
+      "updated_at": "2026-08-23T09:39:07+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.2,
+      "unlock_factor": 1,
+      "summary": "Add diagnosis --count N (default 3, matching the sample the flapping/latency/intermittent rules were tuned against; 0 rejected) and thread it through diagnose_one's repeat phase for both the TCP transport repeat and the HTTP status repeat. CLI-only, no public API change. Pinned by a fixture-gated CLI test: diagnose <addr> --sni flap.invalid --count 1 suppresses the status-flapping verdict (single attempt cannot observe 200<->503) while --count 5 surfaces it, proving the flag is threaded through the repeat phase."
+    },
+    "DEC-066": {
+      "id": "DEC-066",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T09:39:00+00:00",
+      "updated_at": "2026-08-23T09:39:00+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-23): make diagnose's stability observation window configurable. The repeat phase's hard-coded 3 attempts mean the flapping / latency-instability / intermittent rules only ever see a 3-sample window -- too short to expose subtle instability, and not adjustable to bound runtime. Adding diagnosis --count (parallel to probe --count / dns --count) lets an operator lengthen or shorten the sample; default 3 keeps the exact behavior the rules were validated with and existing fixture tests depend on.",
+      "alternatives_rejected": "leaving the stability phase at a fixed 3 (operators could not trade observation window against runtime for subtler instability); reusing probe's count default of 10 (diagnose's rules were tuned to a 3-sample window, so defaulting differently would silently change existing diagnoses); adding a separate --stability-count (that count is exactly what --count means on the sibling commands, one flag is enough)."
+    },
+    "CHG-060": {
+      "id": "CHG-060",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T09:39:07+00:00",
+      "updated_at": "2026-08-23T09:39:07+00:00",
+      "touched_round": 0,
+      "commit": "002a8911e6b661b4f5de652d2b27622baa7d858a",
+      "summary": "Added diagnose --count N (default 3, 0 rejected) and threaded it through diagnose_one's repeat phase for both the TCP transport repeat and the HTTP status repeat. CLI-only, no public API change; added a fixture-gated CLI test proving --count 1 suppresses the status-flapping verdict while --count 5 surfaces it."
     }
   },
   "edges": [
@@ -5794,6 +5842,42 @@
       "to": "ISS-058",
       "type": "resolves",
       "created_at": "2026-08-23T09:33:19+00:00"
+    },
+    {
+      "from": "ISS-059",
+      "to": "COMP-http",
+      "type": "located_in",
+      "created_at": "2026-08-23T09:39:07+00:00"
+    },
+    {
+      "from": "TASK-067",
+      "to": "ISS-059",
+      "type": "addresses",
+      "created_at": "2026-08-23T09:39:07+00:00"
+    },
+    {
+      "from": "DEC-066",
+      "to": "TASK-067",
+      "type": "governs",
+      "created_at": "2026-08-23T09:39:07+00:00"
+    },
+    {
+      "from": "DEC-066",
+      "to": "DEC-065",
+      "type": "supersedes",
+      "created_at": "2026-08-23T09:39:07+00:00"
+    },
+    {
+      "from": "CHG-060",
+      "to": "TASK-067",
+      "type": "implements",
+      "created_at": "2026-08-23T09:39:07+00:00"
+    },
+    {
+      "from": "CHG-060",
+      "to": "ISS-059",
+      "type": "resolves",
+      "created_at": "2026-08-23T09:39:07+00:00"
     }
   ]
 }
