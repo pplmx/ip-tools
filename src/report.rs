@@ -467,6 +467,14 @@ pub fn render_probe(results: &[ProbeResult]) -> String {
                 .collect();
             out.push_str(&format!("    failures: {}\n", dist.join(", ")));
         }
+        if !r.status_counts.is_empty() {
+            let dist: Vec<String> = r
+                .status_counts
+                .iter()
+                .map(|s| format!("{}x{}", s.status, s.count))
+                .collect();
+            out.push_str(&format!("    status:   {}\n", dist.join(", ")));
+        }
     }
     out
 }
@@ -939,6 +947,7 @@ mod tests {
                 kind: FailureKind::Timeout,
                 count: 2,
             }],
+            status_counts: Vec::new(),
         };
         let no_latency = ProbeResult {
             destination: "2.2.2.2:443".parse().unwrap(),
@@ -948,6 +957,7 @@ mod tests {
             success_rate: 0.0,
             latency: LatencyStats::default().summarize(),
             failure_counts: vec![],
+            status_counts: Vec::new(),
         };
         let out = render_probe(&[result, no_latency]);
         assert!(out.contains("Repeated probes"));

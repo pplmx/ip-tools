@@ -5,7 +5,7 @@
 //! success/failure rates, latency percentiles and the failure distribution.
 //! Latencies are measured with monotonic clocks.
 
-use crate::model::probe::{FailureCount, ProbeResult};
+use crate::model::probe::{FailureCount, ProbeResult, StatusCount};
 use crate::model::{FailureKind, HttpObservation, LatencyStats};
 use crate::tcp;
 use std::collections::HashMap;
@@ -64,9 +64,9 @@ pub async fn tls_repeat_with_version(
             crate::tls::probe_with_version(destination, sni, timeout, protocol).await
         };
         if obs.success {
-            (true, obs.latency_ms, None)
+            (true, obs.latency_ms, None, None)
         } else {
-            (false, None, obs.failure.map(|f| f.kind))
+            (false, None, obs.failure.map(|f| f.kind), None)
         }
     })
     .await
@@ -100,9 +100,9 @@ pub async fn tcp_repeat(destination: SocketAddr, attempts: usize, timeout: Durat
     repeat_impl(destination, attempts, || async {
         let obs = tcp::probe(destination, timeout).await;
         if obs.success {
-            (true, obs.latency_ms, None)
+            (true, obs.latency_ms, None, None)
         } else {
-            (false, None, obs.failure.map(|f| f.kind))
+            (false, None, obs.failure.map(|f| f.kind), None)
         }
     })
     .await
@@ -267,12 +267,14 @@ pub async fn http3_repeat(
 /// Map a single HTTP probe observation onto the shared (success, latency,
 /// failure-kind) aggregation tuple: an error status (e.g. 5xx) is still a
 /// completed probe, so only a transport/protocol failure counts as failed.
-fn http_outcome(obs: HttpObservation) -> (bool, Option<u64>, Option<FailureKind>) {
+/// The fourth tuple element is the observed HTTP status (for surfacing the
+/// status distribution in the report), present on every completed response.
+fn http_outcome(obs: HttpObservation) -> (bool, Option<u64>, Option<FailureKind>, Option<u16>) {
     if obs.failure.is_none() {
-        (true, obs.latency_ms, None)
+        (true, obs.latency_ms, None, obs.status)
     } else {
         let kind = obs.failure.map(|f| f.kind);
-        (false, None, kind)
+        (false, None, kind, None)
     }
 }
 
@@ -285,14 +287,18 @@ fn http_outcome(obs: HttpObservation) -> (bool, Option<u64>, Option<FailureKind>
 async fn repeat_impl<F, Fut>(destination: SocketAddr, attempts: usize, mut attempt: F) -> ProbeResult
 where
     F: FnMut() -> Fut,
-    Fut: std::future::Future<Output = (bool, Option<u64>, Option<FailureKind>)>,
+    Fut: std::future::Future<Output = (bool, Option<u64>, Option<FailureKind>, Option<u16>)>,
 {
     let mut latency = LatencyStats::default();
     let mut failures: HashMap<FailureKind, usize> = HashMap::new();
+    let mut statuses: HashMap<u16, usize> = HashMap::new();
     let mut successes = 0usize;
 
     for _ in 0..attempts {
-        let (ok, latency_ms, kind) = attempt().await;
+        let (ok, latency_ms, kind, status) = attempt().await;
+        if let Some(status) = status {
+            *statuses.entry(status).or_default() += 1;
+        }
         if ok {
             successes += 1;
             latency.push(latency_ms.unwrap_or(0));
@@ -307,6 +313,11 @@ where
         .map(|(kind, count)| FailureCount { kind, count })
         .collect();
     failure_counts.sort_by_key(|f| std::cmp::Reverse(f.count));
+    let mut status_counts: Vec<StatusCount> = statuses
+        .into_iter()
+        .map(|(status, count)| StatusCount { status, count })
+        .collect();
+    status_counts.sort_by_key(|s| std::cmp::Reverse(s.count));
 
     ProbeResult {
         destination,
@@ -320,5 +331,37 @@ where
         },
         latency: latency.summarize(),
         failure_counts,
+        status_counts,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::repeat_impl;
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn repeat_impl_aggregates_http_status_counts() {
+        // A repeat HTTP probe must surface the status distribution while
+        // preserving the transport-success semantics: a completed response
+        // with any status (even 503) counts as a successful exchange.
+        use std::sync::atomic::{AtomicU32, Ordering};
+        let attempt = std::sync::Arc::new(AtomicU32::new(0));
+        let r = repeat_impl("1.1.1.1:443".parse().unwrap(), 4, move || {
+            let attempt = std::sync::Arc::clone(&attempt);
+            async move {
+                match attempt.fetch_add(1, Ordering::SeqCst) + 1 {
+                    1..=3 => (true, Some(5), None, Some(200)),
+                    4 => (true, Some(9), None, Some(503)),
+                    _ => (false, None, None, None),
+                }
+            }
+        })
+        .await;
+        assert_eq!(r.successes, 4, "transport-success semantics preserved");
+        assert_eq!(r.failures, 0);
+        assert_eq!(r.status_counts.len(), 2, "200 and 503 both recorded");
+        let pairs: Vec<(u16, usize)> = r.status_counts.iter().map(|s| (s.status, s.count)).collect();
+        assert!(pairs.contains(&(200, 3)), "200x3: {pairs:?}");
+        assert!(pairs.contains(&(503, 1)), "503x1: {pairs:?}");
     }
 }

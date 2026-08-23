@@ -201,8 +201,12 @@ pub ip_tools::model::probe::ProbeResult::destination: core::net::socket_addr::So
 pub ip_tools::model::probe::ProbeResult::failure_counts: alloc::vec::Vec<ip_tools::model::probe::FailureCount>
 pub ip_tools::model::probe::ProbeResult::failures: usize
 pub ip_tools::model::probe::ProbeResult::latency: ip_tools::model::latency::LatencySummary
+pub ip_tools::model::probe::ProbeResult::status_counts: alloc::vec::Vec<ip_tools::model::probe::StatusCount>
 pub ip_tools::model::probe::ProbeResult::success_rate: f64
 pub ip_tools::model::probe::ProbeResult::successes: usize
+pub struct ip_tools::model::probe::StatusCount
+pub ip_tools::model::probe::StatusCount::count: usize
+pub ip_tools::model::probe::StatusCount::status: u16
 pub mod ip_tools::model::tcp
 pub struct ip_tools::model::tcp::TcpObservation
 pub ip_tools::model::tcp::TcpObservation::destination: core::net::socket_addr::SocketAddr
@@ -392,6 +396,7 @@ pub ip_tools::model::ProbeResult::destination: core::net::socket_addr::SocketAdd
 pub ip_tools::model::ProbeResult::failure_counts: alloc::vec::Vec<ip_tools::model::probe::FailureCount>
 pub ip_tools::model::ProbeResult::failures: usize
 pub ip_tools::model::ProbeResult::latency: ip_tools::model::latency::LatencySummary
+pub ip_tools::model::ProbeResult::status_counts: alloc::vec::Vec<ip_tools::model::probe::StatusCount>
 pub ip_tools::model::ProbeResult::success_rate: f64
 pub ip_tools::model::ProbeResult::successes: usize
 pub struct ip_tools::model::TcpObservation
@@ -613,6 +618,7 @@ pub ip_tools::ProbeResult::destination: core::net::socket_addr::SocketAddr
 pub ip_tools::ProbeResult::failure_counts: alloc::vec::Vec<ip_tools::model::probe::FailureCount>
 pub ip_tools::ProbeResult::failures: usize
 pub ip_tools::ProbeResult::latency: ip_tools::model::latency::LatencySummary
+pub ip_tools::ProbeResult::status_counts: alloc::vec::Vec<ip_tools::model::probe::StatusCount>
 pub ip_tools::ProbeResult::success_rate: f64
 pub ip_tools::ProbeResult::successes: usize
 pub struct ip_tools::RouteHop

@@ -435,6 +435,7 @@ mod tests {
             success_rate: 0.5,
             latency: stats.summarize(),
             failure_counts: vec![],
+            status_counts: Vec::new(),
         };
         let out = diagnose(&input(&[], &[], &[], &[], &[probe]));
         assert!(categories(&out).contains(&DiagnosticCategory::Intermittent));
@@ -506,6 +507,7 @@ mod tests {
                 kind: FailureKind::NetworkUnreachable,
                 count: 3,
             }],
+            status_counts: Vec::new(),
         }];
         let out = diagnose(&input(&dns, &tcp, &tls, &[], &probes));
         assert!(

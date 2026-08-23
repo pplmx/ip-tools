@@ -185,6 +185,7 @@ mod tests {
                 kind: FailureKind::Timeout,
                 count: failures,
             }],
+            status_counts: Vec::new(),
         }
     }
 
@@ -324,6 +325,7 @@ mod tests {
                 kind: FailureKind::NetworkUnreachable,
                 count: 3,
             }],
+            status_counts: Vec::new(),
         }];
         let lows = filtering(false, &tcp, &[], &[], &probes);
         // address-specific (1) + repeats-all-fail (not counted) = one signal:

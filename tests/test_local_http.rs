@@ -1740,6 +1740,49 @@ fn probe_cli_http2_repeats_fixture_via_protocol_flag() {
 }
 
 #[test]
+fn probe_http_repeat_surfaces_status_distribution() {
+    // `probe --protocol http --count N` must surface the observed HTTP status
+    // distribution (the fixture's Normal route answers 200) so status flapping
+    // is visible in a stability repeat, not just transport pass/fail counts.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let addr = fixture.tcp_addr().to_string();
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "probe",
+            &addr,
+            "--protocol",
+            "http",
+            "--count",
+            "3",
+            "--insecure",
+            "--timeout",
+            "2000",
+        ])
+        .output()
+        .expect("run probe --protocol http --count 3");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "probe --protocol http should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.contains("success:  3"),
+        "expected 3 successful exchanges: {stdout}"
+    );
+    assert!(
+        stdout.contains("200x3"),
+        "the HTTP status distribution (200x3) must be surfaced: {stdout}"
+    );
+}
+
+#[test]
 fn probe_cli_csv_export_renders_rows() {
     // `probe --csv` emits a header + one row per destination carrying the
     // aggregated `--count` latency/failure stats, so a connectivity-health

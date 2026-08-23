@@ -528,6 +528,7 @@ mod tests {
             } else {
                 Vec::new()
             },
+            status_counts: Vec::new(),
         }
     }
 
