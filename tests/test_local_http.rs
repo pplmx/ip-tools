@@ -2465,6 +2465,46 @@ fn diagnose_flags_http_status_flapping_on_transport_healthy_path() {
 }
 
 #[test]
+fn diagnose_flags_latency_instability_on_stable_transport() {
+    // `diagnose` must surface latency instability: the fixture's
+    // `slowflap.invalid` route keeps a stable 200 status but alternates fast /
+    // slow (~120 ms) responses, so a repeated HTTP probe succeeds every attempt
+    // with the same status yet shows a long p95-vs-p50 tail. Transport
+    // pass/fail and status classes both stay quiet — only the latency
+    // distribution reveals the flapping backend.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let addr = fixture.tcp_addr().to_string();
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "diagnose",
+            &addr,
+            "--sni",
+            "slowflap.invalid",
+            "--insecure",
+            "--timeout",
+            "3000",
+        ])
+        .output()
+        .expect("run diagnose against slow-flapping route");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "diagnose should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.contains("Latency instability") && stdout.contains("only the latency tail is long"),
+        "the latency-instability diagnosis (and its evidence) must surface: {stdout}"
+    );
+}
+
+#[test]
 fn diagnose_cli_multiple_targets_render_each_and_emit_json_array() {
     // `diagnose` accepts multiple targets (a fleet sweep): each host runs the
     // full pipeline, human output shows every host's report, and `--json`

@@ -230,6 +230,58 @@ pub(super) fn http_status_flapping_rules(input: &DiagnosticInput, out: &mut Vec<
     }
 }
 
+/// Latency instability on a repeat probe: the transport succeeded and the
+/// HTTP status was stable on every attempt, yet the per-attempt latency has a
+/// long right tail (p95 far above p50). Transport pass/fail and status classes
+/// both hide this — the endpoint never fails and always returns the same
+/// status, so only the latency distribution reveals that it is flapping (a
+/// degraded backend under load, capacity / rate-limit throttling, a congested
+/// or flapping path). Uses the jitter/p95 data the repeat probes already
+/// populate, so it is a pure signal on existing observations.
+pub(super) fn latency_instability_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosis>) {
+    for p in input.probes {
+        if p.attempts < 3 || p.failures > 0 || p.latency.count < 3 {
+            continue;
+        }
+        // Ratio of the 95th percentile to the median is a scale-free tail
+        // measure: a healthy distribution is tight (ratio near 1), while a
+        // bimodal or long-tailed one (some attempts much slower than the
+        // median) is flapping and worth surfacing. 3x is a defensible "slow
+        // tail" threshold that tolerates normal variance.
+        let (Some(p50), Some(p95)) = (p.latency.p50, p.latency.p95) else {
+            continue;
+        };
+        if p50 == 0 || p95 < 3 * p50 {
+            continue;
+        }
+        out.push(Diagnosis {
+            severity: Severity::Low,
+            category: DiagnosticCategory::Intermittent,
+            confidence: Confidence::High,
+            summary: format!(
+                "Latency instability for {} (p95 {} ms vs p50 {} ms)",
+                p.destination, p95, p50
+            ),
+            evidence: vec![
+                Evidence {
+                    detail: format!(
+                        "latency across {} attempts: p50 {p50} ms, p95 {p95} ms",
+                        p.latency.count
+                    ),
+                },
+                Evidence {
+                    detail: "transport and HTTP status were stable; only the latency tail is long".into(),
+                },
+            ],
+            possible_causes: vec![
+                "degraded backend under load (slow tail)".into(),
+                "capacity limits / rate-limit throttling".into(),
+                "congested or flapping network path".into(),
+            ],
+        });
+    }
+}
+
 /// Automated certificate-lifetime diagnosis: a serving certificate that is
 /// already expired, or expires within the same 30-day window the human TLS
 /// report annotates, should surface from `diagnose` so an automated /
@@ -602,6 +654,26 @@ mod tests {
                 .iter()
                 .map(|(s, c)| StatusCount { status: *s, count: *c })
                 .collect(),
+        }
+    }
+
+    /// A repeat probe that succeeded (transport + status stable) with the
+    /// given per-attempt latencies, so a latency-instability test can control
+    /// the tail directly.
+    fn probe_latency(samples: &[u64]) -> ProbeResult {
+        let mut stats = LatencyStats::default();
+        for &s in samples {
+            stats.push(s);
+        }
+        ProbeResult {
+            destination: "1.1.1.1:443".parse().unwrap(),
+            attempts: samples.len(),
+            successes: samples.len(),
+            failures: 0,
+            success_rate: 1.0,
+            latency: stats.summarize(),
+            failure_counts: Vec::new(),
+            status_counts: Vec::new(),
         }
     }
 
@@ -1134,6 +1206,44 @@ mod tests {
         let mut out = Vec::new();
         http_status_flapping_rules(&input(&[], &[], &single), &mut out);
         assert!(out.is_empty(), "single attempt cannot flap: {out:?}");
+    }
+
+    #[test]
+    fn latency_instability_fires_on_long_slow_tail() {
+        // Transport healthy, status stable (empty status_counts = no HTTP
+        // status signal), but the latency tail is long: two fast attempts and
+        // one much slower one give a p95 well above p50.
+        let slow = [probe_latency(&[10, 12, 120])];
+        let mut out = Vec::new();
+        latency_instability_rules(&input(&[], &[], &slow), &mut out);
+        let d = out.iter().find(|d| d.category == DiagnosticCategory::Intermittent);
+        assert!(d.is_some(), "latency instability should fire: {out:?}");
+        assert!(d.unwrap().summary.contains("p95 120 ms vs p50 12 ms"));
+    }
+
+    #[test]
+    fn latency_instability_silent_for_tight_and_stable_and_short() {
+        // Tight distribution: p95 ~ p50, no fire.
+        let tight = [probe_latency(&[10, 11, 12])];
+        let mut out = Vec::new();
+        latency_instability_rules(&input(&[], &[], &tight), &mut out);
+        assert!(out.is_empty(), "tight latency must not fire: {out:?}");
+
+        // A slow single outlier is not a "tail" across enough attempts, and
+        // fewer than 3 attempts cannot establish a distribution.
+        let two = [probe_latency(&[10, 120])];
+        let mut out = Vec::new();
+        latency_instability_rules(&input(&[], &[], &two), &mut out);
+        assert!(out.is_empty(), "two attempts must not fire: {out:?}");
+
+        // Transport failures are owned by intermittent_rules, not this one.
+        let mut failing = probe_latency(&[10, 12, 120]);
+        failing.failures = 1;
+        failing.successes = 2;
+        failing.success_rate = 2.0 / 3.0;
+        let mut out = Vec::new();
+        latency_instability_rules(&input(&[], &[], &[failing]), &mut out);
+        assert!(out.is_empty(), "transport failures must not fire here: {out:?}");
     }
 
     fn tls_with_cert(not_after: &str) -> TlsObservation {

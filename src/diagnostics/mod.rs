@@ -57,6 +57,7 @@ pub fn diagnose(input: &DiagnosticInput) -> Vec<Diagnosis> {
     layer::quic_rules(input, &mut out);
     layer::intermittent_rules(input, &mut out);
     layer::http_status_flapping_rules(input, &mut out);
+    layer::latency_instability_rules(input, &mut out);
     filtering::filtering_rules(input, dns_signal, &mut out);
 
     if out.is_empty() {

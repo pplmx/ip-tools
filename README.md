@@ -688,6 +688,12 @@ performs no network I/O.
   partial deployment, or capacity / rate-limit cycling). `diagnose` now runs
   an HTTP status repeat alongside its TCP repeat so this visible instability
   is not hidden by transport pass/fail counts.
+- **Latency instability** is also reported as an `Intermittent` diagnosis:
+  when a repeat probe succeeds at the transport layer with a stable status
+  but shows a long latency tail (p95 well above p50), the endpoint is
+  degrading under load or on a congested / flapping path. `diagnose` uses the
+  jitter and percentile data the repeat probes already populate, so no extra
+  flag is needed.
 
 **`ip-tools` does not claim a network failure is censorship merely because a
 connection fails.** Many mundane explanations (CDN node failure, routing

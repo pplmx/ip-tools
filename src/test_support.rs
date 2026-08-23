@@ -172,6 +172,9 @@ enum FixtureRoute {
     /// Alternate 200 / 503 per request so a repeated HTTP probe observes HTTP
     /// status flapping on an otherwise transport-healthy path.
     Flap,
+    /// Alternate fast / slow responses (stable 200 status) so a repeated HTTP
+    /// probe observes a long latency tail on an otherwise healthy path.
+    SlowFlap,
 }
 
 /// Size of the oversized body served for [`FixtureRoute::LargeBody`] — larger
@@ -185,6 +188,11 @@ static FLAP_COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsi
 /// Separate counter for the QUIC flap arm so the two servers' alternations
 /// do not desynchronize.
 static QUIC_FLAP_COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+/// Request counter for the [`FixtureRoute::SlowFlap`] route: alternates the
+/// response latency (fast / slow) while keeping the status 200.
+static SLOWFLAP_COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+/// Separate counter for the QUIC slow-flap arm.
+static QUIC_SLOWFLAP_COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 /// Classify a request by its host (URI authority first, then `Host` header,
 /// which covers HTTP/2/3's `:authority` and HTTP/1.1's `Host` alike).
@@ -209,6 +217,7 @@ fn route_for(req: &hyper::Request<impl Sized>) -> FixtureRoute {
         "echo.invalid" => FixtureRoute::BodyEcho,
         "quiesce.invalid" => FixtureRoute::Quiesce,
         "flap.invalid" => FixtureRoute::Flap,
+        "slowflap.invalid" => FixtureRoute::SlowFlap,
         _ => FixtureRoute::Normal,
     }
 }
@@ -354,6 +363,34 @@ async fn run_tcp_server(listener: tokio::net::TcpListener, acceptor: tokio_rustl
                                 .body(http_body_util::Full::new(bytes::Bytes::from_static(b"flap")).boxed())
                                 .expect("static flap response"),
                         )
+                    }
+                    FixtureRoute::SlowFlap => {
+                        // Keep the status 200 but alternate fast / slow so a
+                        // repeated HTTP probe observes a long latency tail on
+                        // an otherwise transport/status-healthy path. NOT
+                        // shared with the QUIC server (see its own arm).
+                        if SLOWFLAP_COUNT
+                            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+                            .is_multiple_of(2)
+                        {
+                            // Immediately answer with a small body.
+                            Ok::<_, std::convert::Infallible>(
+                                hyper::Response::builder()
+                                    .status(200)
+                                    .body(http_body_util::Full::new(bytes::Bytes::from_static(b"fast")).boxed())
+                                    .expect("static fast response"),
+                            )
+                        } else {
+                            // Wait ~120 ms before answering, creating a slow
+                            // tail sample well above the fast median.
+                            tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+                            Ok::<_, std::convert::Infallible>(
+                                hyper::Response::builder()
+                                    .status(200)
+                                    .body(http_body_util::Full::new(bytes::Bytes::from_static(b"slow")).boxed())
+                                    .expect("static slow response"),
+                            )
+                        }
                     }
                     FixtureRoute::BodyEcho => {
                         // Read the request body and echo it back, proving a
@@ -561,6 +598,19 @@ async fn serve_quic_connection(incoming: quinn::Incoming) {
                     503
                 };
                 let response = hyper::Response::builder().status(status).body(()).expect("status");
+                if stream.send_response(response).await.is_err() {
+                    return;
+                }
+                let _ = stream.finish().await;
+            }
+            FixtureRoute::SlowFlap => {
+                if !QUIC_SLOWFLAP_COUNT
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+                    .is_multiple_of(2)
+                {
+                    tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+                }
+                let response = hyper::Response::builder().status(200).body(()).expect("status 200");
                 if stream.send_response(response).await.is_err() {
                     return;
                 }
