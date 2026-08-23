@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-23T09:21:04+00:00",
+  "updated_at": "2026-08-23T09:30:01+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -3326,6 +3326,54 @@
       "touched_round": 0,
       "commit": "cceee3b8e88164fc9b2d6384940550c3baf41204",
       "summary": "Added cross-address HTTP status divergence to http_consistency_rules: completed HTTP observations grouped by (protocol, family); a group with >=2 distinct addresses spanning both 2xx and non-2xx raises a Low Http (Medium confidence) diagnosis naming the divergent addresses and statuses. Added unit tests (fires on 200 vs 503 across two addresses; quiet for single address or uniform addresses)."
+    },
+    "ISS-057": {
+      "id": "ISS-057",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T09:29:53+00:00",
+      "updated_at": "2026-08-23T09:30:00+00:00",
+      "touched_round": 0,
+      "severity": "low",
+      "summary": "The dns --csv exporter carries latency/TTL stats but never the actual resolved records (addresses, CNAME, MX, TXT, ...) -- the primary data of a DNS query, which the human report and --json both show. A spreadsheet DNS sweep (e.g. exporting a fleet's A records) cannot see what each host resolved to."
+    },
+    "TASK-065": {
+      "id": "TASK-065",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T09:29:53+00:00",
+      "updated_at": "2026-08-23T09:30:01+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.2,
+      "unlock_factor": 1,
+      "summary": "Add a records column to dns --csv (renderer-only): emit the resolved DnsRecord values (Display-joined, RFC-4180 quoted via the shared csv_field helper) on single-shot rows, left empty on --count repeat rows (the aggregation does not retain per-answer records). No public API change. Pinned by a fixture-gated CLI test: the dns --doh single-shot --csv rows carry the resolved 192.0.2.77 / 2001:db8::77 records."
+    },
+    "DEC-064": {
+      "id": "DEC-064",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T09:29:53+00:00",
+      "updated_at": "2026-08-23T09:29:53+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-23): surface the actual resolved DNS records in the CSV export. The dns --csv rows carry timing/TTL but drop the answers themselves -- exactly the values an operator exporting a fleet's A/CNAME/MX/TXT set from a spreadsheet wants, and which human/JSON already show. Add on single-shot rows (the aggregation case --count leaves empty, mirroring how repeat rows cannot retain per-answer values).",
+      "alternatives_rejected": "leaving records out of CSV (a spreadsheet sweep would still have to re-query to see answers); a separate --csv-records flag (one column belongs in the existing exporter); embedding records on repeat rows too (the aggregation does not retain per-answer records, so they cannot be carried there honestly)."
+    },
+    "CHG-058": {
+      "id": "CHG-058",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T09:30:00+00:00",
+      "updated_at": "2026-08-23T09:30:00+00:00",
+      "touched_round": 0,
+      "commit": "d3082bfeb617562d6b8fbc9402e3f7004785c819",
+      "summary": "Added a records column to render_dns_csv: single-shot rows now emit the resolved DnsRecord values (Display-joined, RFC-4180 quoted) on top of the existing latency/TTL fields; --count repeat rows leave it empty. Renderer-only, no public API change; added a fixture-gated CLI test proving the DoH single-shot rows carry 192.0.2.77 / 2001:db8::77."
     }
   },
   "edges": [
@@ -5626,6 +5674,42 @@
       "to": "ISS-056",
       "type": "resolves",
       "created_at": "2026-08-23T09:21:04+00:00"
+    },
+    {
+      "from": "ISS-057",
+      "to": "COMP-dns",
+      "type": "located_in",
+      "created_at": "2026-08-23T09:30:00+00:00"
+    },
+    {
+      "from": "TASK-065",
+      "to": "ISS-057",
+      "type": "addresses",
+      "created_at": "2026-08-23T09:30:00+00:00"
+    },
+    {
+      "from": "DEC-064",
+      "to": "TASK-065",
+      "type": "governs",
+      "created_at": "2026-08-23T09:30:00+00:00"
+    },
+    {
+      "from": "DEC-064",
+      "to": "DEC-063",
+      "type": "supersedes",
+      "created_at": "2026-08-23T09:30:00+00:00"
+    },
+    {
+      "from": "CHG-058",
+      "to": "TASK-065",
+      "type": "implements",
+      "created_at": "2026-08-23T09:30:00+00:00"
+    },
+    {
+      "from": "CHG-058",
+      "to": "ISS-057",
+      "type": "resolves",
+      "created_at": "2026-08-23T09:30:00+00:00"
     }
   ]
 }
