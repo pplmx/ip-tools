@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-23T09:03:30+00:00",
+  "updated_at": "2026-08-23T09:09:01+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -3182,6 +3182,54 @@
       "source": "tests/test_local_http.rs diagnose_flags_latency_instability_on_stable_transport + src/diagnostics/layer.rs latency_instability_rules",
       "summary": "The latency-instability rule's p50==0 guard wrongly skipped a real slow tail when the fixture's fast responses measured 0 ms (sub-millisecond): sorted [0,0,123] gave p50=0 so the rule bailed even though p95=123 was a genuine flap. Fixed by flooring the scale base at max(p50,1); the slowflap route also became a deterministic fast-fast-slow mod-3 pattern.",
       "confidence": 1.0
+    },
+    "ISS-054": {
+      "id": "ISS-054",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T09:08:54+00:00",
+      "updated_at": "2026-08-23T09:09:01+00:00",
+      "touched_round": 0,
+      "severity": "low",
+      "summary": "The cleartext HTTP milestone (DEC-060, CHG-054) added --plain to the single-shot http command, but the repeat probe path (probe --protocol http) — the natural form for a health/stability sweep against a plaintext endpoint — is still TLS-only, so a plaintext HTTP stability check cannot run end-to-end."
+    },
+    "TASK-062": {
+      "id": "TASK-062",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T09:08:54+00:00",
+      "updated_at": "2026-08-23T09:09:01+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.35,
+      "unlock_factor": 1,
+      "summary": "Extend --plain to the repeat probe: add probe::http_repeat_plain (repeats cleartext HTTP/1.1 and aggregates status+latency) and route probe --protocol http --plain through it in the CLI, rejecting --plain for non-http protocols with a clear error. Public API change (api-baseline regenerated). Pinned by a library test (http_repeat_plain aggregates 200x3 against the fixture plain listener) and a fixture-gated CLI test: probe <addr> --protocol http --count 3 --plain reports 100% success / 200x3, and --protocol tls --plain fails."
+    },
+    "DEC-061": {
+      "id": "DEC-061",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T09:08:54+00:00",
+      "updated_at": "2026-08-23T09:08:54+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-23): complete the cleartext HTTP surface by extending --plain to the repeat probe. The single-shot http --plain (DEC-060) lets an operator inspect one plaintext endpoint, but a health/stability sweep against an internal HTTP service needs the repeated form (probe --protocol http) to see success rate + latency over time — exactly what the loop's --tls-version did when it first landed on one command then extended to the repeat path. --plain is rejected for non-http protocols (it only defines cleartext HTTP/1.1).",
+      "alternatives_rejected": "leaving --plain single-shot only (a plaintext stability sweep would still force a TLS failure); allowing --plain on tls/http2/http3 repeats (those have no cleartext form / would silently ignore the flag); a separate --plain-http flag (one flag belongs on the existing --protocol http path)."
+    },
+    "CHG-055": {
+      "id": "CHG-055",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T09:09:01+00:00",
+      "updated_at": "2026-08-23T09:09:01+00:00",
+      "touched_round": 0,
+      "commit": "62380ffbb1b1f1fea109d70db3e6eb9a57d7012b",
+      "summary": "Added probe::http_repeat_plain (repeats cleartext HTTP/1.1 and aggregates status+latency) and routed probe --protocol http --plain through it in the CLI, rejecting --plain for non-http protocols. Public API change (api-baseline regenerated); added a library test + a fixture-gated CLI test proving the plaintext repeat aggregates 200x3 and --protocol tls --plain fails."
     }
   },
   "edges": [
@@ -5374,6 +5422,42 @@
       "to": "ISS-053",
       "type": "resolves",
       "created_at": "2026-08-23T09:03:17+00:00"
+    },
+    {
+      "from": "ISS-054",
+      "to": "COMP-http",
+      "type": "located_in",
+      "created_at": "2026-08-23T09:09:01+00:00"
+    },
+    {
+      "from": "TASK-062",
+      "to": "ISS-054",
+      "type": "addresses",
+      "created_at": "2026-08-23T09:09:01+00:00"
+    },
+    {
+      "from": "DEC-061",
+      "to": "TASK-062",
+      "type": "governs",
+      "created_at": "2026-08-23T09:09:01+00:00"
+    },
+    {
+      "from": "DEC-061",
+      "to": "DEC-060",
+      "type": "supersedes",
+      "created_at": "2026-08-23T09:09:01+00:00"
+    },
+    {
+      "from": "CHG-055",
+      "to": "TASK-062",
+      "type": "implements",
+      "created_at": "2026-08-23T09:09:01+00:00"
+    },
+    {
+      "from": "CHG-055",
+      "to": "ISS-054",
+      "type": "resolves",
+      "created_at": "2026-08-23T09:09:01+00:00"
     }
   ]
 }
