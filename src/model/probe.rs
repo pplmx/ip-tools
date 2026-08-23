@@ -45,6 +45,11 @@ pub struct ProbeResult {
     pub success_rate: f64,
     /// Latency statistics over the successful attempts.
     pub latency: LatencySummary,
+    /// Time-to-first-byte statistics over the successful HTTP attempts (the
+    /// server-response latency: request sent → response headers arrived).
+    /// Only the HTTP repeat probes (`http`/`http2`/`http3`) populate it; the
+    /// transport-repeat probes (`tcp`/`tls`) leave it empty.
+    pub ttfb: LatencySummary,
     /// Failure distribution (count per failure kind).
     pub failure_counts: Vec<FailureCount>,
     /// HTTP status-code distribution over the attempts (empty for the

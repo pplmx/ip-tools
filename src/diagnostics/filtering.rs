@@ -181,6 +181,7 @@ mod tests {
             failures,
             success_rate: (3 - failures) as f64 / 3.0,
             latency: LatencyStats::default().summarize(),
+            ttfb: LatencyStats::default().summarize(),
             failure_counts: vec![crate::model::FailureCount {
                 kind: FailureKind::Timeout,
                 count: failures,
@@ -321,6 +322,7 @@ mod tests {
             failures: 3,
             success_rate: 0.0,
             latency: LatencyStats::default().summarize(),
+            ttfb: LatencyStats::default().summarize(),
             failure_counts: vec![crate::model::FailureCount {
                 kind: FailureKind::NetworkUnreachable,
                 count: 3,

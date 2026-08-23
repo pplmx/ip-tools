@@ -465,6 +465,20 @@ pub fn render_probe(results: &[ProbeResult]) -> String {
                 fmt(lat.jitter),
             ));
         }
+        // Server-response latency (HTTP repeats only): the time from sending
+        // the request to receiving the response headers, aggregated separately
+        // from total latency so a slow-to-respond backend is distinguishable
+        // from a slow body transfer.
+        let ttfb = &r.ttfb;
+        if ttfb.count > 0 {
+            out.push_str(&format!(
+                "    ttfb:\n      min:  {} ms\n      p50:  {} ms\n      p95:  {} ms\n      max:  {} ms\n",
+                fmt(ttfb.min),
+                fmt(ttfb.p50),
+                fmt(ttfb.p95),
+                fmt(ttfb.max),
+            ));
+        }
         if !r.failure_counts.is_empty() {
             let dist: Vec<String> = r
                 .failure_counts
@@ -954,6 +968,7 @@ mod tests {
             failures: 2,
             success_rate: 4.0 / 6.0,
             latency: stats.summarize(),
+            ttfb: LatencyStats::default().summarize(),
             failure_counts: vec![FailureCount {
                 kind: FailureKind::Timeout,
                 count: 2,
@@ -967,6 +982,7 @@ mod tests {
             failures: 2,
             success_rate: 0.0,
             latency: LatencyStats::default().summarize(),
+            ttfb: LatencyStats::default().summarize(),
             failure_counts: vec![],
             status_counts: Vec::new(),
         };

@@ -438,6 +438,7 @@ mod tests {
             failures: 1,
             success_rate: 0.5,
             latency: stats.summarize(),
+            ttfb: LatencyStats::default().summarize(),
             failure_counts: vec![],
             status_counts: Vec::new(),
         };
@@ -507,6 +508,7 @@ mod tests {
             failures: 3,
             success_rate: 0.0,
             latency: stats.summarize(),
+            ttfb: LatencyStats::default().summarize(),
             failure_counts: vec![FailureCount {
                 kind: FailureKind::NetworkUnreachable,
                 count: 3,

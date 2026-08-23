@@ -208,6 +208,7 @@ pub ip_tools::model::probe::ProbeResult::latency: ip_tools::model::latency::Late
 pub ip_tools::model::probe::ProbeResult::status_counts: alloc::vec::Vec<ip_tools::model::probe::StatusCount>
 pub ip_tools::model::probe::ProbeResult::success_rate: f64
 pub ip_tools::model::probe::ProbeResult::successes: usize
+pub ip_tools::model::probe::ProbeResult::ttfb: ip_tools::model::latency::LatencySummary
 pub struct ip_tools::model::probe::StatusCount
 pub ip_tools::model::probe::StatusCount::count: usize
 pub ip_tools::model::probe::StatusCount::status: u16
@@ -405,6 +406,7 @@ pub ip_tools::model::ProbeResult::latency: ip_tools::model::latency::LatencySumm
 pub ip_tools::model::ProbeResult::status_counts: alloc::vec::Vec<ip_tools::model::probe::StatusCount>
 pub ip_tools::model::ProbeResult::success_rate: f64
 pub ip_tools::model::ProbeResult::successes: usize
+pub ip_tools::model::ProbeResult::ttfb: ip_tools::model::latency::LatencySummary
 pub struct ip_tools::model::TcpObservation
 pub ip_tools::model::TcpObservation::destination: core::net::socket_addr::SocketAddr
 pub ip_tools::model::TcpObservation::failure: core::option::Option<ip_tools::model::ProbeError>
@@ -431,6 +433,7 @@ pub async fn ip_tools::probe::tcp_repeat(core::net::socket_addr::SocketAddr, usi
 pub async fn ip_tools::probe::tls_repeat(core::net::socket_addr::SocketAddr, &str, usize, core::time::Duration, bool) -> ip_tools::model::probe::ProbeResult
 pub async fn ip_tools::probe::tls_repeat_with_version(core::net::socket_addr::SocketAddr, &str, usize, core::time::Duration, bool, ip_tools::tls::TlsProtocol) -> ip_tools::model::probe::ProbeResult
 pub mod ip_tools::report
+pub fn ip_tools::report::cert_covers_hostname(&str, &[alloc::string::String]) -> bool
 pub fn ip_tools::report::render_diagnoses(&[ip_tools::model::diagnosis::Diagnosis]) -> alloc::string::String
 pub fn ip_tools::report::render_dns(&str, &[ip_tools::model::dns::DnsObservation]) -> alloc::string::String
 pub fn ip_tools::report::render_dns_repeat(&str, &[ip_tools::model::dns::DnsRepeatResult]) -> alloc::string::String
@@ -629,6 +632,7 @@ pub ip_tools::ProbeResult::latency: ip_tools::model::latency::LatencySummary
 pub ip_tools::ProbeResult::status_counts: alloc::vec::Vec<ip_tools::model::probe::StatusCount>
 pub ip_tools::ProbeResult::success_rate: f64
 pub ip_tools::ProbeResult::successes: usize
+pub ip_tools::ProbeResult::ttfb: ip_tools::model::latency::LatencySummary
 pub struct ip_tools::RouteHop
 pub ip_tools::RouteHop::addr: core::option::Option<core::net::ip_addr::IpAddr>
 pub ip_tools::RouteHop::hostname: core::option::Option<alloc::string::String>

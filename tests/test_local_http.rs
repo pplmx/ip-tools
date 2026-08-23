@@ -1956,6 +1956,12 @@ fn probe_http_repeat_surfaces_status_distribution() {
         stdout.contains("200x3"),
         "the HTTP status distribution (200x3) must be surfaced: {stdout}"
     );
+    // The server-response latency must be surfaced separately from total
+    // latency: a `ttfb` block with the populated min/p50.
+    assert!(
+        stdout.contains("    ttfb:\n") && stdout.contains("p50:"),
+        "the HTTP repeat must surface the ttfb latency block: {stdout}"
+    );
 }
 
 #[test]
@@ -1984,12 +1990,26 @@ fn probe_cli_csv_export_renders_rows() {
     let mut lines = stdout.lines();
     assert_eq!(
         lines.next(),
-        Some("host,destination,attempts,success_rate,latency_p50_ms,latency_p95_ms,latency_max_ms,jitter_ms,failures,statuses"),
+        Some("host,destination,attempts,success_rate,latency_p50_ms,latency_p95_ms,latency_max_ms,jitter_ms,ttfb_p50_ms,ttfb_p95_ms,ttfb_max_ms,failures,statuses"),
         "CSV header: {stdout}"
     );
     assert!(
         stdout.lines().any(|l| l.contains(&format!("{addr},3,1.0000,"))),
         "expected a 3/3 success row for {addr}: {stdout}"
+    );
+    // A transport (tcp/tls) repeat has no TTFB signal: the three ttfb cells
+    // stay empty (blank cells before `,failures`) rather than a fabricated 0.
+    // A transport (tcp/tls) repeat has no TTFB signal: the three ttfb cells
+    // (columns 9..11) stay empty rather than a fabricated 0, and the row
+    // closes with `failures=0` + empty statuses (13 columns total).
+    assert!(
+        stdout.lines().any(|l| {
+            let cols: Vec<&str> = l.split(',').collect();
+            cols.len() == 13
+                && cols.get(8).is_some_and(|c| c.is_empty())
+                && cols.get(9..11).is_some_and(|c| c.iter().all(|v| v.is_empty()))
+        }),
+        "transport repeat row should leave the ttfb cells empty: {stdout}"
     );
 }
 
@@ -2030,6 +2050,27 @@ fn probe_http_csv_export_includes_statuses() {
     assert!(
         stdout.lines().any(|l| l.contains("200x3")),
         "the HTTP status distribution must appear in the CSV: {stdout}"
+    );
+    // The repeated HTTP row must also carry the server-response latency
+    // (TTFB) columns — a stability sweep in a spreadsheet needs the
+    // slow-to-respond signal separate from total latency.
+    assert!(
+        stdout.contains("ttfb_p50_ms,ttfb_p95_ms,ttfb_max_ms"),
+        "the probe HTTP CSV header must carry the TTFB columns: {stdout}"
+    );
+    // A data row must have 13 columns (header parity: ...jitter_ms,
+    // ttfb_p50/95/max_ms, failures, statuses) and end `...,0,200x3` with the
+    // three ttfb cells (9..11) populated.
+    assert!(
+        stdout.lines().any(|l| {
+            let cols: Vec<&str> = l.split(',').collect();
+            cols.len() == 13
+                && cols.last() == Some(&"200x3")
+                && cols.get(8).is_some_and(|c| !c.is_empty())
+                && cols.get(9).is_some_and(|c| !c.is_empty())
+                && cols.get(10).is_some_and(|c| !c.is_empty())
+        }),
+        "the HTTP repeat CSV row must carry non-empty ttfb cells: {stdout}"
     );
 }
 

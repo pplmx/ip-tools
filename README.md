@@ -230,7 +230,9 @@ headers (`server`, `via`, `cf-ray`, `cache-control`, … joined as `Name: value`
 pairs) and the bounded **body snippet** (WAF page / JS challenge / auth or API
 error / captive-portal prompt), so a fleet sweep keeps the cert/protocol-version,
 server/edge and content evidence (HTTP/3's QUIC summary exposes version + ALPN).
-`probe --csv` instead reports the aggregated `--count` latency statistics, and
+`probe --csv` instead reports the aggregated `--count` latency statistics (the
+HTTP repeat rows also carry `ttfb_p50_ms,ttfb_p95_ms,ttfb_max_ms` — the
+server-response latency — while transport-repeat rows leave those empty), and
 `--csv`/`--json`/human output are mutually exclusive on every command.
 
 On a dual-stack host, `--ipv4` probes only the IPv4 addresses and `--ipv6` only
@@ -629,6 +631,12 @@ ip-tools probe 10.0.0.5:8080 --protocol http --count 30 --plain
 Per-address attempts run sequentially (so the latency distribution reflects
 genuine per-attempt timing and jitter); addresses are probed in parallel,
 bounded by `--concurrency`.
+
+For the HTTP protocols the repeat also reports **TTFB** (time-to-first-byte:
+request sent → response headers arrived) as its own latency block — the
+server-response-latency signal, so a stability sweep can tell a slow-to-respond
+backend (a TTFB tail) from a slow body transfer (total latency). The transport
+(`tcp`/`tls`) repeats carry no such signal and omit it.
 
 Example output:
 

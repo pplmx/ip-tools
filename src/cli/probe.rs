@@ -139,7 +139,7 @@ pub(super) async fn run_probe(sub_m: &ArgMatches) -> ExitCode {
 fn render_probe_csv(per_target: &[(String, Vec<ProbeResult>)]) -> String {
     use std::fmt::Write as _;
     let mut out = String::from(
-        "host,destination,attempts,success_rate,latency_p50_ms,latency_p95_ms,latency_max_ms,jitter_ms,failures,statuses\n",
+        "host,destination,attempts,success_rate,latency_p50_ms,latency_p95_ms,latency_max_ms,jitter_ms,ttfb_p50_ms,ttfb_p95_ms,ttfb_max_ms,failures,statuses\n",
     );
     for (host, results) in per_target {
         for r in results {
@@ -158,6 +158,14 @@ fn render_probe_csv(per_target: &[(String, Vec<ProbeResult>)]) -> String {
             out.push_str(&opt64(r.latency.max));
             out.push(',');
             out.push_str(&opt64(r.latency.jitter));
+            out.push(',');
+            // Server-response latency (HTTP repeats only): TTFB percentiles,
+            // empty for the tcp/tls transport repeats.
+            out.push_str(&opt64(r.ttfb.p50));
+            out.push(',');
+            out.push_str(&opt64(r.ttfb.p95));
+            out.push(',');
+            out.push_str(&opt64(r.ttfb.max));
             out.push(',');
             out.push_str(&r.failures.to_string());
             out.push(',');

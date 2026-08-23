@@ -64,9 +64,9 @@ pub async fn tls_repeat_with_version(
             crate::tls::probe_with_version(destination, sni, timeout, protocol).await
         };
         if obs.success {
-            (true, obs.latency_ms, None, None)
+            (true, obs.latency_ms, None, None, None)
         } else {
-            (false, None, obs.failure.map(|f| f.kind), None)
+            (false, None, obs.failure.map(|f| f.kind), None, None)
         }
     })
     .await
@@ -100,9 +100,9 @@ pub async fn tcp_repeat(destination: SocketAddr, attempts: usize, timeout: Durat
     repeat_impl(destination, attempts, || async {
         let obs = tcp::probe(destination, timeout).await;
         if obs.success {
-            (true, obs.latency_ms, None, None)
+            (true, obs.latency_ms, None, None, None)
         } else {
-            (false, None, obs.failure.map(|f| f.kind), None)
+            (false, None, obs.failure.map(|f| f.kind), None, None)
         }
     })
     .await
@@ -289,21 +289,24 @@ pub async fn http3_repeat(
 }
 
 /// Map a single HTTP probe observation onto the shared (success, latency,
-/// failure-kind) aggregation tuple: an error status (e.g. 5xx) is still a
-/// completed probe, so only a transport/protocol failure counts as failed.
-/// The fourth tuple element is the observed HTTP status (for surfacing the
-/// status distribution in the report), present on every completed response.
-fn http_outcome(obs: HttpObservation) -> (bool, Option<u64>, Option<FailureKind>, Option<u16>) {
+/// failure-kind, status, TTFB) aggregation tuple: an error status (e.g. 5xx)
+/// is still a completed probe, so only a transport/protocol failure counts as
+/// failed. The fourth tuple element is the observed HTTP status (for
+/// surfacing the status distribution in the report), present on every
+/// completed response; the fifth is the time-to-first-byte (server-response
+/// latency), `None` when no headers arrived.
+fn http_outcome(obs: HttpObservation) -> (bool, Option<u64>, Option<FailureKind>, Option<u16>, Option<u64>) {
     if obs.failure.is_none() {
-        (true, obs.latency_ms, None, obs.status)
+        (true, obs.latency_ms, None, obs.status, obs.ttfb_ms)
     } else {
         let kind = obs.failure.map(|f| f.kind);
-        (false, None, kind, None)
+        (false, None, kind, None, None)
     }
 }
 
 /// Shared aggregation over repeated per-attempt outcomes: success flag,
-/// latency millis (on success), and the classified failure kind (on failure).
+/// latency millis (on success), the classified failure kind (on failure),
+/// the observed HTTP status, and the time-to-first-byte (for HTTP repeats).
 ///
 /// Attempts are run sequentially per address so that the latency distribution
 /// (including jitter) reflects genuine per-attempt timing rather than
@@ -311,21 +314,25 @@ fn http_outcome(obs: HttpObservation) -> (bool, Option<u64>, Option<FailureKind>
 async fn repeat_impl<F, Fut>(destination: SocketAddr, attempts: usize, mut attempt: F) -> ProbeResult
 where
     F: FnMut() -> Fut,
-    Fut: std::future::Future<Output = (bool, Option<u64>, Option<FailureKind>, Option<u16>)>,
+    Fut: std::future::Future<Output = (bool, Option<u64>, Option<FailureKind>, Option<u16>, Option<u64>)>,
 {
     let mut latency = LatencyStats::default();
+    let mut ttfb = LatencyStats::default();
     let mut failures: HashMap<FailureKind, usize> = HashMap::new();
     let mut statuses: HashMap<u16, usize> = HashMap::new();
     let mut successes = 0usize;
 
     for _ in 0..attempts {
-        let (ok, latency_ms, kind, status) = attempt().await;
+        let (ok, latency_ms, kind, status, ttfb_ms) = attempt().await;
         if let Some(status) = status {
             *statuses.entry(status).or_default() += 1;
         }
         if ok {
             successes += 1;
             latency.push(latency_ms.unwrap_or(0));
+            if let Some(ttfb_ms) = ttfb_ms {
+                ttfb.push(ttfb_ms);
+            }
         } else if let Some(kind) = kind {
             *failures.entry(kind).or_default() += 1;
         }
@@ -354,6 +361,7 @@ where
             successes as f64 / attempts as f64
         },
         latency: latency.summarize(),
+        ttfb: ttfb.summarize(),
         failure_counts,
         status_counts,
     }
@@ -374,9 +382,9 @@ mod tests {
             let attempt = std::sync::Arc::clone(&attempt);
             async move {
                 match attempt.fetch_add(1, Ordering::SeqCst) + 1 {
-                    1..=3 => (true, Some(5), None, Some(200)),
-                    4 => (true, Some(9), None, Some(503)),
-                    _ => (false, None, None, None),
+                    1..=3 => (true, Some(5), None, Some(200), Some(2)),
+                    4 => (true, Some(9), None, Some(503), Some(8)),
+                    _ => (false, None, None, None, None),
                 }
             }
         })
@@ -387,5 +395,10 @@ mod tests {
         let pairs: Vec<(u16, usize)> = r.status_counts.iter().map(|s| (s.status, s.count)).collect();
         assert!(pairs.contains(&(200, 3)), "200x3: {pairs:?}");
         assert!(pairs.contains(&(503, 1)), "503x1: {pairs:?}");
+        // TTFB aggregates across the successful attempts: samples [2,2,2,8].
+        assert_eq!(r.ttfb.count, 4, "ttfb should cover every completed response");
+        assert_eq!(r.ttfb.min, Some(2));
+        assert_eq!(r.ttfb.max, Some(8));
+        assert_eq!(r.ttfb.p50, Some(2));
     }
 }

@@ -687,6 +687,7 @@ mod tests {
             failures,
             success_rate: (attempts - failures) as f64 / attempts as f64,
             latency: stats.summarize(),
+            ttfb: LatencyStats::default().summarize(),
             failure_counts: if failures > 0 {
                 vec![FailureCount {
                     kind: FailureKind::Timeout,
@@ -714,6 +715,7 @@ mod tests {
             failures: 0,
             success_rate: 1.0,
             latency: stats.summarize(),
+            ttfb: LatencyStats::default().summarize(),
             failure_counts: Vec::new(),
             status_counts: statuses
                 .iter()
@@ -737,6 +739,7 @@ mod tests {
             failures: 0,
             success_rate: 1.0,
             latency: stats.summarize(),
+            ttfb: LatencyStats::default().summarize(),
             failure_counts: Vec::new(),
             status_counts: Vec::new(),
         }
