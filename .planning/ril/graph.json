@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-23T00:11:08+00:00",
+  "updated_at": "2026-08-23T00:15:01+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -1704,6 +1704,54 @@
       "touched_round": 0,
       "commit": "1fc75f2176324eaab9a5008bcefb784a6589abf1",
       "summary": "Extended --tls-version to the probe (repeat) command: probe::tls_repeat_with_version/http_repeat_with_version/http2_repeat_with_version (existing fns delegate Auto), TlsProtocol threaded through probe CLI; api-baseline regenerated; tests + docs added."
+    },
+    "ISS-024": {
+      "id": "ISS-024",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T00:14:42+00:00",
+      "updated_at": "2026-08-23T00:15:01+00:00",
+      "touched_round": 0,
+      "severity": "low",
+      "summary": "The diagnose command cannot scope the full pipeline's TLS and HTTP evidence to a specific TLS protocol version, so while tls/http/http2/probe offer --tls-version an operator cannot run a diagnosis under a forced version."
+    },
+    "TASK-031": {
+      "id": "TASK-031",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T00:14:43+00:00",
+      "updated_at": "2026-08-23T00:15:01+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.2,
+      "unlock_factor": 1,
+      "summary": "Extend diagnose --tls-version to the full pipeline: parse the flag, thread TlsProtocol through diagnose_one and collect_http_probes, force it in the TLS phase and http1+http2 phases (http3 is QUIC/TLS1.3, repeat phase is TCP — both unaffected)."
+    },
+    "DEC-030": {
+      "id": "DEC-030",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T00:14:43+00:00",
+      "updated_at": "2026-08-23T00:14:43+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-23): scope a full diagnosis to a forced TLS protocol version. diagnose runs TLS + HTTP/1.1+2+3 + TCP-repeat; --tls-version is threaded to the TLS and http1/http2 phases (the same TLS-over-TCP surface the single-shot/repeat probes cover), so a version-specific incompatibility is diagnosable end-to-end. http3 (QUIC, TLS 1.3 only) and the TCP repeat phase are deliberately unaffected. No public API change.",
+      "alternatives_rejected": "including http3 (QUIC/TLS 1.3 only); forcing a version on the TCP repeat phase (no TLS); refactoring the pipeline to carry a struct instead of a scalar param (no client-visible benefit yet)."
+    },
+    "CHG-025": {
+      "id": "CHG-025",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T00:15:01+00:00",
+      "updated_at": "2026-08-23T00:15:01+00:00",
+      "touched_round": 0,
+      "commit": "d6f89cfde41e7e29d89105dc9f7b227eee5cac07",
+      "summary": "Extended diagnose --tls-version to the full pipeline: forced protocol version in the TLS and http1+http2 phases via probe_with_version/probe_insecure_with_version; http3 and TCP repeat unaffected; fixture CLI test + docs."
     }
   },
   "edges": [
@@ -2786,6 +2834,42 @@
       "to": "ISS-023",
       "type": "resolves",
       "created_at": "2026-08-23T00:11:08+00:00"
+    },
+    {
+      "from": "DEC-030",
+      "to": "TASK-031",
+      "type": "governs",
+      "created_at": "2026-08-23T00:14:43+00:00"
+    },
+    {
+      "from": "DEC-030",
+      "to": "DEC-029",
+      "type": "supersedes",
+      "created_at": "2026-08-23T00:14:43+00:00"
+    },
+    {
+      "from": "TASK-031",
+      "to": "ISS-024",
+      "type": "addresses",
+      "created_at": "2026-08-23T00:14:43+00:00"
+    },
+    {
+      "from": "ISS-024",
+      "to": "COMP-diagnose",
+      "type": "located_in",
+      "created_at": "2026-08-23T00:14:43+00:00"
+    },
+    {
+      "from": "CHG-025",
+      "to": "TASK-031",
+      "type": "implements",
+      "created_at": "2026-08-23T00:15:01+00:00"
+    },
+    {
+      "from": "CHG-025",
+      "to": "ISS-024",
+      "type": "resolves",
+      "created_at": "2026-08-23T00:15:01+00:00"
     }
   ]
 }
