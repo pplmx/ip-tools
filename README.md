@@ -172,6 +172,23 @@ resolver is the thing being steered: compare the addresses returned by
 `1.1.1.1` with those from the system resolver, then probe them. Addresses are
 de-duplicated, and IP-literal targets skip resolution entirely.
 
+The per-address probe commands (`tcp`, `tls`, `http`, `http2`, `http3`,
+`probe`) also accept the same repeatable encrypted resolvers as `dns` and
+`diagnose` — `--doh URL` (DNS-over-HTTPS) and `--dot HOST[:PORT]`
+(DNS-over-TLS) — so a fleet sweep can resolve and probe through a
+tamper-resistant channel in one step:
+
+```shell
+ip-tools tcp host.example --doh https://1.1.1.1/dns-query
+ip-tools probe host.example --dot 1.1.1.1 --count 20
+```
+
+As with `--server`, every such resolver's answers feed the same addressed
+pool, so probing through an encrypted resolver is a steering-detection path
+that the *system* resolver cannot silently redirect. Endpoints whose
+certificate does not cover an IP-literal endpoint use `--insecure` (available
+on every probe command except `tcp`).
+
 ### TCP connectivity
 
 Probe TCP connectivity to a host, across every address it resolves to:

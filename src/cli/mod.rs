@@ -186,8 +186,6 @@ fn parser() -> ArgMatches {
             "run the full probe pipeline and produce evidence-based diagnoses",
             &[
                 insecure_arg(),
-                doh_arg(),
-                dot_arg(),
                 strict_arg(),
                 sni_arg(),
                 method_arg(),
@@ -240,9 +238,14 @@ fn probe_command(name: &'static str, about: &'static str, extras: &[Arg]) -> Com
         cmd = cmd.arg(extra.clone());
     }
     // Every probe subcommand can resolve the target through explicit DNS
-    // servers (`--server`, as in `dns` and `diagnose`) — useful when the
-    // system resolver may be steered or unhealthy.
-    cmd.arg(server_arg()).arg(timeout_arg()).arg(concurrency_arg())
+    // servers (`--server`) or encrypted resolvers (`--doh`/`--dot`, as in
+    // `dns` and `diagnose`) — useful when the system resolver may be steered
+    // or unhealthy; encrypted endpoints make steering detection tamper-proof.
+    cmd.arg(server_arg())
+        .arg(doh_arg())
+        .arg(dot_arg())
+        .arg(timeout_arg())
+        .arg(concurrency_arg())
 }
 
 /// Common `--timeout` argument (milliseconds).
@@ -534,6 +537,23 @@ where
             return ExitCode::FAILURE;
         }
     };
+    // `--doh`/`--dot` endpoints resolve the target through an encrypted
+    // resolver (parity with `dns`/`diagnose`); the per-address probe commands
+    // that have `--insecure` pass it through so IP-literal endpoints validate.
+    let doh_endpoints: Vec<String> = sub_m
+        .get_many::<String>("doh")
+        .map(|vals| vals.cloned().collect())
+        .unwrap_or_default();
+    let dot_eps: Vec<String> = sub_m
+        .get_many::<String>("dot")
+        .map(|vals| vals.cloned().collect())
+        .unwrap_or_default();
+    let insecure = sub_m
+        .try_get_one::<bool>("insecure")
+        .ok()
+        .flatten()
+        .copied()
+        .unwrap_or_default();
 
     // A `--sni` override presents a chosen hostname as SNI (and HTTP `Host`)
     // instead of each target's host, applied to every target in a sweep.
@@ -559,14 +579,15 @@ where
     let mut per_target: Vec<(String, Vec<O>)> = Vec::with_capacity(targets.len());
     let mut unresolved = 0usize;
     for target in targets {
-        let addresses = match resolve_for_tcp_servers(&target.host, &servers, timeout).await {
-            Ok(addrs) => addrs,
-            Err(err) => {
-                eprintln!("Error: {err}");
-                unresolved += 1;
-                continue;
-            }
-        };
+        let addresses =
+            match resolve_for_tcp_servers(&target.host, &servers, &doh_endpoints, &dot_eps, insecure, timeout).await {
+                Ok(addrs) => addrs,
+                Err(err) => {
+                    eprintln!("Error: {err}");
+                    unresolved += 1;
+                    continue;
+                }
+            };
         let destinations: Vec<SocketAddr> = addresses
             .into_iter()
             .filter(|ip| match (ipv4_only, ipv6_only) {
@@ -726,17 +747,22 @@ where
 ///
 /// If `host` is already an IP literal, it is used directly.
 pub async fn resolve_for_tcp(host: &str) -> Result<Vec<IpAddr>, String> {
-    resolve_for_tcp_servers(host, &[], Duration::from_millis(DEFAULT_TIMEOUT_MS)).await
+    resolve_for_tcp_servers(host, &[], &[], &[], false, Duration::from_millis(DEFAULT_TIMEOUT_MS)).await
 }
 
 /// Resolve a hostname to its addresses via the system resolver plus any
-/// explicit `--server` resolvers (A + AAAA, de-duplicated, order-preserving).
+/// explicit `--server` and `--doh`/`--dot` resolvers (A + AAAA,
+/// de-duplicated, order-preserving). `insecure` is passed through to the
+/// encrypted (`--doh`/`--dot`) resolvers so IP-literal endpoints validate.
 ///
 /// If `host` is already an IP literal, it is used directly. `timeout` bounds
 /// each individual lookup so a slow resolver cannot outlive the probe.
 pub async fn resolve_for_tcp_servers(
     host: &str,
     servers: &[SocketAddr],
+    doh_endpoints: &[String],
+    dot_eps: &[String],
+    insecure: bool,
     timeout: Duration,
 ) -> Result<Vec<IpAddr>, String> {
     // Bracket-form IPv6 literals (`[::1]`, as parsed from `[::1]:443`) must be
@@ -749,6 +775,18 @@ pub async fn resolve_for_tcp_servers(
     let mut addrs = Vec::new();
     for rt in [DnsRecordType::A, DnsRecordType::Aaaa] {
         for obs in client.resolve(host, rt).await {
+            if obs.error.is_none() {
+                addrs.extend(obs.records.iter().filter_map(DnsRecord::address));
+            }
+        }
+        for endpoint in doh_endpoints {
+            let obs = ip_tools::dns::doh_query(endpoint, host, rt, timeout, insecure).await;
+            if obs.error.is_none() {
+                addrs.extend(obs.records.iter().filter_map(DnsRecord::address));
+            }
+        }
+        for endpoint in dot_eps {
+            let obs = ip_tools::dns::dot_query(endpoint, host, rt, timeout, insecure).await;
             if obs.error.is_none() {
                 addrs.extend(obs.records.iter().filter_map(DnsRecord::address));
             }
@@ -899,10 +937,30 @@ mod tests {
         // to itself rather than being sent to a DNS resolver.
         let short = Duration::from_millis(50);
         let want: Vec<IpAddr> = vec!["::1".parse().unwrap()];
-        assert_eq!(resolve_for_tcp_servers("[::1]", &[], short).await.unwrap(), want);
-        assert_eq!(resolve_for_tcp_servers("::1", &[], short).await.unwrap(), want);
+        assert_eq!(
+            resolve_for_tcp_servers("[::1]", &[], &[], &[], false, short)
+                .await
+                .unwrap(),
+            want
+        );
+        assert_eq!(
+            resolve_for_tcp_servers("::1", &[], &[], &[], false, short)
+                .await
+                .unwrap(),
+            want
+        );
         let v4: Vec<IpAddr> = vec!["127.0.0.1".parse().unwrap()];
-        assert_eq!(resolve_for_tcp_servers("127.0.0.1", &[], short).await.unwrap(), v4);
-        assert_eq!(resolve_for_tcp_servers("[127.0.0.1]", &[], short).await.unwrap(), v4);
+        assert_eq!(
+            resolve_for_tcp_servers("127.0.0.1", &[], &[], &[], false, short)
+                .await
+                .unwrap(),
+            v4
+        );
+        assert_eq!(
+            resolve_for_tcp_servers("[127.0.0.1]", &[], &[], &[], false, short)
+                .await
+                .unwrap(),
+            v4
+        );
     }
 }

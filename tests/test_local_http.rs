@@ -842,6 +842,92 @@ fn dns_cli_queries_doh_fixture_endpoint() {
 }
 
 #[test]
+fn probe_command_resolves_through_doh_fixture_endpoint() {
+    // The per-address probe commands must resolve the target through the
+    // encrypted `--doh`/`--dot` resolvers (parity with `dns`/`diagnose`). The
+    // fixture's canned DoH answer resolves `host.example` to the TEST-NET
+    // 192.0.2.77 (A) / 2001:db8::77 (AAAA) — unroutable, so the probe cannot
+    // connect, but the run must probe that DoH-resolved address rather than
+    // report "did not resolve". The fixture cert is self-signed, so `probe`
+    // (which has `--insecure`) skips cert validation of the DoH endpoint.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let doh = format!("https://{}/dns-query", fixture.tcp_addr());
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "probe",
+            "host.example",
+            "--doh",
+            &doh,
+            "--insecure",
+            "--count",
+            "1",
+            "--timeout",
+            "800",
+        ])
+        .output()
+        .expect("run probe --doh");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        !stdout.contains("did not resolve") && !stderr.contains("did not resolve"),
+        "probe --doh must resolve via DoH, not fail to resolve: {stdout}
+{stderr}"
+    );
+    assert!(
+        stdout.contains("192.0.2.77") || stderr.contains("192.0.2.77"),
+        "probe --doh must probe the DoH-resolved A record: {stdout}
+{stderr}"
+    );
+}
+
+#[test]
+fn probe_command_resolves_through_dot_fixture_endpoint() {
+    // DNS-over-TLS resolution on a probe command: the fixture's raw DoT
+    // listener answers `host.example` with the same canned A record, which
+    // must become the probed destination (not an unresolved error).
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let dot = fixture.dot_addr().to_string();
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "probe",
+            "host.example",
+            "--dot",
+            &dot,
+            "--insecure",
+            "--count",
+            "1",
+            "--timeout",
+            "800",
+        ])
+        .output()
+        .expect("run probe --dot");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        !stdout.contains("did not resolve") && !stderr.contains("did not resolve"),
+        "probe --dot must resolve via DoT, not fail: {stdout}
+{stderr}"
+    );
+    assert!(
+        stdout.contains("192.0.2.77") || stderr.contains("192.0.2.77"),
+        "probe --dot must probe the DoT-resolved A record: {stdout}
+{stderr}"
+    );
+}
+
+#[test]
 fn dns_cli_doh_reports_error_from_a_non_dns_endpoint() {
     // A 200 response that is not a DNS message (the fixture's plain route)
     // must surface as a DoH error observation, not an empty success.
