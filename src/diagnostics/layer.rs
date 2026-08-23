@@ -469,6 +469,7 @@ pub(super) fn redirect_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosis>) 
 /// protocol-negotiation failures and stalled bodies stay owned by their own
 /// layer rules; responses are bucketed 2xx-vs-non-2xx to avoid flagging benign
 /// status-detail differences (e.g. 200 vs 204, or 301 vs 302).
+#[allow(clippy::too_many_lines)] // three independent consistency signals inline
 pub(super) fn http_consistency_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosis>) {
     let content = |s: u16| (200..300).contains(&s);
 
@@ -565,6 +566,67 @@ pub(super) fn http_consistency_rules(input: &DiagnosticInput, out: &mut Vec<Diag
                 "per-family cloud edge with a different origin state".into(),
                 "IPv6-specific WAF / ACL rules".into(),
                 "A/B or partial deployment across families".into(),
+            ],
+        });
+    }
+
+    // Cross-address divergence on the same protocol and family: different
+    // addresses of the hostname (CDN edges, anycast, load-balanced backends)
+    // return different response classes (one 2xx, another non-2xx). Each
+    // address is probed independently, so the engine must compare them — a
+    // partial deployment, edge outage or per-node WAF difference that the
+    // per-address HTTP rows alone do not flag.
+    // Grouped by (protocol, family) so a lone observation or the cross-family
+    // / cross-protocol signs already reported do not double-fire.
+    let mut per_proto_family: std::collections::BTreeMap<
+        (String, bool),
+        std::collections::BTreeMap<std::net::SocketAddr, u16>,
+    > = std::collections::BTreeMap::new();
+    for h in input.http {
+        if h.failure.is_none() && h.status.is_some() && h.protocol.is_some() {
+            per_proto_family
+                .entry((h.protocol.clone().unwrap(), h.destination.is_ipv4()))
+                .or_default()
+                .insert(h.destination, h.status.unwrap_or(0));
+        }
+    }
+    let address_divergences: Vec<String> = per_proto_family
+        .iter()
+        .filter_map(|((proto, _ipv4), by_addr)| {
+            // Requires at least two distinct addresses to be a divergence.
+            if by_addr.len() < 2 {
+                return None;
+            }
+            let up = by_addr.values().any(|s| content(*s));
+            let down = by_addr.values().any(|s| !content(*s));
+            if !(up && down) {
+                return None;
+            }
+            let joined = by_addr
+                .iter()
+                .map(|(addr, s)| format!("{addr} -> {s}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            Some(format!("{proto}: {joined}"))
+        })
+        .collect();
+    if !address_divergences.is_empty() {
+        out.push(Diagnosis {
+            severity: Severity::Low,
+            category: DiagnosticCategory::Http,
+            confidence: Confidence::Medium,
+            summary: format!("HTTP status differs across {}'s addresses", input.hostname),
+            evidence: address_divergences
+                .into_iter()
+                .map(|d| Evidence {
+                    detail: format!("cross-address: {d}"),
+                })
+                .collect(),
+            possible_causes: vec![
+                "partial deployment across edges or backends".into(),
+                "per-node WAF / routing differences".into(),
+                "load-balancer health-check / draining member".into(),
+                "one CDN edge / origin failing".into(),
             ],
         });
     }
@@ -893,6 +955,61 @@ mod tests {
         assert!(
             out.iter().any(|d| d.summary.contains("differs between IPv4 and IPv6")),
             "cross-family verdict missing: {out:?}"
+        );
+    }
+
+    #[test]
+    fn consistency_flags_cross_address_status_divergence() {
+        // Same protocol + same family, but two addresses of the hostname serve
+        // different classes: one 200, one 503 — a partial deployment / edge
+        // divergence across load-balanced addresses.
+        let obs = [
+            http("1.1.1.1:443", "HTTP/1.1", Some(200), None),
+            http("1.1.1.2:443", "HTTP/1.1", Some(503), None),
+        ];
+        let mut out = Vec::new();
+        http_consistency_rules(&input(&[], &obs, &[]), &mut out);
+        assert!(
+            out.iter().any(|d| d.summary.contains("differs across"))
+                || out.iter().any(|d| d.summary.contains("addresses")),
+            "cross-address verdict missing: {out:?}"
+        );
+        let d = out.iter().find(|d| d.summary.contains("addresses")).expect("verdict");
+        assert_eq!(d.severity, Severity::Low);
+        assert_eq!(d.confidence, Confidence::Medium);
+        assert!(
+            d.evidence
+                .iter()
+                .any(|e| e.detail.contains("1.1.1.1:443 -> 200") && e.detail.contains("1.1.1.2:443 -> 503")),
+            "evidence should name both divergent addresses and statuses: {out:?}"
+        );
+    }
+
+    #[test]
+    fn consistency_stays_quiet_for_single_address_or_uniform_addresses() {
+        // A single address (even with two protocols) is not a cross-address
+        // signal — it may still be cross-protocol, but not cross-address.
+        let single = [
+            http("1.1.1.1:443", "HTTP/1.1", Some(200), None),
+            http("1.1.1.1:443", "HTTP/2", Some(503), None),
+        ];
+        let mut out = Vec::new();
+        http_consistency_rules(&input(&[], &single, &[]), &mut out);
+        assert!(
+            !out.iter().any(|d| d.summary.contains("addresses")),
+            "single-address must not be cross-address: {out:?}"
+        );
+
+        // Two addresses both 2xx -> no divergence.
+        let uniform = [
+            http("1.1.1.1:443", "HTTP/1.1", Some(200), None),
+            http("1.1.1.2:443", "HTTP/1.1", Some(200), None),
+        ];
+        let mut out = Vec::new();
+        http_consistency_rules(&input(&[], &uniform, &[]), &mut out);
+        assert!(
+            !out.iter().any(|d| d.summary.contains("addresses")),
+            "uniform across addresses must not fire: {out:?}"
         );
     }
 

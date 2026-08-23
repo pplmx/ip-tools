@@ -686,6 +686,14 @@ performs no network I/O.
   usually broken IPv6 / routing / firewall, not censorship.
 - Different addresses of the same hostname are tested independently (CDN,
   anycast, load balancing, partial filtering).
+- **Different addresses of the same host are compared**: when the probed
+  addresses of a hostname return different HTTP response classes (one 2xx,
+  another non-2xx) on the same protocol and address family, `diagnose` raises
+  a Low `Http` diagnosis naming the divergent addresses — surfacing a partial
+  deployment, a per-node WAF/edge difference, a load-balancer health-check /
+  draining member, or one CDN edge failing. The addresses are tested
+  independently, so the diagnosis only fires when two addresses genuinely
+  disagree on the same wire protocol.
 - An **expired or expiring serving certificate is reported as a `Certificate`
   diagnosis** (Medium for expired, Low for expiring within 30 days) — so a
   scripted/CI `diagnose --strict` run surfaces a certificate that will break
