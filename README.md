@@ -87,8 +87,9 @@ one giant shell command line.
 `--csv` emits a `host,resolver,record_type,attempts,success_rate,p50,p95,max,
 failures,ttl` row per (resolver, record type) — single-shot rows are
 attempts=1 and carry the record TTL, while `--count` repeat rows use the
-aggregated latency stats (TTL is aggregated away and left empty) — so a DNS
-sweep loads into a spreadsheet.
+aggregated latency stats and carry the **minimum TTL** observed across the
+successful answers (the caching-relevant bound) — so a DNS sweep loads into a
+spreadsheet with the TTL on every row.
 
 By default `dns` queries `A` and `AAAA`. `--record-type TYPE` queries a single
 specific type — `A`, `AAAA`, `CNAME`, `MX`, `TXT`, `NS`, `SOA`, `CAA`, `SRV`
@@ -108,7 +109,8 @@ subcommands, and never a `--strict` failure.
 
 `--count N` repeats each resolution N times and aggregates per-resolver /
 per-record-type latency statistics (min/p50/p95/p99/max, jitter) plus the
-success rate and failure distribution — the DNS analogue of `probe`'s
+success rate, failure distribution and the **minimum record TTL** across the
+answers — the DNS analogue of `probe`'s
 per-layer repeat view. Resolver flakiness and intermittent `SERVFAIL` /
 `REFUSED` answers that a single lookup cannot show become visible over
 repeated queries. With `--count 1` (the default) the output is the ordinary

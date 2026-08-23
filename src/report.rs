@@ -411,6 +411,9 @@ pub fn render_dns_repeat(host: &str, results: &[DnsRepeatResult]) -> String {
         for fc in &r.failure_counts {
             out.push_str(&format!("      - {}: {}\n", fc.kind, fc.count));
         }
+        if let Some(ttl) = r.ttl {
+            out.push_str(&format!("    ttl: {ttl} s\n"));
+        }
         if r.latency.count > 0 {
             out.push_str("    latency:\n");
             out.push_str(&format!("      min:  {} ms\n", r.latency.min.unwrap_or(0)));
@@ -994,6 +997,7 @@ mod tests {
                 kind: FailureKind::Dns,
                 count: 1,
             }],
+            ttl: Some(300),
         };
         let out = render_dns_repeat("host.example", &[ok]);
         assert!(out.contains("Repeated DNS host.example"));
@@ -1002,6 +1006,7 @@ mod tests {
         assert!(out.contains("success:  3 (75.0%)"));
         assert!(out.contains("failure:  1"));
         assert!(out.contains("dns: 1"));
+        assert!(out.contains("ttl: 300 s"));
         assert!(out.contains("p50:"));
         assert!(out.contains("jitter:"));
     }

@@ -177,6 +177,10 @@ pub struct DnsRepeatResult {
     pub latency: LatencySummary,
     /// Failure distribution (count per failure kind).
     pub failure_counts: Vec<FailureCount>,
+    /// Minimum record time-to-live (seconds) observed across the successful
+    /// answers — the caching-relevant bound (a record with a shorter TTL
+    /// expires sooner). `None` when no attempt returned a TTL.
+    pub ttl: Option<u32>,
 }
 
 impl DnsRepeatResult {

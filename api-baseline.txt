@@ -155,6 +155,7 @@ pub ip_tools::model::dns::DnsRepeatResult::latency: ip_tools::model::latency::La
 pub ip_tools::model::dns::DnsRepeatResult::record_type: ip_tools::model::dns::DnsRecordType
 pub ip_tools::model::dns::DnsRepeatResult::resolver: ip_tools::model::dns::ResolverKind
 pub ip_tools::model::dns::DnsRepeatResult::successes: usize
+pub ip_tools::model::dns::DnsRepeatResult::ttl: core::option::Option<u32>
 impl ip_tools::model::dns::DnsRepeatResult
 pub fn ip_tools::model::dns::DnsRepeatResult::success_rate(&self) -> f64
 pub mod ip_tools::model::http
@@ -349,6 +350,7 @@ pub ip_tools::model::DnsRepeatResult::latency: ip_tools::model::latency::Latency
 pub ip_tools::model::DnsRepeatResult::record_type: ip_tools::model::dns::DnsRecordType
 pub ip_tools::model::DnsRepeatResult::resolver: ip_tools::model::dns::ResolverKind
 pub ip_tools::model::DnsRepeatResult::successes: usize
+pub ip_tools::model::DnsRepeatResult::ttl: core::option::Option<u32>
 impl ip_tools::model::dns::DnsRepeatResult
 pub fn ip_tools::model::dns::DnsRepeatResult::success_rate(&self) -> f64
 pub struct ip_tools::model::Evidence

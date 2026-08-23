@@ -148,7 +148,11 @@ pub fn aggregate_repeat(bucket: &[DnsObservation], record_type: DnsRecordType, a
     let mut latency = crate::model::LatencyStats::default();
     let mut failures: HashMap<FailureKind, usize> = HashMap::new();
     let mut successes = 0usize;
+    let mut min_ttl: Option<u32> = None;
     for obs in bucket {
+        if let Some(t) = obs.ttl {
+            min_ttl = Some(min_ttl.map_or(t, |m| m.min(t)));
+        }
         if let Some(ms) = obs.latency_ms {
             successes += 1;
             latency.push(ms);
@@ -169,6 +173,7 @@ pub fn aggregate_repeat(bucket: &[DnsObservation], record_type: DnsRecordType, a
         failures: attempts.saturating_sub(successes),
         latency: latency.summarize(),
         failure_counts,
+        ttl: min_ttl,
     }
 }
 
@@ -1318,6 +1323,15 @@ mod tests {
                 hostname: "host.example".into(),
                 resolver: ResolverKind::Custom(addr),
                 record_type: DnsRecordType::A,
+                records: vec![addr_rec("192.0.2.2")],
+                ttl: Some(30),
+                latency_ms: Some(3),
+                error: None,
+            },
+            DnsObservation {
+                hostname: "host.example".into(),
+                resolver: ResolverKind::Custom(addr),
+                record_type: DnsRecordType::A,
                 records: Vec::new(),
                 ttl: None,
                 latency_ms: None,
@@ -1342,10 +1356,12 @@ mod tests {
         let r = aggregate_repeat(&bucket, DnsRecordType::A, 3);
         assert_eq!(r.resolver, ResolverKind::Custom(addr));
         assert_eq!(r.attempts, 3);
-        assert_eq!(r.successes, 1);
-        assert_eq!(r.failures, 2);
-        assert_eq!(r.latency.count, 1);
+        assert_eq!(r.successes, 2);
+        assert_eq!(r.failures, 1);
+        assert_eq!(r.latency.count, 2);
         assert_eq!(r.latency.min, Some(3));
+        // The minimum TTL across the successful answers is the caching bound.
+        assert_eq!(r.ttl, Some(30));
         // Failure distribution: one Dns (SERVFAIL) + one Timeout.
         let kinds: Vec<crate::model::FailureKind> = r.failure_counts.iter().map(|f| f.kind).collect();
         assert!(kinds.contains(&crate::model::FailureKind::Dns));

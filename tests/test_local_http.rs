@@ -1654,6 +1654,47 @@ fn dns_cli_csv_export_renders_rows() {
 }
 
 #[test]
+fn dns_cli_repeat_csv_carries_min_ttl() {
+    // `dns --count N --csv` repeat rows must carry the minimum record TTL
+    // (parity with single-shot rows): the fixture's canned DoH answer has a
+    // 60s TTL, so a `--count 3` repeat row aggregates attempts>1 and still
+    // surfaces `ttl=60`.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let endpoint = format!("https://{}/dns-query", fixture.tcp_addr());
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "dns",
+            "host.example",
+            "--doh",
+            &endpoint,
+            "--insecure",
+            "--timeout",
+            "2000",
+            "--count",
+            "3",
+            "--csv",
+        ])
+        .output()
+        .expect("run dns --doh --count 3 --csv");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "dns --doh --count 3 --csv should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.lines().any(|l| l.contains(",3,1.0000") && l.ends_with(",60")),
+        "the repeat CSV row should aggregate 3 attempts and carry ttl=60: {stdout}"
+    );
+}
+
+#[test]
 fn tcp_cli_multiple_targets_produce_per_target_array() {
     // The per-address probe commands (`tcp`, etc.) accept multiple targets
     // too: each is resolved and probed, human output labels each host block,
