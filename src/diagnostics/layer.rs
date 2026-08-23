@@ -1,7 +1,9 @@
 //! Protocol-layer diagnostic rules: TLS, HTTP, QUIC and intermittent probes.
 
 use super::DiagnosticInput;
-use crate::model::{Confidence, Diagnosis, DiagnosticCategory, Evidence, FailureKind, ProbeResult, Severity};
+use crate::model::{
+    Confidence, Diagnosis, DiagnosticCategory, Evidence, FailureKind, HttpObservation, ProbeResult, Severity,
+};
 
 /// TLS handshake failures on addresses where TCP connected.
 pub(super) fn tls_layer_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosis>) {
@@ -351,6 +353,119 @@ pub(super) fn redirect_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosis>) 
     }
 }
 
+/// Cross-path HTTP consistency: a host that returns a *different* response
+/// class over one wire protocol than another on the same destination, or over
+/// one address family than the other, is a real split-brain signal — a CDN edge
+/// or WAF treating protocols or families differently, an A/B or partial
+/// deployment, or a per-family cloud edge with a different origin state — yet
+/// each path individually "works", so the engine would otherwise report it
+/// Healthy.
+///
+/// Only *completed* responses (a status present, no failure) are compared, so
+/// protocol-negotiation failures and stalled bodies stay owned by their own
+/// layer rules; responses are bucketed 2xx-vs-non-2xx to avoid flagging benign
+/// status-detail differences (e.g. 200 vs 204, or 301 vs 302).
+pub(super) fn http_consistency_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosis>) {
+    let content = |s: u16| (200..300).contains(&s);
+
+    // Cross-protocol divergence on the same destination socket.
+    let mut per_dest: std::collections::BTreeMap<std::net::SocketAddr, Vec<&HttpObservation>> =
+        std::collections::BTreeMap::new();
+    for h in input.http {
+        if h.failure.is_none() && h.status.is_some() && h.protocol.is_some() {
+            per_dest.entry(h.destination).or_default().push(h);
+        }
+    }
+    let proto_divergences: Vec<String> = per_dest
+        .iter()
+        .filter_map(|(dest, obs)| {
+            // Two different wire protocols must actually be present for this to
+            // be a cross-protocol signal (a lone observation is not a conflict).
+            let mut protocols = std::collections::BTreeSet::new();
+            for h in obs {
+                protocols.insert(h.protocol.as_deref().unwrap_or("?"));
+            }
+            if protocols.len() < 2 {
+                return None;
+            }
+            let up = obs.iter().any(|h| content(h.status.expect("status checked")));
+            let down = obs.iter().any(|h| !content(h.status.expect("status checked")));
+            if up && down {
+                let joined = obs
+                    .iter()
+                    .map(|h| format!("{} -> {}", h.protocol.as_deref().unwrap_or("?"), h.status.unwrap_or(0)))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                Some(format!("{dest}: {joined}"))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    // Cross-address-family divergence: one family uniformly 2xx, the other
+    // returns any non-2xx (both families must have at least one completion).
+    let family_status = |ipv4: bool| -> Vec<u16> {
+        input
+            .http
+            .iter()
+            .filter(|h| h.failure.is_none() && h.destination.is_ipv4() == ipv4)
+            .filter_map(|h| h.status)
+            .collect()
+    };
+    let v4 = family_status(true);
+    let v6 = family_status(false);
+    let fam_content = |statuses: &[u16]| statuses.iter().all(|s| content(*s));
+    let family_divergence: Option<String> = if !v4.is_empty() && !v6.is_empty() && fam_content(&v4) != fam_content(&v6)
+    {
+        let render = |name: &str, raw: &[u16]| {
+            format!(
+                "{name}({})",
+                raw.iter().map(ToString::to_string).collect::<Vec<_>>().join(",")
+            )
+        };
+        Some(format!("{} vs {}", render("IPv4", &v4), render("IPv6", &v6)))
+    } else {
+        None
+    };
+
+    if !proto_divergences.is_empty() {
+        out.push(Diagnosis {
+            severity: Severity::Low,
+            category: DiagnosticCategory::Http,
+            confidence: Confidence::Medium,
+            summary: format!("HTTP status differs across protocols for {}", input.hostname),
+            evidence: proto_divergences
+                .into_iter()
+                .map(|d| Evidence {
+                    detail: format!("cross-protocol: {d}"),
+                })
+                .collect(),
+            possible_causes: vec![
+                "CDN edge / WAF applying different rules to different protocols".into(),
+                "A/B or partial deployment across edges or servers".into(),
+                "rate-limiting or auth gating one protocol but not another".into(),
+            ],
+        });
+    }
+    if let Some(detail) = family_divergence {
+        out.push(Diagnosis {
+            severity: Severity::Low,
+            category: DiagnosticCategory::Http,
+            confidence: Confidence::Medium,
+            summary: format!("HTTP behavior differs between IPv4 and IPv6 for {}", input.hostname),
+            evidence: vec![Evidence {
+                detail: format!("cross-address-family: {detail}"),
+            }],
+            possible_causes: vec![
+                "per-family cloud edge with a different origin state".into(),
+                "IPv6-specific WAF / ACL rules".into(),
+                "A/B or partial deployment across families".into(),
+            ],
+        });
+    }
+}
+
 /// Summarize the classified failure counts of a probe result.
 fn failure_summary_opt(p: &ProbeResult) -> String {
     if p.failure_counts.is_empty() {
@@ -587,6 +702,87 @@ mod tests {
         assert!(
             out.is_empty(),
             "failed probe must not raise a redirect diagnosis: {out:?}"
+        );
+    }
+
+    #[test]
+    fn consistency_flags_cross_protocol_status_divergence() {
+        // Same destination, two wire protocols: HTTP/1.1 serves 200 while
+        // HTTP/2 returns 403 — a real split-brain signal (e.g. a WAF/edge
+        // treating protocols differently) that each path individually "works".
+        let obs = [
+            http("1.1.1.1:443", "HTTP/1.1", Some(200), None),
+            http("1.1.1.1:443", "HTTP/2", Some(403), None),
+            http("1.1.1.1:443", "HTTP/3", Some(200), None),
+        ];
+        let mut out = Vec::new();
+        http_consistency_rules(&input(&[], &obs, &[]), &mut out);
+        let d = out
+            .iter()
+            .find(|d| d.summary.contains("differs across protocols"))
+            .expect("cross-protocol verdict");
+        assert_eq!(d.severity, Severity::Low);
+        assert_eq!(d.confidence, Confidence::Medium);
+        assert!(
+            d.evidence
+                .iter()
+                .any(|e| e.detail.contains("1.1.1.1:443") && e.detail.contains("403")),
+            "evidence should name the divergent destination and status: {out:?}"
+        );
+    }
+
+    #[test]
+    fn consistency_flags_cross_family_status_divergence() {
+        // IPv4 serves 200 but IPv6 returns 503 on a dual-stack host — a
+        // per-family edge/ACL difference the engine should surface.
+        let obs = [
+            http("1.1.1.1:443", "HTTP/1.1", Some(200), None),
+            http("[2606:4700::1]:443", "HTTP/1.1", Some(503), None),
+        ];
+        let mut out = Vec::new();
+        http_consistency_rules(&input(&[], &obs, &[]), &mut out);
+        assert!(
+            out.iter().any(|d| d.summary.contains("differs between IPv4 and IPv6")),
+            "cross-family verdict missing: {out:?}"
+        );
+    }
+
+    #[test]
+    fn consistency_is_quiet_on_healthy_and_non_completed_paths() {
+        // All paths 2xx -> no consistency signal.
+        let healthy = [
+            http("1.1.1.1:443", "HTTP/1.1", Some(200), None),
+            http("1.1.1.1:443", "HTTP/2", Some(200), None),
+            http("[2606:4700::1]:443", "HTTP/1.1", Some(200), None),
+        ];
+        let mut out = Vec::new();
+        http_consistency_rules(&input(&[], &healthy, &[]), &mut out);
+        assert!(out.is_empty(), "all-2xx must not raise consistency: {out:?}");
+
+        // A failed HTTP/2 negotiation (no status) is another layer's verdict
+        // and must not be counted as a cross-protocol divergence.
+        let neg = [
+            http("1.1.1.1:443", "HTTP/1.1", Some(200), None),
+            http("1.1.1.1:443", "HTTP/2", None, Some("h2 negotiation failed")),
+        ];
+        let mut out = Vec::new();
+        http_consistency_rules(&input(&[], &neg, &[]), &mut out);
+        assert!(
+            !out.iter().any(|d| d.summary.contains("across protocols")),
+            "negotiation failure must not be a cross-protocol divergence: {out:?}"
+        );
+
+        // A single protocol with divergent statuses (e.g. 200 + 500 on HTTP/1.1)
+        // is an HTTP-layer error (>=400), not a cross-protocol signal.
+        let same_proto = [
+            http("1.1.1.1:443", "HTTP/1.1", Some(200), None),
+            http("1.1.1.1:443", "HTTP/1.1", Some(500), None),
+        ];
+        let mut out = Vec::new();
+        http_consistency_rules(&input(&[], &same_proto, &[]), &mut out);
+        assert!(
+            !out.iter().any(|d| d.summary.contains("across protocols")),
+            "single protocol must not be a cross-protocol signal: {out:?}"
         );
     }
 

@@ -52,6 +52,7 @@ pub fn diagnose(input: &DiagnosticInput) -> Vec<Diagnosis> {
     layer::certificate_coverage_rules(input, &mut out);
     layer::http_layer_rules(input, &mut out);
     layer::redirect_rules(input, &mut out);
+    layer::http_consistency_rules(input, &mut out);
     layer::truncated_body_rules(input, &mut out);
     layer::quic_rules(input, &mut out);
     layer::intermittent_rules(input, &mut out);
