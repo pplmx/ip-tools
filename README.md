@@ -507,8 +507,10 @@ ip-tools diagnose a.example b.example --csv       # spreadsheet-friendly rows pe
 
 Human output renders every host's evidence + verdicts; `--json` emits the
 existing single-report object for one host and a JSON array for more than one;
-`--csv` emits a `host,severity,category,confidence,summary` row per diagnosis
-(a single host still gets one row per verdict); `--strict` exits non-zero if
+`--csv` emits a `host,severity,category,confidence,summary,evidence,
+possible_causes` row per diagnosis (a single host still gets one row per
+verdict; evidence and possible causes are semicolon-joined so the reason
+behind each verdict stays in the spreadsheet); `--strict` exits non-zero if
 **any** host raised an anomaly.
 
 Example output (on a host whose IPv6 has no route — the IPv4 path works, the

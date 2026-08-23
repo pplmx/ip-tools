@@ -376,11 +376,14 @@ fn csv_field(value: &str) -> String {
 }
 
 /// Render every diagnosis across every report as CSV rows: a header line then
-/// one `host,severity,category,confidence,summary` row per diagnosis. A host
-/// with several verdicts (e.g. IP-literal two-family rows) yields several
-/// rows, so a spreadsheet can pivot on `host`.
+/// one `host,severity,category,confidence,summary,evidence,possible_causes`
+/// row per diagnosis. The evidence and possible causes (the "why" behind the
+/// verdict, which the human/JSON output carry) are semicolon-joined into a
+/// single cell each, so a spreadsheet fleet sweep keeps the reasoning, not
+/// just the category. A host with several verdicts (e.g. IP-literal
+/// two-family rows) yields several rows, so a spreadsheet can pivot on `host`.
 fn render_csv(reports: &[DiagnoseReport]) -> String {
-    let mut out = String::from("host,severity,category,confidence,summary\n");
+    let mut out = String::from("host,severity,category,confidence,summary,evidence,possible_causes\n");
     for report in reports {
         for d in &report.diagnoses {
             out.push_str(&csv_field(&report.target));
@@ -392,10 +395,24 @@ fn render_csv(reports: &[DiagnoseReport]) -> String {
             out.push_str(&csv_field(&format!("{:?}", d.confidence)));
             out.push(',');
             out.push_str(&csv_field(&d.summary));
+            out.push(',');
+            out.push_str(&csv_field(&join_semis(d.evidence.iter().map(|e| e.detail.as_str()))));
+            out.push(',');
+            out.push_str(&csv_field(&join_semis(d.possible_causes.iter().map(String::as_str))));
             out.push('\n');
         }
     }
     out
+}
+
+/// Join a list of strings with "; " for a single CSV cell (empty when the
+/// list is empty), mirroring the semicolon-join the probe status column uses.
+fn join_semis<'a>(items: impl Iterator<Item = &'a str>) -> String {
+    let mut parts = Vec::new();
+    for s in items {
+        parts.push(s);
+    }
+    parts.join("; ")
 }
 
 /// Probe HTTP/1.1, HTTP/2 and HTTP/3 for every address, concatenated.

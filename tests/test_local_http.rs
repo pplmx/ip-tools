@@ -2410,11 +2410,19 @@ fn diagnose_cli_csv_export_renders_diagnosis_rows() {
     let mut lines = stdout.lines();
     assert_eq!(
         lines.next(),
-        Some("host,severity,category,confidence,summary"),
+        Some("host,severity,category,confidence,summary,evidence,possible_causes"),
         "CSV header: {stdout}"
     );
     let some_row = lines.any(|l| l.starts_with("127.0.0.1,"));
     assert!(some_row, "expected a per-host diagnosis row: {stdout}");
+    // A verdict carries its evidence + possible causes (the "why") so a
+    // spreadsheet sweep keeps the reasoning, e.g. the fixture's QUIC verdict.
+    assert!(
+        stdout.contains("QUIC/HTTP3 fails while TCP+HTTPS succeeds")
+            && stdout.contains("TCP path OK; UDP/QUIC path failed")
+            && stdout.contains("QUIC disabled / not offered by server"),
+        "expected the diagnosis row to carry its evidence and possible causes: {stdout}"
+    );
 }
 
 #[test]
