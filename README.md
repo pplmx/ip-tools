@@ -358,7 +358,16 @@ ip-tools http example.com --path /healthz
 ip-tools http example.com --method POST --body '{"key":"value"}' --header 'content-type: application/json'
 ip-tools http example.com --header 'authorization: Bearer abc123'
 ip-tools http example.com --path /private --header 'cookie: session=xyz'
+ip-tools http 10.0.0.5:8080 --plain   # cleartext HTTP (no TLS handshake)
 ```
+
+`--plain` (on the `http` command) probes **cleartext HTTP/1.1** with no TLS
+handshake — for internal services, captive portals, HTTP-only health checks or
+plaintext proxies where a TLS probe would fail with a handshake error instead
+of observing the real HTTP behaviour. It is mutually exclusive with
+`--insecure` and `--tls-version`, which only apply over TLS; the response is
+the same HTTP observation (status, headers, body, TTFB), just without the
+embedded TLS row.
 
 `--path` requests a specific resource instead of the default `/` (also on
 `http2`, `http3` and `probe --protocol http|http2|http3`), so path-dependent

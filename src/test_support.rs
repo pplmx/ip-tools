@@ -21,6 +21,7 @@ use tokio::task::JoinHandle;
 /// certificate.
 pub struct FixtureServer {
     tcp_addr: SocketAddr,
+    plain_addr: SocketAddr,
     dot_addr: SocketAddr,
     udp_addr: SocketAddr,
     /// QUIC endpoint that completes the handshake but never drives h3.
@@ -86,6 +87,11 @@ impl FixtureServer {
         let tcp_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind tcp");
         let tcp_addr = tcp_listener.local_addr().expect("tcp local addr");
 
+        let plain_listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind plain tcp");
+        let plain_addr = plain_listener.local_addr().expect("plain tcp local addr");
+
         let dot_listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("bind dot tcp");
@@ -107,6 +113,7 @@ impl FixtureServer {
 
         let handles = vec![
             tokio::spawn(run_tcp_server(tcp_listener, tls_acceptor)),
+            tokio::spawn(run_plain_http_server(plain_listener)),
             tokio::spawn(run_dot_server(dot_listener, dot_acceptor)),
             tokio::spawn(run_quic_server(quic_endpoint)),
             tokio::spawn(run_stalled_quic_server(stalled_endpoint)),
@@ -114,6 +121,7 @@ impl FixtureServer {
 
         Self {
             tcp_addr,
+            plain_addr,
             dot_addr,
             udp_addr,
             stalled_quic_addr,
@@ -126,6 +134,12 @@ impl FixtureServer {
     #[must_use]
     pub const fn tcp_addr(&self) -> SocketAddr {
         self.tcp_addr
+    }
+
+    /// Plaintext HTTP (no TLS) listen address.
+    #[must_use]
+    pub const fn plain_addr(&self) -> SocketAddr {
+        self.plain_addr
     }
 
     /// TCP DNS-over-TLS (RFC 7858) listen address.
@@ -188,8 +202,10 @@ static FLAP_COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsi
 /// Separate counter for the QUIC flap arm so the two servers' alternations
 /// do not desynchronize.
 static QUIC_FLAP_COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-/// Request counter for the [`FixtureRoute::SlowFlap`] route: alternates the
-/// response latency (fast / slow) while keeping the status 200.
+/// Request counter for the [`FixtureRoute::SlowFlap`] route: responds fast
+/// twice then slow once (mod 3), so **any** three consecutive requests (the
+/// `diagnose` HTTP repeat) always contain two fast and one slow sample — a
+/// deterministic bimodal latency tail with a stable 200 status.
 static SLOWFLAP_COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 /// Separate counter for the QUIC slow-flap arm.
 static QUIC_SLOWFLAP_COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
@@ -365,30 +381,30 @@ async fn run_tcp_server(listener: tokio::net::TcpListener, acceptor: tokio_rustl
                         )
                     }
                     FixtureRoute::SlowFlap => {
-                        // Keep the status 200 but alternate fast / slow so a
-                        // repeated HTTP probe observes a long latency tail on
-                        // an otherwise transport/status-healthy path. NOT
-                        // shared with the QUIC server (see its own arm).
-                        if SLOWFLAP_COUNT
-                            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-                            .is_multiple_of(2)
-                        {
-                            // Immediately answer with a small body.
-                            Ok::<_, std::convert::Infallible>(
-                                hyper::Response::builder()
-                                    .status(200)
-                                    .body(http_body_util::Full::new(bytes::Bytes::from_static(b"fast")).boxed())
-                                    .expect("static fast response"),
-                            )
-                        } else {
-                            // Wait ~120 ms before answering, creating a slow
-                            // tail sample well above the fast median.
+                        // Keep the status 200 with a fast-fast-slow (mod 3)
+                        // pattern so ANY three consecutive requests (the
+                        // `diagnose` HTTP repeat) yield two fast + one slow
+                        // sample — a deterministic bimodal latency tail on an
+                        // otherwise transport/status-healthy path. NOT shared
+                        // with the QUIC server (see its own arm).
+                        if SLOWFLAP_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % 3 == 2 {
+                            // Every third request waits ~120 ms before
+                            // answering, creating a slow tail sample well
+                            // above the fast median.
                             tokio::time::sleep(std::time::Duration::from_millis(120)).await;
                             Ok::<_, std::convert::Infallible>(
                                 hyper::Response::builder()
                                     .status(200)
                                     .body(http_body_util::Full::new(bytes::Bytes::from_static(b"slow")).boxed())
                                     .expect("static slow response"),
+                            )
+                        } else {
+                            // Immediately answer with a small body.
+                            Ok::<_, std::convert::Infallible>(
+                                hyper::Response::builder()
+                                    .status(200)
+                                    .body(http_body_util::Full::new(bytes::Bytes::from_static(b"fast")).boxed())
+                                    .expect("static fast response"),
                             )
                         }
                     }
@@ -427,6 +443,62 @@ async fn run_tcp_server(listener: tokio::net::TcpListener, acceptor: tokio_rustl
                     .await
             };
             let _ = result;
+        });
+    }
+}
+
+/// Serve plaintext HTTP/1.1 (no TLS) with a small catalog of routes, for the
+/// `--plain` cleartext probes: a normal `200 ok` host, `echo.invalid` echoing
+/// the request body, `redirect.invalid` returning a 302, and the `big.invalid`
+/// large-body route to exercise the body cap.
+async fn run_plain_http_server(listener: tokio::net::TcpListener) {
+    use http_body_util::BodyExt as _;
+    loop {
+        let Ok((tcp, _peer)) = listener.accept().await else {
+            continue;
+        };
+        tokio::spawn(async move {
+            let io = hyper_util::rt::TokioIo::new(tcp);
+            let service = hyper::service::service_fn(|req: hyper::Request<hyper::body::Incoming>| async move {
+                let route = route_for(&req);
+                match route {
+                    FixtureRoute::Redirect => {
+                        let resp = hyper::Response::builder()
+                            .status(302)
+                            .header("location", "https://redirect.invalid/landed")
+                            .body(http_body_util::Full::new(bytes::Bytes::from_static(b"")).boxed())
+                            .expect("static redirect response");
+                        Ok::<_, std::convert::Infallible>(resp)
+                    }
+                    FixtureRoute::BodyEcho => {
+                        let body = http_body_util::BodyExt::collect(req.into_body()).await;
+                        let bytes = body.map(http_body_util::Collected::to_bytes).unwrap_or_default();
+                        Ok::<_, std::convert::Infallible>(
+                            hyper::Response::builder()
+                                .status(200)
+                                .header("content-type", "text/plain")
+                                .body(http_body_util::Full::new(bytes).boxed())
+                                .expect("static echo response"),
+                        )
+                    }
+                    FixtureRoute::LargeBody => Ok::<_, std::convert::Infallible>(hyper::Response::new(
+                        http_body_util::Full::new(bytes::Bytes::from(vec![b'x'; LARGE_BODY_BYTES])).boxed(),
+                    )),
+                    _ => {
+                        // A `server` header lets tests assert headers are kept.
+                        Ok::<_, std::convert::Infallible>(
+                            hyper::Response::builder()
+                                .status(200)
+                                .header("server", "ip-tools-plain")
+                                .body(http_body_util::Full::new(bytes::Bytes::from_static(b"ok")).boxed())
+                                .expect("static plain response"),
+                        )
+                    }
+                }
+            });
+            let _ = hyper::server::conn::http1::Builder::new()
+                .serve_connection(io, service)
+                .await;
         });
     }
 }
@@ -604,10 +676,8 @@ async fn serve_quic_connection(incoming: quinn::Incoming) {
                 let _ = stream.finish().await;
             }
             FixtureRoute::SlowFlap => {
-                if !QUIC_SLOWFLAP_COUNT
-                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-                    .is_multiple_of(2)
-                {
+                // fast-fast-slow (mod 3) for the same deterministic tail.
+                if QUIC_SLOWFLAP_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % 3 == 2 {
                     tokio::time::sleep(std::time::Duration::from_millis(120)).await;
                 }
                 let response = hyper::Response::builder().status(200).body(()).expect("status 200");

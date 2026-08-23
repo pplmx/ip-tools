@@ -259,6 +259,24 @@ async fn http1_probe_gets_200_from_local_fixture() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn plain_probe_gets_200_from_cleartext_fixture() {
+    // `probe_plain` must speak plaintext HTTP/1.1 (no TLS handshake): against
+    // the fixture's plain listener it gets a 200 with no `tls` observation and
+    // the recorded server header — the same request over TLS would fail.
+    let fixture = FixtureServer::start().await;
+    let obs = http::probe_plain(fixture.plain_addr(), "localhost", "GET", "/", &[], None, timeout()).await;
+    assert!(obs.failure.is_none(), "plain probe failed: {:?}", obs.failure);
+    assert_eq!(obs.status, Some(200), "expected 200: {obs:?}");
+    assert_eq!(obs.protocol.as_deref(), Some("HTTP/1.1"));
+    assert!(
+        obs.headers
+            .iter()
+            .any(|(n, v)| n.eq_ignore_ascii_case("server") && v == "ip-tools-plain"),
+        "expected the cleartext server header: {obs:?}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn http2_probe_gets_200_from_local_fixture() {
     let fixture = FixtureServer::start().await;
     let obs = http2::probe_with_roots(
@@ -2117,6 +2135,42 @@ fn http_cli_insecure_probes_self_signed_fixture() {
     assert!(
         stdout.contains("certificate") || stdout.contains("failed") || !out.status.success(),
         "without --insecure the self-signed cert must be rejected: {stdout}"
+    );
+}
+
+#[test]
+fn http_cli_plain_probes_cleartext_http() {
+    // End-to-end: the real binary with --plain must probe a plaintext HTTP/1.1
+    // server (no TLS handshake at all). The fixture's plain listener serves
+    // `200 ok` with a `server: ip-tools-plain` header — the same request over
+    // TLS would fail with a handshake error, so --plain is what observes the
+    // cleartext endpoint truthfully.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let addr = fixture.plain_addr();
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args(["http", &addr.to_string(), "--plain", "--timeout", "2000"])
+        .output()
+        .expect("run http --plain");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "http --plain should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(stdout.contains("200"), "expected a 200 response: {stdout}");
+    assert!(
+        stdout.contains("HTTP/1.1"),
+        "expected HTTP/1.1 over plaintext: {stdout}"
+    );
+    assert!(
+        stdout.contains("server: ip-tools-plain") || stdout.contains("body content"),
+        "expected the cleartext response (headers/body) to surface: {stdout}"
     );
 }
 

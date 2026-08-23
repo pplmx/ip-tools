@@ -12,6 +12,7 @@ use std::process::ExitCode;
 pub(super) async fn run_http(sub_m: &ArgMatches) -> ExitCode {
     let method = sub_m.get_one::<String>("method").expect("method has default").clone();
     let path = sub_m.get_one::<String>("path").expect("path has default").clone();
+    let plain = sub_m.get_flag("plain");
     let insecure = sub_m.get_flag("insecure");
     let protocol = super::parse_tls_protocol(sub_m);
     let headers = match super::parse_custom_headers(sub_m) {
@@ -47,7 +48,20 @@ pub(super) async fn run_http(sub_m: &ArgMatches) -> ExitCode {
             async move {
                 let header_refs: Vec<(&str, &str)> = headers.iter().map(|(n, v)| (n.as_str(), v.as_str())).collect();
                 let output = output_body.as_deref().map(std::path::Path::new);
-                if insecure {
+                if plain {
+                    ip_http::probe_plain_output(
+                        dest,
+                        &host,
+                        &method,
+                        &path,
+                        &header_refs,
+                        body.as_deref(),
+                        timeout,
+                        max_body_bytes,
+                        output,
+                    )
+                    .await
+                } else if insecure {
                     ip_http::probe_insecure_with_version_output(
                         dest,
                         &host,

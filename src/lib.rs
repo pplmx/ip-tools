@@ -16,7 +16,7 @@
 //! * [`dns`] — DNS resolution probes.
 //! * [`tcp`] — TCP connect probes with failure-mode classification.
 //! * [`tls`] — TLS handshake probes (SNI, ALPN, certificate).
-//! * [`http`] — HTTPS / HTTP1.1 request probes.
+//! * [`http`] — HTTPS and cleartext HTTP/1.1 (`--plain`) request probes.
 //! * [`http2`] — HTTP/2 request probes.
 //! * [`http3`] — HTTP/3 / QUIC (UDP path) request probes.
 //! * [`probe`] — repeated probing and latency statistics.

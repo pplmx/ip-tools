@@ -2,19 +2,22 @@
 //!
 //! Each probe connects TCP + TLS (with SNI = the target host) to one specific
 //! destination socket address, then issues a single HTTP request over the
-//! connection. Redirection is *not* followed by default: a redirect is
-//! recorded, not chased, so the raw server behaviour is visible.
+//! connection, unless `--plain` selects cleartext HTTP/1.1 (no TLS) for
+//! internal / captive-portal / health-check endpoints. Redirection is *not*
+//! followed by default: a redirect is recorded, not chased, so the raw server
+//! behaviour is visible.
 
 use crate::http_common::{
     body_snippet_string, build_tls_observation, collect_response_headers, http_error, push_body_snippet,
     BODY_SNIPPET_BYTES, MAX_BODY_BYTES,
 };
 use crate::model::http::HttpObservation;
-use crate::model::{FailureKind, ProbeError};
+use crate::model::{FailureKind, ProbeError, TlsObservation};
 use http_body_util::BodyExt;
 use hyper_util::rt::TokioIo;
 use std::net::SocketAddr;
 use std::time::{Duration, Instant};
+use tokio::net::TcpStream;
 
 /// Perform a single HTTPS/HTTP/1.1 request to `destination` (connecting to
 /// its IP) presenting `host` as SNI and `Host` header, bounded by `timeout`.
@@ -44,6 +47,64 @@ pub async fn probe(
         crate::tls::TlsProtocol::Auto,
         MAX_BODY_BYTES,
         None,
+    )
+    .await
+}
+
+/// Perform a single **cleartext** HTTP/1.1 request (no TLS handshake) to
+/// `destination`, presenting `host` as the `Host` header.
+///
+/// For services that speak plain HTTP — internal endpoints, captive portals,
+/// HTTP-only health checks, plaintext proxies — where a TLS probe would fail
+/// with a handshake error instead of observing the real HTTP behaviour.
+#[allow(clippy::too_many_arguments)] // destination/host/method/path/headers/body/timeout
+pub async fn probe_plain(
+    destination: SocketAddr,
+    host: &str,
+    method: &str,
+    path: &str,
+    headers: &[(&str, &str)],
+    body: Option<&[u8]>,
+    timeout: Duration,
+) -> HttpObservation {
+    plain_impl(
+        destination,
+        host,
+        method,
+        path,
+        headers,
+        body,
+        timeout,
+        MAX_BODY_BYTES,
+        None,
+    )
+    .await
+}
+
+/// [`probe_plain`] with a configurable body-read cap and optional
+/// `--output-body` capture (mirrors [`probe_with_version_output`]).
+#[allow(clippy::too_many_arguments)] // destination/host/method/path/headers/body/timeout/max/output
+pub async fn probe_plain_output(
+    destination: SocketAddr,
+    host: &str,
+    method: &str,
+    path: &str,
+    headers: &[(&str, &str)],
+    body: Option<&[u8]>,
+    timeout: Duration,
+    max_body_bytes: u64,
+    output: Option<&std::path::Path>,
+) -> HttpObservation {
+    plain_impl(
+        destination,
+        host,
+        method,
+        path,
+        headers,
+        body,
+        timeout,
+        max_body_bytes,
+        output,
     )
     .await
 }
@@ -227,7 +288,7 @@ pub async fn probe_insecure_with_version_output(
     .await
 }
 
-/// Shared probe body for the given trust mode.
+/// Shared HTTPS probe body for the given trust mode.
 #[allow(clippy::too_many_arguments)]
 async fn probe_impl(
     destination: SocketAddr,
@@ -243,9 +304,6 @@ async fn probe_impl(
     body_output: Option<&std::path::Path>,
 ) -> HttpObservation {
     let start = Instant::now();
-    // Name the protocol up front so a *failed* observation keeps its identity
-    // (HTTP/2 and HTTP/3 failures would otherwise be indistinguishable from a
-    // bare base and the QUIC diagnostics could never see a failed h3 probe).
     let base = HttpObservation {
         protocol: Some("HTTP/1.1".to_string()),
         ..HttpObservation::base(destination, host, method, path)
@@ -260,9 +318,105 @@ async fn probe_impl(
         }
         Err(failure) => return base.with_failure(failure),
     };
+    drive_http1(
+        TokioIo::new(conn.stream),
+        base,
+        Some(tls_obs),
+        destination,
+        host,
+        method,
+        path,
+        headers,
+        body,
+        timeout,
+        max_body_bytes,
+        body_output,
+        start,
+    )
+    .await
+}
 
+/// Shared cleartext HTTP/1.1 probe body: raw TCP, no TLS handshake.
+#[allow(clippy::too_many_arguments)]
+async fn plain_impl(
+    destination: SocketAddr,
+    host: &str,
+    method: &str,
+    path: &str,
+    headers: &[(&str, &str)],
+    body: Option<&[u8]>,
+    timeout: Duration,
+    max_body_bytes: u64,
+    body_output: Option<&std::path::Path>,
+) -> HttpObservation {
+    let start = Instant::now();
+    let base = HttpObservation {
+        protocol: Some("HTTP/1.1".to_string()),
+        ..HttpObservation::base(destination, host, method, path)
+    };
+
+    // 1. Raw TCP connect (no TLS).
+    let stream = match tokio::time::timeout(timeout, TcpStream::connect(destination)).await {
+        Ok(Ok(s)) => s,
+        Ok(Err(e)) => {
+            return base.with_failure(ProbeError {
+                kind: crate::tcp::classify_io_error(&e),
+                message: format!("tcp connect to {destination} failed: {e}"),
+            });
+        }
+        Err(_elapsed) => {
+            return base.with_failure(ProbeError {
+                kind: FailureKind::Timeout,
+                message: format!("tcp connect to {destination} timed out after {timeout:?}"),
+            });
+        }
+    };
+
+    drive_http1(
+        TokioIo::new(stream),
+        base,
+        None,
+        destination,
+        host,
+        method,
+        path,
+        headers,
+        body,
+        timeout,
+        max_body_bytes,
+        body_output,
+        start,
+    )
+    .await
+}
+
+/// Drive one HTTP/1.1 request + bounded body read over an already-connected
+/// stream (TLS-wrapped for HTTPS, a bare TCP stream for `--plain`). Handles
+/// the hyper handshake, the request send, the response read and the bounded
+/// body capture; `tls` is embedded into the observation for HTTPS and left
+/// `None` for cleartext.
+#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_lines)] // hand-written sequential HTTP steps are clearest inline
+async fn drive_http1<S>(
+    io: TokioIo<S>,
+    base: HttpObservation,
+    tls: Option<TlsObservation>,
+    destination: SocketAddr,
+    host: &str,
+    method: &str,
+    path: &str,
+    headers: &[(&str, &str)],
+    body: Option<&[u8]>,
+    timeout: Duration,
+    max_body_bytes: u64,
+    body_output: Option<&std::path::Path>,
+    start: Instant,
+) -> HttpObservation
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+{
     // 2. Drive the hyper HTTP/1.1 connection.
-    let handshake = hyper::client::conn::http1::handshake(TokioIo::new(conn.stream));
+    let handshake = hyper::client::conn::http1::handshake(io);
     let (mut sender, connection) = match tokio::time::timeout(timeout, handshake).await {
         Ok(Ok(pair)) => pair,
         Ok(Err(e)) => return base.with_failure(http_error("HTTP/1.1 handshake", &e)),
@@ -379,7 +533,7 @@ async fn probe_impl(
     }
 
     HttpObservation {
-        tls: Some(tls_obs),
+        tls,
         status: Some(status),
         protocol,
         location,

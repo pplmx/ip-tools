@@ -91,6 +91,7 @@ fn parser() -> ArgMatches {
             "perform an HTTPS/HTTP1.1 request to a host:port across its addresses",
             &[
                 method_arg(),
+                plain_arg(),
                 insecure_arg(),
                 strict_arg(),
                 sni_arg(),
@@ -453,6 +454,17 @@ fn insecure_arg() -> Arg {
         .long("insecure")
         .action(ArgAction::SetTrue)
         .help("skip TLS/QUIC certificate validation (e.g. for self-signed or private-PKI endpoints)")
+}
+
+/// `--plain`: probe cleartext HTTP (no TLS handshake). Mutually exclusive
+/// with `--insecure` and `--tls-version`, which only make sense over TLS.
+fn plain_arg() -> Arg {
+    Arg::new("plain")
+        .long("plain")
+        .action(ArgAction::SetTrue)
+        .conflicts_with("insecure")
+        .conflicts_with("tls-version")
+        .help("probe cleartext HTTP (no TLS handshake)")
 }
 
 /// `--strict` argument (exit non-zero when the run found failures).
