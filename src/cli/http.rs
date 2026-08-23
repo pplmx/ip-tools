@@ -4,7 +4,7 @@ use super::run_probe_flow;
 use clap::ArgMatches;
 use ip_tools::http as ip_http;
 use ip_tools::model::HttpObservation;
-use ip_tools::report::render_http;
+use ip_tools::report::{cert_covers_hostname, render_http};
 use std::process::ExitCode;
 
 /// Resolve a target's addresses and perform an HTTPS/HTTP1.1 request to each
@@ -101,7 +101,7 @@ pub(super) async fn run_http(sub_m: &ArgMatches) -> ExitCode {
 /// by `http`, `http2` and `http3`.
 pub(super) fn render_http_csv(per_target: &[(String, Vec<HttpObservation>)]) -> String {
     let mut out =
-        String::from("host,destination,protocol,status,location,body_bytes,ttfb_ms,latency_ms,sni,version,cipher,alpn,subject,issuer,not_after_utc,headers,body_snippet,failure\n");
+        String::from("host,destination,protocol,status,location,body_bytes,ttfb_ms,latency_ms,sni,version,cipher,alpn,subject,issuer,not_after_utc,sans,covers,headers,body_snippet,failure\n");
     for (host, results) in per_target {
         for o in results {
             // The HTTPS probes embed the negotiated TLS handshake in each
@@ -138,6 +138,19 @@ pub(super) fn render_http_csv(per_target: &[(String, Vec<HttpObservation>)]) -> 
             out.push_str(&csv_field(cert.map_or("", |c| c.issuer.as_str())));
             out.push(',');
             out.push_str(&csv_field(cert.and_then(|c| c.not_after_utc.as_deref()).unwrap_or("")));
+            out.push(',');
+            // The served certificate's SANs and the `covers <sni>` verdict,
+            // mirroring `tls --csv` and the human `covers <sni>: yes/no` row —
+            // a wrong-host/wildcard mismatch must survive a spreadsheet sweep.
+            out.push_str(&csv_field(&cert.map(|c| c.sans.join(";")).unwrap_or_default()));
+            out.push(',');
+            out.push_str(
+                if cert.is_some_and(|c| cert_covers_hostname(tls.map_or("", |t| t.sni.as_str()), &c.sans)) {
+                    "yes"
+                } else {
+                    ""
+                },
+            );
             out.push(',');
             // The observed response headers (the diagnostic-relevant set the
             // human report curates: server identity, CDN/proxy hops, caching,
@@ -203,5 +216,100 @@ fn csv_field(value: &str) -> String {
         format!("\"{}\"", value.replace('"', "\"\""))
     } else {
         value.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ip_tools::model::{CertificateSummary, TlsObservation};
+
+    fn obs(destination: &str, cert: Option<CertificateSummary>) -> HttpObservation {
+        HttpObservation {
+            destination: destination.parse().unwrap(),
+            host: "example.com".into(),
+            method: "GET".into(),
+            path: "/".into(),
+            tls: Some(TlsObservation {
+                destination: destination.parse().unwrap(),
+                sni: "example.com".into(),
+                success: true,
+                version: Some("TLSv1.3".into()),
+                cipher: Some("AES_256_GCM".into()),
+                alpn: Some("h2".into()),
+                certificate: cert,
+                latency_ms: Some(7),
+                failure: None,
+            }),
+            protocol: Some("HTTP/1.1".into()),
+            status: Some(200),
+            location: Some("/moved".into()),
+            headers: vec![("server".into(), "fixture".into())],
+            body_bytes: Some(2),
+            body_snippet: Some("ok".into()),
+            latency_ms: Some(7),
+            ttfb_ms: Some(3),
+            failure: None,
+        }
+    }
+
+    fn cert(sans: &[&str]) -> CertificateSummary {
+        CertificateSummary {
+            subject: "CN=example.com".into(),
+            issuer: "CN=CA".into(),
+            not_before_utc: None,
+            not_after_utc: Some("2027-01-01T00:00:00Z".into()),
+            sans: sans.iter().map(|s| (*s).to_string()).collect(),
+        }
+    }
+
+    fn head(destination: &str) -> String {
+        // The repeated leading columns (host..not_after), after which the
+        // per-row assertions anchor the sans+covers pair.
+        format!("example.com,{destination},HTTP/1.1,200,/moved,2,3,7,example.com,TLSv1.3,AES_256_GCM,h2,CN=example.com,CN=CA,2027-01-01T00:00:00Z,")
+    }
+
+    #[test]
+    fn render_http_csv_emits_cert_sans_and_covers() {
+        let per_target = vec![(
+            "example.com".to_string(),
+            vec![
+                // A cert whose SANs cover the presented SNI → covers=yes.
+                obs("192.0.2.1:443", Some(cert(&["example.com"]))),
+                // SANs only cover a different name → covers left blank, the
+                // wrong-host/wildcard-mismatch signal a spreadsheet sweep needs.
+                obs("192.0.2.2:443", Some(cert(&["other.example"]))),
+                // No cert (failed/TLS-less row) → blank sans and covers.
+                obs("192.0.2.3:443", None),
+            ],
+        )];
+        let out = render_http_csv(&per_target);
+        let mut lines = out.lines();
+        assert_eq!(
+            lines.next(),
+            Some("host,destination,protocol,status,location,body_bytes,ttfb_ms,latency_ms,sni,version,cipher,alpn,subject,issuer,not_after_utc,sans,covers,headers,body_snippet,failure")
+        );
+        assert!(
+            lines
+                .next()
+                .is_some_and(|l| l.starts_with(&format!("{}example.com,yes,", head("192.0.2.1:443")))),
+            "covering SANs must render covers=yes: {out}"
+        );
+        assert!(
+            lines
+                .next()
+                .is_some_and(|l| l.starts_with(&format!("{}other.example,", head("192.0.2.2:443")))),
+            "non-covering SANs render the SANs and a blank covers: {out}"
+        );
+        // Cert-less row: no subject/issuer/not_after either, then blank sans
+        // and covers before the shared trailing columns.
+        assert_eq!(
+            lines.next(),
+            Some(
+                "example.com,192.0.2.3:443,HTTP/1.1,200,/moved,2,3,7,example.com,TLSv1.3,AES_256_GCM,h2,,,,,,server: fixture,ok,"
+            ),
+            "cert-less row renders blank sans and covers: {out}"
+        );
+        assert!(lines.next().is_none());
     }
 }

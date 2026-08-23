@@ -3,7 +3,7 @@
 use super::run_probe_flow;
 use clap::ArgMatches;
 use ip_tools::model::TlsObservation;
-use ip_tools::report::render_tls;
+use ip_tools::report::{cert_covers_hostname, render_tls};
 use ip_tools::tls as ip_tls;
 use std::process::ExitCode;
 
@@ -33,7 +33,7 @@ pub(super) async fn run_tls(sub_m: &ArgMatches) -> ExitCode {
 /// with handshake details (version/cipher/ALPN/certificate) when present.
 fn render_tls_csv(per_target: &[(String, Vec<TlsObservation>)]) -> String {
     let mut out = String::from(
-        "host,destination,sni,success,version,cipher,alpn,subject,issuer,not_after_utc,latency_ms,failure\n",
+        "host,destination,sni,success,version,cipher,alpn,subject,issuer,not_after_utc,sans,covers,latency_ms,failure\n",
     );
     for (host, results) in per_target {
         for o in results {
@@ -57,6 +57,18 @@ fn render_tls_csv(per_target: &[(String, Vec<TlsObservation>)]) -> String {
             out.push_str(&csv_field(cert.map_or("", |c| c.issuer.as_str())));
             out.push(',');
             out.push_str(&csv_field(cert.and_then(|c| c.not_after_utc.as_deref()).unwrap_or("")));
+            out.push(',');
+            // The certificate's Subject Alternative Names (which hostnames/IPs
+            // it is valid for) and the derived `covers <sni>` verdict — the
+            // wrong-host / wildcard-mismatch signal the human report and JSON
+            // show but the CSV export dropped.
+            out.push_str(&csv_field(&cert.map(|c| c.sans.join(";")).unwrap_or_default()));
+            out.push(',');
+            out.push_str(if cert.is_some_and(|c| cert_covers_hostname(&o.sni, &c.sans)) {
+                "yes"
+            } else {
+                ""
+            });
             out.push(',');
             out.push_str(&csv_field(&opt(o.latency_ms)));
             out.push(',');
@@ -123,16 +135,16 @@ mod tests {
         let mut lines = out.lines();
         assert_eq!(
             lines.next(),
-            Some("host,destination,sni,success,version,cipher,alpn,subject,issuer,not_after_utc,latency_ms,failure")
+            Some("host,destination,sni,success,version,cipher,alpn,subject,issuer,not_after_utc,sans,covers,latency_ms,failure")
         );
         assert_eq!(
             lines.next(),
-            Some("example.com,192.0.2.1:443,example.com,1,TLSv1.3,AES_256_GCM,h2,CN=example.com,CN=CA,2027-01-01T00:00:00Z,7,")
+            Some("example.com,192.0.2.1:443,example.com,1,TLSv1.3,AES_256_GCM,h2,CN=example.com,CN=CA,2027-01-01T00:00:00Z,example.com,yes,7,")
         );
         // Failed hop: success=0, empty cert fields, failure kind in last column.
         assert_eq!(
             lines.next(),
-            Some("example.com,192.0.2.2:443,example.com,0,,AES_256_GCM,h2,,,,,timeout")
+            Some("example.com,192.0.2.2:443,example.com,0,,AES_256_GCM,h2,,,,,,,timeout")
         );
         assert!(lines.next().is_none());
     }

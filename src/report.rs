@@ -173,12 +173,14 @@ pub fn render_tls(observations: &[TlsObservation]) -> String {
     out
 }
 
-/// Whether any subject alternative name covers the presented hostname/`SNI`,
-/// with `RFC 6125`-style matching: an `IP`-literal `SNI` must match an
+/// Whether any subject alternative name covers the presented hostname/`SNI`.
+///
+/// Uses `RFC 6125`-style matching: an `IP`-literal `SNI` must match an
 /// `IPAddress` SAN exactly, and a DNS `SNI` matches a `DNSName` SAN
 /// case-insensitively, where a leading `*.` wildcard matches only a single
 /// left-most label.
-pub(crate) fn cert_covers_hostname(sni: &str, sans: &[String]) -> bool {
+#[must_use]
+pub fn cert_covers_hostname(sni: &str, sans: &[String]) -> bool {
     if let Ok(ip) = sni.parse::<std::net::IpAddr>() {
         return sans.iter().any(|san| san.parse::<std::net::IpAddr>().ok() == Some(ip));
     }

@@ -2162,7 +2162,7 @@ fn http_cli_csv_export_renders_status_rows() {
     assert_eq!(
         lines.next(),
         Some(
-            "host,destination,protocol,status,location,body_bytes,ttfb_ms,latency_ms,sni,version,cipher,alpn,subject,issuer,not_after_utc,headers,body_snippet,failure"
+            "host,destination,protocol,status,location,body_bytes,ttfb_ms,latency_ms,sni,version,cipher,alpn,subject,issuer,not_after_utc,sans,covers,headers,body_snippet,failure"
         ),
         "CSV header: {stdout}"
     );
