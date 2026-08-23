@@ -481,8 +481,10 @@ ip-tools diagnose example.com
 ip-tools diagnose example.com --json
 ```
 
-`diagnose` accepts **multiple targets** — a fleet/health sweep — running the
-full pipeline per host sequentially:
+`diagnose` accepts **multiple targets** — a fleet/health sweep. Hosts are
+probed concurrently (bounded by `--concurrency`, which also bounds the
+per-host address probes); a `--concurrency 1` keeps the sweep strictly
+per-host sequential. Output is always re-sorted to the given target order:
 
 ```shell
 ip-tools diagnose a.example b.example c.example

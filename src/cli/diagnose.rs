@@ -94,30 +94,50 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
         .map(|vals| vals.cloned().collect())
         .unwrap_or_default();
 
-    let mut reports: Vec<DiagnoseReport> = Vec::with_capacity(targets.len());
-    let mut unresolved = 0usize;
-    for target in targets {
-        let presented = sni.clone().unwrap_or_else(|| target.host.clone());
-        match diagnose_one(
-            &target,
-            &presented,
-            &method,
-            &path,
-            &headers,
-            body.as_deref(),
-            &custom_servers,
-            &doh_endpoints,
-            &dot_eps,
-            timeout,
-            concurrency,
-            insecure,
-            tls_protocol,
-            max_body_bytes,
-        )
-        .await
-        {
-            Some(report) => reports.push(report),
-            None => unresolved += 1,
+    // Sweep the fleet: probe targets concurrently (bounded by `--concurrency`,
+    // 1 keeps the original per-host sequential behavior). `parallel_map`
+    // returns in completion order, so each item carries its input index and
+    // the reports are re-sorted back to target order to keep the human/JSON/CSV
+    // rendering deterministic.
+    let targets_with_index: Vec<(usize, Target)> = targets.into_iter().enumerate().collect();
+    let mut indexed: Vec<(usize, Option<DiagnoseReport>)> =
+        parallel_map(targets_with_index, concurrency, move |(idx, target)| {
+            let presented = sni.clone().unwrap_or_else(|| target.host.clone());
+            let method = method.clone();
+            let path = path.clone();
+            let headers = headers.clone();
+            let body = body.clone();
+            let custom_servers = custom_servers.clone();
+            let doh_endpoints = doh_endpoints.clone();
+            let dot_eps = dot_eps.clone();
+            async move {
+                let report = diagnose_one(
+                    &target,
+                    &presented,
+                    &method,
+                    &path,
+                    &headers,
+                    body.as_deref(),
+                    &custom_servers,
+                    &doh_endpoints,
+                    &dot_eps,
+                    timeout,
+                    concurrency,
+                    insecure,
+                    tls_protocol,
+                    max_body_bytes,
+                )
+                .await;
+                (idx, report)
+            }
+        })
+        .await;
+    indexed.sort_by_key(|(idx, _)| *idx);
+    let unresolved = indexed.iter().filter(|(_, r)| r.is_none()).count();
+    let mut reports: Vec<DiagnoseReport> = Vec::with_capacity(indexed.len());
+    for (_, report) in indexed {
+        if let Some(report) = report {
+            reports.push(report);
         }
     }
 
