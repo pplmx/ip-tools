@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-23T05:42:37+00:00",
+  "updated_at": "2026-08-23T05:47:10+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -2642,6 +2642,54 @@
       "touched_round": 0,
       "commit": "e67e409fc2c377099a179384f3bb3498c28462bc",
       "summary": "Added diagnose --reverse: for an IP-literal target, builds the reverse-zone name via the now-shared reverse_zone helper and queries PTR through system/--server + --doh/--dot resolvers, adding the mapped hostname to the DNS evidence stack (human + JSON). Opt-in and evidence-only (absent PTR never raises an anomaly; --strict unaffected). Shared reverse_zone exposed pub(super); --reverse arg added to the diagnose command. README + CHANGELOG updated. Pinned by a fixture-gated CLI test: diagnose 192.0.2.77 --reverse --doh /dns-ptr-query surfaces host.example."
+    },
+    "ISS-043": {
+      "id": "ISS-043",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T05:46:56+00:00",
+      "updated_at": "2026-08-23T05:47:10+00:00",
+      "touched_round": 0,
+      "severity": "low",
+      "summary": "diagnose --reverse was only implemented for IP-literal targets, so diagnosing a hostname with --reverse silently did nothing -- the same class of silently-ignored flag previously fixed for PTR --count (ISS-041). A user expecting reverse-DNS context for a hostname got none, without any indication."
+    },
+    "TASK-051": {
+      "id": "TASK-051",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T05:46:56+00:00",
+      "updated_at": "2026-08-23T05:47:10+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.25,
+      "unlock_factor": 1,
+      "summary": "Extend diagnose --reverse to hostname targets: reverse-resolve each resolved address (in addition to the IP-literal case) and label each PTR evidence row with the reversed IP, so the flag is never silently ignored. Reuses the shared reverse_zone helper and PTR query path. Pinned by a fixture-gated CLI test: diagnose host.example --reverse with the fixture's /dns-query + /dns-ptr-query surfaces the PTR evidence."
+    },
+    "DEC-050": {
+      "id": "DEC-050",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T05:46:56+00:00",
+      "updated_at": "2026-08-23T05:46:56+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-23): complete diagnose --reverse parity. DEC-049 shipped --reverse only for IP-literal targets, so hostname targets silently ignored it -- a flag consistency bug matching the PTR --count fix (ISS-041). Extend --reverse to reverse each resolved address of a hostname target, labeling PTR rows with the reversed IP (clear, consistent, never silent). Reuses the shared reverse_zone helper and PTR query path; no new dependency or API.",
+      "alternatives_rejected": "warning/erroring on hostname --reverse (worse DX and noisy in a sweep; the flag should just work); keeping the silent ignore (a silently dropped flag is a correctness bug); a separate flag for hostname reverse (unneeded -- one --reverse covers both)."
+    },
+    "CHG-044": {
+      "id": "CHG-044",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T05:47:10+00:00",
+      "updated_at": "2026-08-23T05:47:10+00:00",
+      "touched_round": 0,
+      "commit": "37b78cac9d4dfdaefb6e6619e13a8e4982d73c69",
+      "summary": "Extended diagnose --reverse to hostname targets: it now reverse-resolves each resolved address (in addition to the IP-literal case) and labels each PTR evidence row with the reversed IP, so the flag is never silently ignored. Reuses the shared reverse_zone helper + PTR query path; CHANGELOG updated. Pinned by a fixture-gated CLI test: diagnose host.example --reverse with the fixture's /dns-query + /dns-ptr-query surfaces the PTR evidence."
     }
   },
   "edges": [
@@ -4438,6 +4486,42 @@
       "to": "ISS-042",
       "type": "resolves",
       "created_at": "2026-08-23T05:42:37+00:00"
+    },
+    {
+      "from": "ISS-043",
+      "to": "COMP-diagnose",
+      "type": "located_in",
+      "created_at": "2026-08-23T05:46:56+00:00"
+    },
+    {
+      "from": "TASK-051",
+      "to": "ISS-043",
+      "type": "addresses",
+      "created_at": "2026-08-23T05:46:56+00:00"
+    },
+    {
+      "from": "DEC-050",
+      "to": "TASK-051",
+      "type": "governs",
+      "created_at": "2026-08-23T05:46:56+00:00"
+    },
+    {
+      "from": "DEC-050",
+      "to": "DEC-049",
+      "type": "supersedes",
+      "created_at": "2026-08-23T05:46:56+00:00"
+    },
+    {
+      "from": "CHG-044",
+      "to": "TASK-051",
+      "type": "implements",
+      "created_at": "2026-08-23T05:47:10+00:00"
+    },
+    {
+      "from": "CHG-044",
+      "to": "ISS-043",
+      "type": "resolves",
+      "created_at": "2026-08-23T05:47:10+00:00"
     }
   ]
 }
