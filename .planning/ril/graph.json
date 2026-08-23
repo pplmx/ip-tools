@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-23T01:19:47+00:00",
+  "updated_at": "2026-08-23T01:25:07+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -2066,6 +2066,54 @@
       "touched_round": 0,
       "commit": "f2c20ca2da0358c0ac77935a06a8812eacca7bc1",
       "summary": "Added certificate_coverage_rules: Medium Certificate diagnosis on SAN/SNI mismatch, empty SANs, or wrong-apex wildcard, sharing cert_covers_hostname (pub(crate)); no new public API; unit tests."
+    },
+    "ISS-031": {
+      "id": "ISS-031",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T01:21:23+00:00",
+      "updated_at": "2026-08-23T01:25:07+00:00",
+      "touched_round": 0,
+      "severity": "low",
+      "summary": "The single-shot http/http2/http3 probes accept --max-body-bytes, but diagnose — which runs the exact same library probes in its HTTP phase — cannot bound its response-body reads, so a diagnose run always uses the fixed 1 MiB default and cannot observe a larger body (e.g. a big API page) in its HTTP evidence."
+    },
+    "TASK-039": {
+      "id": "TASK-039",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T01:21:23+00:00",
+      "updated_at": "2026-08-23T01:25:07+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.25,
+      "unlock_factor": 1,
+      "summary": "Thread diagnose --max-body-bytes through the HTTP phase: parse the flag, route the http/http2/http3 probe calls in collect_http_probes through the configurable *_output entry points (passing max_body_bytes and None output), so a diagnose run can raise/lower the response-body read cap like the single-shot probes. No output-body (rejected DEC-032); scalar cap only. Pinned by a fixture-gated test on big.invalid."
+    },
+    "DEC-038": {
+      "id": "DEC-038",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T01:21:23+00:00",
+      "updated_at": "2026-08-23T01:21:23+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-23): diagnose --max-body-bytes. The HTTP phase of diagnose runs the same http/http2/http3 probes that now carry a configurable body cap, but diagnose hard-codes the 1 MiB default. Thread the flag through collect_http_probes (via the *_output variants with None output), so a diagnose run can bound >1 MiB response reads — parity with the single-shot probes. This is distinct from the rejected DEC-032 output-body on diagnose (a scalar read bound has an unambiguous meaning; writing a body does not). No public API change (CLI + internal threading).",
+      "alternatives_rejected": "adding --output-body to diagnose (rejected DEC-032 as ambiguous across protocols/addresses); leaving it fixed at 1 MiB (diagnose cannot observe large bodies); only easing on tls phase (unrelated)."
+    },
+    "CHG-032": {
+      "id": "CHG-032",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T01:25:07+00:00",
+      "updated_at": "2026-08-23T01:25:07+00:00",
+      "touched_round": 0,
+      "commit": "ae407d8b205114462cd8f84f829eadd454887baa",
+      "summary": "Threaded diagnose --max-body-bytes through the HTTP phase via the configurable probe entry points (scalar cap, None output); no API change; fixture test."
     }
   },
   "edges": [
@@ -3430,6 +3478,42 @@
       "to": "ISS-030",
       "type": "resolves",
       "created_at": "2026-08-23T01:19:47+00:00"
+    },
+    {
+      "from": "DEC-038",
+      "to": "TASK-039",
+      "type": "governs",
+      "created_at": "2026-08-23T01:21:23+00:00"
+    },
+    {
+      "from": "DEC-038",
+      "to": "DEC-037",
+      "type": "supersedes",
+      "created_at": "2026-08-23T01:21:23+00:00"
+    },
+    {
+      "from": "TASK-039",
+      "to": "ISS-031",
+      "type": "addresses",
+      "created_at": "2026-08-23T01:21:23+00:00"
+    },
+    {
+      "from": "ISS-031",
+      "to": "COMP-diagnose",
+      "type": "located_in",
+      "created_at": "2026-08-23T01:21:24+00:00"
+    },
+    {
+      "from": "CHG-032",
+      "to": "TASK-039",
+      "type": "implements",
+      "created_at": "2026-08-23T01:25:07+00:00"
+    },
+    {
+      "from": "CHG-032",
+      "to": "ISS-031",
+      "type": "resolves",
+      "created_at": "2026-08-23T01:25:07+00:00"
     }
   ]
 }
