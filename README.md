@@ -221,9 +221,11 @@ for more than one host; `--strict` aggregates failed probes across all targets.
 `host,destination,success,latency_ms,failure`; `tls` adds the handshake details
 (version/cipher/ALPN/certificate subject/issuer/expiry); `http`/`http2`/`http3`
 carry the response `protocol,status,location,body_bytes,ttfb_ms,latency_ms,
-sni,version,cipher,alpn,subject,issuer,not_after_utc` — the negotiated TLS
-handshake each HTTPS observation already embeds, so a fleet sweep keeps the
-cert/protocol-version evidence (HTTP/3's QUIC summary exposes version + ALPN).
+sni,version,cipher,alpn,subject,issuer,not_after_utc,headers` — the negotiated
+TLS handshake each HTTPS observation already embeds, plus the observed response
+headers (`server`, `via`, `cf-ray`, `cache-control`, … joined as `Name: value`
+pairs), so a fleet sweep keeps the cert/protocol-version and server/edge
+evidence (HTTP/3's QUIC summary exposes version + ALPN).
 `probe --csv` instead reports the aggregated `--count` latency statistics, and
 `--csv`/`--json`/human output are mutually exclusive on every command.
 

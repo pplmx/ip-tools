@@ -87,7 +87,7 @@ pub(super) async fn run_http(sub_m: &ArgMatches) -> ExitCode {
 /// by `http`, `http2` and `http3`.
 pub(super) fn render_http_csv(per_target: &[(String, Vec<HttpObservation>)]) -> String {
     let mut out =
-        String::from("host,destination,protocol,status,location,body_bytes,ttfb_ms,latency_ms,sni,version,cipher,alpn,subject,issuer,not_after_utc,failure\n");
+        String::from("host,destination,protocol,status,location,body_bytes,ttfb_ms,latency_ms,sni,version,cipher,alpn,subject,issuer,not_after_utc,headers,failure\n");
     for (host, results) in per_target {
         for o in results {
             // The HTTPS probes embed the negotiated TLS handshake in each
@@ -125,6 +125,13 @@ pub(super) fn render_http_csv(per_target: &[(String, Vec<HttpObservation>)]) -> 
             out.push(',');
             out.push_str(&csv_field(cert.and_then(|c| c.not_after_utc.as_deref()).unwrap_or("")));
             out.push(',');
+            // The observed response headers (the diagnostic-relevant set the
+            // human report curates: server identity, CDN/proxy hops, caching,
+            // security markers) as `Name: value` pairs joined by "; ", so a
+            // fleet sweep in a spreadsheet retains the server/edge evidence
+            // instead of dropping it (parity with the TTL/status columns).
+            out.push_str(&csv_field(&curated_headers_csv(&o.headers)));
+            out.push(',');
             out.push_str(&csv_field(
                 &o.failure.as_ref().map_or_else(String::new, |e| e.kind.to_string()),
             ));
@@ -132,6 +139,38 @@ pub(super) fn render_http_csv(per_target: &[(String, Vec<HttpObservation>)]) -> 
         }
     }
     out
+}
+
+/// Join the diagnostic-relevant response headers as `Name: value` pairs
+/// separated by "; " for the CSV `headers` column (empty when there are none
+/// or the probe failed before headers). Matches the curated set the human
+/// report renders and the `Name: value` formatting it uses.
+fn curated_headers_csv(headers: &[(String, String)]) -> String {
+    let mut parts = Vec::new();
+    for (name, value) in headers {
+        if matches!(
+            name.to_ascii_lowercase().as_str(),
+            "server"
+                | "via"
+                | "x-powered-by"
+                | "x-served-by"
+                | "x-cache"
+                | "x-cache-hits"
+                | "cf-ray"
+                | "cf-cache-status"
+                | "age"
+                | "cache-control"
+                | "expires"
+                | "etag"
+                | "last-modified"
+                | "content-type"
+                | "alt-svc"
+                | "set-cookie"
+        ) {
+            parts.push(format!("{name}: {value}"));
+        }
+    }
+    parts.join("; ")
 }
 
 fn opt(v: Option<u64>) -> String {

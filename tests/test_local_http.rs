@@ -2013,13 +2013,17 @@ fn http_cli_csv_export_renders_status_rows() {
     assert_eq!(
         lines.next(),
         Some(
-            "host,destination,protocol,status,location,body_bytes,ttfb_ms,latency_ms,sni,version,cipher,alpn,subject,issuer,not_after_utc,failure"
+            "host,destination,protocol,status,location,body_bytes,ttfb_ms,latency_ms,sni,version,cipher,alpn,subject,issuer,not_after_utc,headers,failure"
         ),
         "CSV header: {stdout}"
     );
     assert!(
         lines.any(|l| l.starts_with("127.0.0.1,") && l.contains(",200,")),
         "expected a row with status 200: {stdout}"
+    );
+    assert!(
+        stdout.contains("server: ip-tools-fixture"),
+        "the http --csv row should carry the observed response headers (the fixture sets `server: ip-tools-fixture`): {stdout}"
     );
 }
 
