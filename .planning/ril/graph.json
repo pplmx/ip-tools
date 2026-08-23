@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-23T05:03:52+00:00",
+  "updated_at": "2026-08-23T05:15:54+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -2450,6 +2450,54 @@
       "touched_round": 0,
       "commit": "f77d683dd890b9a5c924f6457556207481f9b028",
       "summary": "Added four Keep-a-Changelog Unreleased/Added entries (newest-first at the top) documenting the redirect diagnosis, not-yet-valid certificate, diagnose concurrent sweep and probe concurrent sweep milestones, each in the repo's established style with a public-API note and pinned-by-test evidence. Verified no new rumdl lint issues from the additions."
+    },
+    "ISS-039": {
+      "id": "ISS-039",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T05:06:40+00:00",
+      "updated_at": "2026-08-23T05:15:54+00:00",
+      "touched_round": 0,
+      "severity": "low",
+      "summary": "The DNS diagnostics support A/AAAA/CNAME/MX/TXT/NS/SOA/CAA/SRV but have no PTR/reverse-DNS query, so an operator cannot answer the common 'what hostname is behind this IP' question (rDNS for mail/anti-spam, identifying infrastructure, CDN reconciliation) with dns. Reverse lookups require constructing the reverse-zone name (in-addr.arpa / ip6.arpa), which is tedious to do by hand."
+    },
+    "TASK-047": {
+      "id": "TASK-047",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T05:06:40+00:00",
+      "updated_at": "2026-08-23T05:15:54+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.4,
+      "unlock_factor": 1,
+      "summary": "Add PTR (reverse DNS) support: DnsRecordType::Ptr + DnsRecord::Ptr, wire the PTR lookup through the hickory resolver path, the DoH/DoT wire builder+parser (type 12), and parse_record_type; when the target is an IP literal, auto-construct the reverse-zone name (in-addr.arpa / ip6.arpa) so  just works and reports the user's literal target. Pinned by unit tests for the wire/name/reverse-zone helpers and a fixture CLI test against a canned PTR responder."
+    },
+    "DEC-046": {
+      "id": "DEC-046",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T05:06:59+00:00",
+      "updated_at": "2026-08-23T05:06:59+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-23): add reverse DNS (PTR). The dns surface covers every forward record type but no PTR, so rDNS (mail anti-spam verification, identifying the hostname behind an IP, CDN/infra reconciliation) is not possible. PTR is a single-name rdata like CNAME/NS, so it slots cleanly into the existing typed-record, hickory, and wire builder/parser pipeline. Auto-construct the reverse-zone name from an IP target so the common 'dns --record-type PTR <ip>' command reads naturally. Public API change (two new enum variants); api-baseline regenerated.",
+      "alternatives_rejected": "a separate reverse/ptr subcommand (--record-type PTR is the natural, minimal surface); requiring the user to pass the arpa name manually (poor UX; auto-construction is deterministic and standard); treating PTR as non-diagnostic (reverse DNS is a normal dns capability)."
+    },
+    "CHG-040": {
+      "id": "CHG-040",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T05:15:53+00:00",
+      "updated_at": "2026-08-23T05:15:53+00:00",
+      "touched_round": 0,
+      "commit": "5c3a8365fa66f621d00169da466eee1487146351",
+      "summary": "Added PTR (reverse DNS) support: DnsRecordType::Ptr + DnsRecord::Ptr, hickory lookup mapping, DoH/DoT wire builder+parser type 12, parse_record_type PTR, and auto reverse-zone construction (in-addr.arpa / ip6.arpa) so 'dns --record-type PTR <ip>' resolves the mapped hostname(s). Report rt_label/order extended; api-baseline regenerated; README + CHANGELOG updated. Pinned by unit tests (reverse_zone v4/v6, qtype 12, wire PTR decode, parse_record_type) and a fixture CLI test surfacing host.example via --doh /dns-ptr-query."
     }
   },
   "edges": [
@@ -4102,6 +4150,42 @@
       "to": "ISS-038",
       "type": "resolves",
       "created_at": "2026-08-23T05:03:52+00:00"
+    },
+    {
+      "from": "ISS-039",
+      "to": "COMP-dns",
+      "type": "located_in",
+      "created_at": "2026-08-23T05:06:59+00:00"
+    },
+    {
+      "from": "TASK-047",
+      "to": "ISS-039",
+      "type": "addresses",
+      "created_at": "2026-08-23T05:06:59+00:00"
+    },
+    {
+      "from": "DEC-046",
+      "to": "TASK-047",
+      "type": "governs",
+      "created_at": "2026-08-23T05:06:59+00:00"
+    },
+    {
+      "from": "DEC-046",
+      "to": "DEC-045",
+      "type": "supersedes",
+      "created_at": "2026-08-23T05:06:59+00:00"
+    },
+    {
+      "from": "CHG-040",
+      "to": "TASK-047",
+      "type": "implements",
+      "created_at": "2026-08-23T05:15:53+00:00"
+    },
+    {
+      "from": "CHG-040",
+      "to": "ISS-039",
+      "type": "resolves",
+      "created_at": "2026-08-23T05:15:54+00:00"
     }
   ]
 }
