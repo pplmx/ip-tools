@@ -281,6 +281,46 @@ pub(super) fn certificate_coverage_rules(input: &DiagnosticInput, out: &mut Vec<
     }
 }
 
+/// Automated redirect observation into a diagnosis: a 3xx response with a
+/// `Location` on a reachable host is a very common real-world signal — a
+/// captive portal, a login/auth wall, a moved domain, or middleware rewriting
+/// — that `diagnose` currently ignores. This surfaces it (Low) without ever
+/// following the redirect (see DEC-003: a redirect is an observation, not
+/// followed).
+pub(super) fn redirect_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosis>) {
+    let redirects: Vec<String> = input
+        .http
+        .iter()
+        .filter(|h| h.failure.is_none())
+        .filter_map(|h| {
+            let status = h.status?;
+            if (300..400).contains(&status) {
+                let target = h.location.as_deref().unwrap_or("(no Location header)");
+                Some(format!("{} -> {status} {target}", h.destination))
+            } else {
+                None
+            }
+        })
+        .collect();
+    if !redirects.is_empty() {
+        out.push(Diagnosis {
+            severity: Severity::Low,
+            category: DiagnosticCategory::Http,
+            confidence: Confidence::Low,
+            summary: format!("HTTP {} which redirected", input.hostname),
+            evidence: vec![Evidence {
+                detail: format!("redirect observed ({})", redirects.join("; ")),
+            }],
+            possible_causes: vec![
+                "captive portal / login wall intercepting the request".into(),
+                "site or resource permanently moved".into(),
+                "authentication or session redirect".into(),
+                "CDN / middleware rewriting the URL".into(),
+            ],
+        });
+    }
+}
+
 /// Summarize the classified failure counts of a probe result.
 fn failure_summary_opt(p: &ProbeResult) -> String {
     if p.failure_counts.is_empty() {
@@ -467,6 +507,57 @@ mod tests {
             &mut out,
         );
         assert!(out.iter().any(|d| d.category == DiagnosticCategory::Http));
+    }
+
+    #[test]
+    fn redirect_fires_on_3xx_with_location() {
+        let obs = [HttpObservation {
+            destination: "1.1.1.1:443".parse().unwrap(),
+            host: "example.com".into(),
+            method: "GET".into(),
+            path: "/".into(),
+            tls: None,
+            protocol: Some("HTTP/1.1".into()),
+            status: Some(302),
+            location: Some("https://example.com/login".into()),
+            headers: Vec::new(),
+            body_bytes: Some(0),
+            body_snippet: None,
+            ttfb_ms: None,
+            latency_ms: Some(20),
+            failure: None,
+        }];
+        let mut out = Vec::new();
+        redirect_rules(&input(&[], &obs, &[]), &mut out);
+        let r = out.iter().find(|d| d.summary.contains("redirected"));
+        assert!(r.is_some(), "redirect diagnosis should fire: {out:?}");
+        assert_eq!(r.unwrap().severity, Severity::Low);
+        assert!(
+            out.iter().any(|d| d
+                .evidence
+                .iter()
+                .any(|e| e.detail.contains("https://example.com/login"))),
+            "redirect evidence should name the Location target: {out:?}"
+        );
+    }
+
+    #[test]
+    fn redirect_silent_on_2xx_and_on_failure() {
+        // A successful 2xx carries no redirect signal.
+        let ok = [http("1.1.1.1:443", "HTTP/1.1", Some(200), None)];
+        let mut out = Vec::new();
+        redirect_rules(&input(&[], &ok, &[]), &mut out);
+        assert!(out.is_empty(), "2xx must not raise a redirect diagnosis: {out:?}");
+
+        // A failed probe is owned by the HTTP-layer error rule, not a redirect
+        // claim (the redirect rule only looks at completed observations).
+        let failed = [http("1.1.1.1:443", "HTTP/1.1", None, Some("request failed"))];
+        let mut out = Vec::new();
+        redirect_rules(&input(&[], &failed, &[]), &mut out);
+        assert!(
+            out.is_empty(),
+            "failed probe must not raise a redirect diagnosis: {out:?}"
+        );
     }
 
     #[test]

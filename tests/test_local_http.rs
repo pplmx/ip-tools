@@ -2136,6 +2136,51 @@ fn diagnose_cli_strict_aggregates_across_targets() {
 }
 
 #[test]
+fn diagnose_surfaces_a_redirect_observation() {
+    // The diagnostic engine must surface a 3xx redirect as a first-class
+    // observation (captive portal / login wall / moved domain / middleware
+    // rewrite), rather than reporting the host Healthy. The fixture's
+    // `redirect.invalid` route answers 302 with a Location; hitting the
+    // fixture's IP literal with `--sni redirect.invalid` reaches that route,
+    // and the diagnose human output must name the redirect — not silently
+    // pass the host as healthy.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let addr = fixture.tcp_addr();
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "diagnose",
+            &addr.to_string(),
+            "--sni",
+            "redirect.invalid",
+            "--insecure",
+            "--timeout",
+            "1500",
+        ])
+        .output()
+        .expect("run diagnose against the redirect route");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "diagnose should not fail hard on a redirect: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.contains("redirected"),
+        "diagnose should raise a redirect diagnosis: {stdout}"
+    );
+    assert!(
+        stdout.contains("redirect.invalid/landed"),
+        "redirect diagnosis should name the Location target: {stdout}"
+    );
+}
+
+#[test]
 fn http_cli_sni_override_reaches_the_http_host_header() {
     // `--sni` must present the chosen name as the HTTP `Host` header while
     // still connecting to the target's resolved addresses. The fixture routes
