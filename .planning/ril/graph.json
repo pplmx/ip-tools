@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-23T08:41:28+00:00",
+  "updated_at": "2026-08-23T09:03:30+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -3122,6 +3122,66 @@
       "touched_round": 0,
       "commit": "c29afff2426600516f32b8b671f5235da20eb3af",
       "summary": "Added latency-instability detection: new latency_instability_rules engine rule raises an Intermittent (High) diagnosis when a repeat probe succeeds with >=3 attempts and p95 >= 3*p50 (a long slow tail on an otherwise transport/status-healthy path). Added a fixture 'slowflap.invalid' route that alternates fast / ~120ms responses with a stable 200 (separate TCP/QUIC counters) and a fixture-gated CLI test proving diagnose surfaces the verdict."
+    },
+    "ISS-053": {
+      "id": "ISS-053",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T09:03:10+00:00",
+      "updated_at": "2026-08-23T09:03:17+00:00",
+      "touched_round": 0,
+      "severity": "low",
+      "summary": "Every HTTP-family probe (http/http2/http3/probe/diagnose) connects over TLS — there is no way to probe a cleartext HTTP endpoint (internal services, captive portals, HTTP-only health checks, plaintext proxies). A TLS probe to such an endpoint fails with a handshake error instead of observing the real HTTP behaviour, so the tool cannot report on the plaintext HTTP surface at all."
+    },
+    "TASK-061": {
+      "id": "TASK-061",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T09:03:10+00:00",
+      "updated_at": "2026-08-23T09:03:17+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.7,
+      "unlock_factor": 1,
+      "summary": "Add cleartext HTTP/1.1 probing: refactor the http module's probe body so the HTTP/1.1 request/bounded-body/TTFB logic is shared between the existing TLS path and a new raw-TCP path (no handshake), expose http::probe_plain / probe_plain_output, and add a --plain flag to the http CLI (mutually exclusive with --insecure/--tls-version). Public API change (api-baseline regenerated). Pinned by a library test (probe_plain gets a 200 from a new plaintext fixture listener) and a fixture-gated CLI test: http <addr> --plain renders the cleartext 200 / HTTP/1.1 / server header."
+    },
+    "DEC-060": {
+      "id": "DEC-060",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T09:03:10+00:00",
+      "updated_at": "2026-08-23T09:03:10+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-23): add cleartext HTTP support. Every HTTP probe is TLS-only, so a plaintext endpoint (internal service, captive portal, HTTP-only health check, plaintext proxy) cannot be observed — a TLS probe fails with a handshake error instead of reporting the real HTTP behaviour. Scope as a vertical slice on the http command first (matching how --tls-version first landed on tls), sharing the existing request/body/TTFB logic so the observation shape (status/headers/body/TTFB) is identical, just without the embedded TLS row.",
+      "alternatives_rejected": "leaving the probes TLS-only (plaintext endpoints stay unobservable); a separate --plain on every command at once (too broad for one slice; http first, later extend like --tls-version); reusing --insecure for plaintext (insecure still does a TLS handshake, it only skips validation — a different semantics)."
+    },
+    "CHG-054": {
+      "id": "CHG-054",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T09:03:16+00:00",
+      "updated_at": "2026-08-23T09:03:16+00:00",
+      "touched_round": 0,
+      "commit": "9cf44a15daa9bf25e7c95f462dd873fbbaed01d6",
+      "summary": "Added cleartext HTTP/1.1 probing: refactored http.rs so the HTTP/1.1 request/bounded-body/TTFB logic is shared between the TLS path and a new raw-TCP (no-handshake) path via a generic drive_http1; added public http::probe_plain / probe_plain_output; added a --plain flag to the http CLI (conflicts with --insecure/--tls-version). Added a plaintext fixture listener + library and fixture-gated CLI tests. Public API change (api-baseline regenerated)."
+    },
+    "EVID-latency-subms": {
+      "id": "EVID-latency-subms",
+      "type": "evidence",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T09:03:30+00:00",
+      "updated_at": "2026-08-23T09:03:30+00:00",
+      "touched_round": 0,
+      "source": "tests/test_local_http.rs diagnose_flags_latency_instability_on_stable_transport + src/diagnostics/layer.rs latency_instability_rules",
+      "summary": "The latency-instability rule's p50==0 guard wrongly skipped a real slow tail when the fixture's fast responses measured 0 ms (sub-millisecond): sorted [0,0,123] gave p50=0 so the rule bailed even though p95=123 was a genuine flap. Fixed by flooring the scale base at max(p50,1); the slowflap route also became a deterministic fast-fast-slow mod-3 pattern.",
+      "confidence": 1.0
     }
   },
   "edges": [
@@ -5278,6 +5338,42 @@
       "to": "ISS-052",
       "type": "resolves",
       "created_at": "2026-08-23T08:41:28+00:00"
+    },
+    {
+      "from": "ISS-053",
+      "to": "COMP-http",
+      "type": "located_in",
+      "created_at": "2026-08-23T09:03:16+00:00"
+    },
+    {
+      "from": "TASK-061",
+      "to": "ISS-053",
+      "type": "addresses",
+      "created_at": "2026-08-23T09:03:16+00:00"
+    },
+    {
+      "from": "DEC-060",
+      "to": "TASK-061",
+      "type": "governs",
+      "created_at": "2026-08-23T09:03:17+00:00"
+    },
+    {
+      "from": "DEC-060",
+      "to": "DEC-059",
+      "type": "supersedes",
+      "created_at": "2026-08-23T09:03:17+00:00"
+    },
+    {
+      "from": "CHG-054",
+      "to": "TASK-061",
+      "type": "implements",
+      "created_at": "2026-08-23T09:03:17+00:00"
+    },
+    {
+      "from": "CHG-054",
+      "to": "ISS-053",
+      "type": "resolves",
+      "created_at": "2026-08-23T09:03:17+00:00"
     }
   ]
 }
