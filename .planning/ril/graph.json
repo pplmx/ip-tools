@@ -1,8 +1,8 @@
 {
   "ril_version": 1,
-  "round": 0,
+  "round": 1,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-23T12:50:01+00:00",
+  "updated_at": "2026-08-23T14:41:30+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -41,7 +41,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 0,
+      "touched_round": 1,
       "desc": "HTTPS/HTTP1.1 single request per address over TLS, status/redirect/body-size"
     },
     "COMP-http2": {
@@ -3478,7 +3478,7 @@
       "version": 1,
       "created_at": "2026-08-23T12:40:38+00:00",
       "updated_at": "2026-08-23T12:40:38+00:00",
-      "touched_round": 0,
+      "touched_round": 1,
       "rationale": "New milestone (2026-08-23): surface the certificate SANs and covers <sni> verdict in the tls/http/http2/http3 --csv exports. The SANs (DEC-024) and the hostname-coverage verdict (DEC-025) already ship in the human report and --json (and the http family human/JSON since DEC-039), but both CSV exporters still drop them: a fleet sweep loaded into a spreadsheet loses the wrong-host/wildcard-mismatch signal exactly where cross-host comparisons happen. One sans cell + one covers cell per row matches the tls-columns/headers pattern and needs no new dependency.",
       "alternatives_rejected": "not adding covers to the http csv (the cert column exists but the verdict is the actual diagnostic signal); not slowing the repeated probe (renderer-only change, zero probe-path impact)"
     },
@@ -3518,6 +3518,54 @@
       "touched_round": 0,
       "commit": "5f89b4b1d712ef63cd439bd12b8c578cac549c5a",
       "summary": "tls/http/http2/http3 --csv carry cert SANs (';'-joined) and the covers verdict ('yes'/blank), mirroring the human report + --json; cert_covers_hostname widened to pub for the CLI exporter"
+    },
+    "DEC-068": {
+      "id": "DEC-068",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T13:36:04+00:00",
+      "updated_at": "2026-08-23T13:36:04+00:00",
+      "touched_round": 1,
+      "rationale": "New milestone (2026-08-23): add --plain to diagnose so the full pipeline can observe a cleartext HTTP endpoint. The http single-shot (DEC-060) and the repeat probe (DEC-061) already probe plaintext HTTP/1.1, but diagnose always runs TLS probes, so a plaintext internal service / captive portal / HTTP-only health check gets a false 'TLS handshake fails where TCP connects' verdict and the HTTP phase fails at the handshake. diagnose --plain skips the TLS observation phase and runs the HTTP phase + the stability repeat over cleartext HTTP/1.1 -- the endpoint is then observed truthfully end-to-end.",
+      "alternatives_rejected": "not adding --plain to http2/http3 in diagnose (they are TLS-only protocols; cleartext HTTP/2 (h2c) would be a separate, larger feature and is out of scope); not silently skipping TLS when the target is a plain listener (an explicit opt-in flag keeps the TLS evidence for HTTPS-only targets)"
+    },
+    "ISS-061": {
+      "id": "ISS-061",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T13:37:24+00:00",
+      "updated_at": "2026-08-23T14:41:30+00:00",
+      "touched_round": 1,
+      "severity": "medium",
+      "summary": "diagnose always runs TLS probes for its HTTP evidence and stability repeat, so against a plaintext HTTP endpoint (internal service, captive portal, HTTP-only health check -- exactly the endpoints http --plain and probe --protocol http --plain already probe) it reports a false 'TLS handshake fails where TCP connects' verdict and the HTTP phase never observes the endpoint truthfully. The full diagnostic pipeline is the last cleartext surface that lacks --plain."
+    },
+    "TASK-069": {
+      "id": "TASK-069",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T13:38:43+00:00",
+      "updated_at": "2026-08-23T14:41:30+00:00",
+      "touched_round": 1,
+      "category": "core-feature",
+      "severity": 0.7,
+      "confidence": 1,
+      "effort": 0.3,
+      "unlock_factor": 1.2,
+      "summary": "Add --plain to diagnose: accept the flag (mutually exclusive with --insecure/--tls-version, reusing plain_arg), thread it into diagnose_one, and when set skip the TLS observation phase (empty tls observations) while running the HTTP phase via probe_plain_output and the stability repeat via probe::http_repeat_plain -- so a plaintext endpoint is observed end-to-end over cleartext HTTP/1.1 without a false TLS-failure verdict. CLI + pipeline change, no new public API (reuses existing plain entry points). Pinned by a fixture-gated CLI test: diagnose <fixture-plain-addr> --plain exits 0, renders HTTP ok, and carries no TLS failure verdict."
+    },
+    "CHG-062": {
+      "id": "CHG-062",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T14:41:30+00:00",
+      "updated_at": "2026-08-23T14:41:30+00:00",
+      "touched_round": 1,
+      "commit": "e451869c63e985cf4160cde7c2fd158bc32d2817",
+      "summary": "diagnose --plain: skip the TLS phase and probe the HTTP phase + stability repeat over cleartext HTTP/1.1 (probe_plain_output, http_repeat_plain) so a plaintext endpoint is observed truthfully"
     }
   },
   "edges": [
@@ -5962,6 +6010,42 @@
       "to": "ISS-060",
       "type": "resolves",
       "created_at": "2026-08-23T12:50:01+00:00"
+    },
+    {
+      "from": "DEC-068",
+      "to": "TASK-069",
+      "type": "governs",
+      "created_at": "2026-08-23T13:39:40+00:00"
+    },
+    {
+      "from": "DEC-068",
+      "to": "DEC-067",
+      "type": "supersedes",
+      "created_at": "2026-08-23T13:39:40+00:00"
+    },
+    {
+      "from": "TASK-069",
+      "to": "ISS-061",
+      "type": "addresses",
+      "created_at": "2026-08-23T13:39:40+00:00"
+    },
+    {
+      "from": "ISS-061",
+      "to": "COMP-http",
+      "type": "located_in",
+      "created_at": "2026-08-23T13:39:40+00:00"
+    },
+    {
+      "from": "CHG-062",
+      "to": "TASK-069",
+      "type": "implements",
+      "created_at": "2026-08-23T14:41:30+00:00"
+    },
+    {
+      "from": "CHG-062",
+      "to": "ISS-061",
+      "type": "resolves",
+      "created_at": "2026-08-23T14:41:30+00:00"
     }
   ]
 }
