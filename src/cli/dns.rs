@@ -1,6 +1,6 @@
 //! `dns` subcommand handler.
 
-use super::{parallel_map, parse_custom_servers, DEFAULT_PORT};
+use super::{parallel_map, parse_custom_servers};
 use clap::ArgMatches;
 use ip_tools::dns::{aggregate_repeat, DnsClient};
 use ip_tools::model::{DnsObservation, DnsRecord, DnsRecordType, DnsRepeatResult, ResolverKind};
@@ -22,20 +22,13 @@ pub(super) async fn run_dns(sub_m: &ArgMatches) -> ExitCode {
     let timeout_ms = *sub_m.get_one::<u64>("timeout").expect("timeout has default");
     let timeout = Duration::from_millis(timeout_ms);
 
-    let raw_targets: Vec<String> = sub_m
-        .get_many::<String>("target")
-        .map(|vals| vals.cloned().collect())
-        .unwrap_or_default();
-    let mut targets = Vec::with_capacity(raw_targets.len());
-    for raw in &raw_targets {
-        match Target::parse(raw, DEFAULT_PORT) {
-            Ok(t) => targets.push(t),
-            Err(e) => {
-                eprintln!("Error: {e}");
-                return ExitCode::FAILURE;
-            }
+    let targets = match super::parse_targets(sub_m) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("Error: {e}");
+            return ExitCode::FAILURE;
         }
-    }
+    };
 
     let custom: Vec<SocketAddr> = match parse_custom_servers(sub_m) {
         Ok(v) => v,

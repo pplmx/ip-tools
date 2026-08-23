@@ -1,6 +1,6 @@
 //! `diagnose` subcommand handler.
 
-use super::{parallel_map, DEFAULT_PORT};
+use super::parallel_map;
 use clap::ArgMatches;
 use ip_tools::diagnostics::{diagnose, DiagnosticInput};
 use ip_tools::dns::DnsClient;
@@ -41,20 +41,13 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
     let concurrency = *sub_m.get_one::<usize>("concurrency").expect("concurrency has default");
     let timeout = Duration::from_millis(timeout_ms);
 
-    let raw_targets: Vec<String> = sub_m
-        .get_many::<String>("target")
-        .map(|vals| vals.cloned().collect())
-        .unwrap_or_default();
-    let mut targets = Vec::with_capacity(raw_targets.len());
-    for raw in &raw_targets {
-        match Target::parse(raw, DEFAULT_PORT) {
-            Ok(t) => targets.push(t),
-            Err(e) => {
-                eprintln!("Error: {e}");
-                return ExitCode::FAILURE;
-            }
+    let targets = match super::parse_targets(sub_m) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("Error: {e}");
+            return ExitCode::FAILURE;
         }
-    }
+    };
 
     // A `--sni` override presents a chosen hostname as SNI (and HTTP `Host`)
     // while the probe pipeline still connects to each target's resolved

@@ -80,6 +80,10 @@ ip-tools dns example.com example.org another.net   # DNS health sweep (multi-tar
 turn (or in parallel with `--concurrency N`, which keeps output in target
 order). Human output renders every host; `--json` with >1 target emits a
 per-target array; `--strict` fails if any resolver on any target failed.
+Every multi-target command also reads a target list from a file or stdin:
+`@hosts.txt` expands to the file's `host[:port]` lines (blank lines and `#`
+comments skipped) and `-` reads them from stdin, so a big sweep doesn't need
+one giant shell command line.
 `--csv` emits a `host,resolver,record_type,attempts,success_rate,p50,p95,max,
 failures` row per (resolver, record type) — single-shot rows are attempts=1,
 and `--count` repeat rows use the aggregated latency stats — so a DNS sweep

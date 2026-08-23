@@ -944,6 +944,50 @@ fn dns_cli_ptr_repeat_honors_count() {
 }
 
 #[test]
+fn dns_cli_reads_targets_from_file_and_stdin() {
+    // A fleet-sweep target list can come from a file (`@path`, with blank lines
+    // and `#` comments skipped) or stdin (`-`), parity with `--header`/`--body`.
+    use std::io::Write;
+    let path = std::env::temp_dir().join(format!("ip-tools-targets-{}.txt", std::process::id()));
+    let mut f = std::fs::File::create(&path).expect("create target file");
+    writeln!(f, "# fleet sweep\n1.1.1.1\n\n8.8.8.8\n").expect("write target file");
+
+    let from_file = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args(["dns", &format!("@{}", path.display())])
+        .output()
+        .expect("run dns @file");
+    let _ = std::fs::remove_file(&path);
+    let file_out = String::from_utf8_lossy(&from_file.stdout);
+    assert!(
+        from_file.status.success(),
+        "dns @file should exit 0: {file_out}\n{}",
+        String::from_utf8_lossy(&from_file.stderr)
+    );
+    assert!(
+        file_out.contains("1.1.1.1") && file_out.contains("8.8.8.8"),
+        "both file targets must resolve (comments/blanks skipped): {file_out}"
+    );
+
+    let from_stdin = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args(["dns", "-"])
+        .write_stdin("1.1.1.1\n8.8.8.8\n")
+        .output()
+        .expect("run dns - (stdin)");
+    let stdin_out = String::from_utf8_lossy(&from_stdin.stdout);
+    assert!(
+        from_stdin.status.success(),
+        "dns - (stdin) should exit 0: {stdin_out}\n{}",
+        String::from_utf8_lossy(&from_stdin.stderr)
+    );
+    assert!(
+        stdin_out.contains("1.1.1.1") && stdin_out.contains("8.8.8.8"),
+        "both stdin targets must resolve: {stdin_out}"
+    );
+}
+
+#[test]
 fn diagnose_reverse_surfaces_ptr_evidence() {
     // `diagnose <ip> --reverse` adds reverse-DNS (PTR) evidence for an
     // IP-literal target. Against the fixture's canned PTR endpoint the

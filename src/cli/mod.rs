@@ -602,20 +602,13 @@ where
     // instead of each target's host, applied to every target in a sweep.
     let sni = sub_m.try_get_one::<String>("sni").ok().flatten().cloned();
 
-    let raw_targets: Vec<String> = sub_m
-        .get_many::<String>("target")
-        .map(|vals| vals.cloned().collect())
-        .unwrap_or_default();
-    let mut targets = Vec::with_capacity(raw_targets.len());
-    for raw in &raw_targets {
-        match Target::parse(raw, DEFAULT_PORT) {
-            Ok(t) => targets.push(t),
-            Err(e) => {
-                eprintln!("Error: {e}");
-                return ExitCode::FAILURE;
-            }
+    let targets = match parse_targets(sub_m) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("Error: {e}");
+            return ExitCode::FAILURE;
         }
-    }
+    };
     let single = targets.len() == 1;
 
     // Probe targets concurrently (bounded by `--concurrency`; 1 keeps the
@@ -936,6 +929,51 @@ pub fn parse_custom_headers(sub_m: &ArgMatches) -> Result<Vec<(String, String)>,
         }
     }
     Ok(headers)
+}
+
+/// Parse a sweep command's positional `target` list (each `host[:port]`),
+/// expanding a leading `@path` to the file's lines and `-` to stdin lines —
+/// parity with `--header`/`--body`, so a large fleet sweep can come from a
+/// file instead of the shell command line. Blank lines and `#` comments in a
+/// list file are skipped.
+pub fn parse_targets(sub_m: &ArgMatches) -> Result<Vec<Target>, String> {
+    fn parse_line(raw: &str) -> Result<Option<Target>, String> {
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with('#') {
+            return Ok(None);
+        }
+        Target::parse(line, DEFAULT_PORT).map(Some).map_err(|e| e.to_string())
+    }
+
+    let mut targets = Vec::new();
+    if let Some(values) = sub_m.get_many::<String>("target") {
+        for raw in values {
+            if raw == "-" {
+                let mut text = String::new();
+                std::io::Read::read_to_string(&mut std::io::stdin(), &mut text)
+                    .map_err(|e| format!("could not read targets from stdin: {e}"))?;
+                for line in text.lines() {
+                    if let Some(t) = parse_line(line)? {
+                        targets.push(t);
+                    }
+                }
+            } else if let Some(path) = raw.strip_prefix('@') {
+                if path.is_empty() {
+                    return Err("target @<file> requires a file path after '@'".to_string());
+                }
+                let text =
+                    std::fs::read_to_string(path).map_err(|e| format!("could not read target file {path:?}: {e}"))?;
+                for line in text.lines() {
+                    if let Some(t) = parse_line(line)? {
+                        targets.push(t);
+                    }
+                }
+            } else if let Some(t) = parse_line(raw)? {
+                targets.push(t);
+            }
+        }
+    }
+    Ok(targets)
 }
 
 /// Resolve the `--body` value into request-body bytes: `-` reads all of
