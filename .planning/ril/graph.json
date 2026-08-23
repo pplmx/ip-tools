@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-23T01:14:48+00:00",
+  "updated_at": "2026-08-23T01:19:47+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -2018,6 +2018,54 @@
       "touched_round": 0,
       "commit": "bdcefaddff5c1655174b8209f0dce7d131305439",
       "summary": "Added automated certificate-expiry diagnosis: DiagnosticCategory::Certificate + certificate_lifetime_rules (Medium expired / Low expiring within 30d) reusing the report's shared day-diff helpers; api-baseline regenerated; unit tests."
+    },
+    "ISS-030": {
+      "id": "ISS-030",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T01:17:43+00:00",
+      "updated_at": "2026-08-23T01:19:46+00:00",
+      "touched_round": 0,
+      "severity": "low",
+      "summary": "The TLS report shows a covers <sni>: no verdict when the served certificate's SANs do not cover the presented hostname, but the diagnose engine raises no automated verdict for a wrong-host or wildcard-mismatch certificate — so a scripted/CI diagnose sweep under --insecure (where chain validation is skipped and the mismatch is otherwise silent) misses a cert that is not valid for the host being served."
+    },
+    "TASK-038": {
+      "id": "TASK-038",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T01:17:43+00:00",
+      "updated_at": "2026-08-23T01:19:46+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.25,
+      "unlock_factor": 1,
+      "summary": "Add an automated certificate hostname-coverage diagnosis: share cert_covers_hostname as pub(crate), add a rule that scans TLS observations and raises a Certificate diagnosis (Medium) when the cert's SANs do not cover observation.sni (wrong-host / wildcard mismatch), reusing the report matcher so report and engine agree. Pin with unit tests for exact/wildcard/IP/coverage cases; no new category needed (reuses Certificate)."
+    },
+    "DEC-037": {
+      "id": "DEC-037",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T01:17:43+00:00",
+      "updated_at": "2026-08-23T01:17:43+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-23): automate certificate hostname-coverage diagnosis. The report already surfaces covers <sni>: no, but diagnose stays silent, so a CI health sweep under --insecure misses a wrong-host/wildcard-mismatch cert. Add a rule sharing the report's cert_covers_hostname matcher (pub(crate)) and raising a Medium Certificate diagnosis when the SANs don't cover the presented SNI. Reuses the Certificate category from DEC-036; no new API change (matcher made pub(crate) only).",
+      "alternatives_rejected": "a new category (reuses Certificate, cleaner); duplicating the matcher in diagnostics (drift risk); only matching IP literals (DNS wildcard/exact mismatch also matters); raising High (a coverage mismatch alone is Medium; chain validation would fail loudly without --insecure)."
+    },
+    "CHG-031": {
+      "id": "CHG-031",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T01:19:46+00:00",
+      "updated_at": "2026-08-23T01:19:46+00:00",
+      "touched_round": 0,
+      "commit": "f2c20ca2da0358c0ac77935a06a8812eacca7bc1",
+      "summary": "Added certificate_coverage_rules: Medium Certificate diagnosis on SAN/SNI mismatch, empty SANs, or wrong-apex wildcard, sharing cert_covers_hostname (pub(crate)); no new public API; unit tests."
     }
   },
   "edges": [
@@ -3346,6 +3394,42 @@
       "to": "ISS-029",
       "type": "resolves",
       "created_at": "2026-08-23T01:14:48+00:00"
+    },
+    {
+      "from": "DEC-037",
+      "to": "TASK-038",
+      "type": "governs",
+      "created_at": "2026-08-23T01:17:43+00:00"
+    },
+    {
+      "from": "DEC-037",
+      "to": "DEC-036",
+      "type": "supersedes",
+      "created_at": "2026-08-23T01:17:43+00:00"
+    },
+    {
+      "from": "TASK-038",
+      "to": "ISS-030",
+      "type": "addresses",
+      "created_at": "2026-08-23T01:17:43+00:00"
+    },
+    {
+      "from": "ISS-030",
+      "to": "COMP-tls",
+      "type": "located_in",
+      "created_at": "2026-08-23T01:17:43+00:00"
+    },
+    {
+      "from": "CHG-031",
+      "to": "TASK-038",
+      "type": "implements",
+      "created_at": "2026-08-23T01:19:46+00:00"
+    },
+    {
+      "from": "CHG-031",
+      "to": "ISS-030",
+      "type": "resolves",
+      "created_at": "2026-08-23T01:19:47+00:00"
     }
   ]
 }
