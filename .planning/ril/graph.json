@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-23T06:02:44+00:00",
+  "updated_at": "2026-08-23T06:08:09+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -2786,6 +2786,54 @@
       "touched_round": 0,
       "commit": "1d4cd895f6f47aaf6de88cc4003b4b34188d9da9",
       "summary": "Added a statuses column to probe --csv: render_probe_csv now emits the ProbeResult.status_counts distribution (e.g. 200x3;503x2, semicolon-joined, RFC-4180 quoted) per destination row, empty for the tcp/tls transport repeats, matching the human/JSON output of the status feature. Updated the CSV test's expected header and added a fixture-gated CLI test (probe --protocol http --count 3 --csv carries 200x3). Renderer-only, no public API change; CHANGELOG updated."
+    },
+    "ISS-046": {
+      "id": "ISS-046",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T06:07:54+00:00",
+      "updated_at": "2026-08-23T06:08:09+00:00",
+      "touched_round": 0,
+      "severity": "low",
+      "summary": "Every multi-target fleet command (dns, tcp, tls, http, http2, http3, probe, diagnose) requires the target list inline on the shell command line, even though the CLI already supports reading --header and --body from a file or stdin (@path / -). A large fleet sweep targets dozens/hundreds of hosts, where an inline command line is impractical and error-prone; the target-list path is inconsistent with the existing @file/- convention."
+    },
+    "TASK-054": {
+      "id": "TASK-054",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T06:07:54+00:00",
+      "updated_at": "2026-08-23T06:08:09+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.35,
+      "unlock_factor": 1,
+      "summary": "Let every multi-target fleet command read its target list from a file or stdin: add a shared parse_targets helper in the cli that, for each positional target, expands @path to the file's lines (skipping blanks and # comments) and - to stdin lines, then parses each as host[:port] (parity with --header/--body). Replace the three duplicated inline target loops with it, so dns/tcp/tls/http/http2/http3/probe/diagnose all support it. No public API change. Pinned by a fixture-gated CLI test: dns @file and dns - (stdin) each resolve 1.1.1.1 + 8.8.8.8."
+    },
+    "DEC-053": {
+      "id": "DEC-053",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T06:07:54+00:00",
+      "updated_at": "2026-08-23T06:07:54+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-23): add target lists from file/stdin to the fleet sweeps. The CLI already reads --header/--body from @file or - (stdin), but a sweep's target list still had to be inline, which is impractical for dozens/hundreds of hosts. Centralize target parsing in a shared parse_targets helper (expanding @path to lines, - to stdin, parity with --header/--body) and replace the three duplicated loops, so every multi-target command gains it consistently. No public API change.",
+      "alternatives_rejected": "only diagnose/dns (inconsistent -- the loop is shared and every sweep deserves it); a separate --targets flag (a positional @path/- is the established convention); keeping inline-only (ignores a real fleet-ops need and an existing CLI convention)."
+    },
+    "CHG-047": {
+      "id": "CHG-047",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T06:08:09+00:00",
+      "updated_at": "2026-08-23T06:08:09+00:00",
+      "touched_round": 0,
+      "commit": "8989bacb8058b075892a11c010bc96a8d43a140a",
+      "summary": "Added target-list-from-file/stdin support to every multi-target fleet command via a shared parse_targets helper in the cli (each positional target expands @path to the file lines, skipping blanks and # comments, and - to stdin lines), replacing the three duplicated inline target loops in run_probe_flow/diagnose/dns. No public API change; README + CHANGELOG updated. Pinned by a fixture-gated CLI test: dns @file and dns - (stdin) each resolve 1.1.1.1 + 8.8.8.8."
     }
   },
   "edges": [
@@ -4690,6 +4738,42 @@
       "to": "ISS-045",
       "type": "resolves",
       "created_at": "2026-08-23T06:02:44+00:00"
+    },
+    {
+      "from": "ISS-046",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-23T06:07:54+00:00"
+    },
+    {
+      "from": "TASK-054",
+      "to": "ISS-046",
+      "type": "addresses",
+      "created_at": "2026-08-23T06:07:54+00:00"
+    },
+    {
+      "from": "DEC-053",
+      "to": "TASK-054",
+      "type": "governs",
+      "created_at": "2026-08-23T06:07:54+00:00"
+    },
+    {
+      "from": "DEC-053",
+      "to": "DEC-052",
+      "type": "supersedes",
+      "created_at": "2026-08-23T06:07:54+00:00"
+    },
+    {
+      "from": "CHG-047",
+      "to": "TASK-054",
+      "type": "implements",
+      "created_at": "2026-08-23T06:08:09+00:00"
+    },
+    {
+      "from": "CHG-047",
+      "to": "ISS-046",
+      "type": "resolves",
+      "created_at": "2026-08-23T06:08:09+00:00"
     }
   ]
 }
