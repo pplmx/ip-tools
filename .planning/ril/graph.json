@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-23T05:35:23+00:00",
+  "updated_at": "2026-08-23T05:42:37+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -2594,6 +2594,54 @@
       "touched_round": 0,
       "commit": "8bf11fd674c1c204bd9629016be7174f3b88f588",
       "summary": "Made dns --count work for PTR reverse lookups: an IP-literal PTR target with --count > 1 now routes the reverse-zone query through the existing resolve_repeat + encrypted_repeat aggregation (reporting the user's IP as the report host) instead of silently ignoring the count. Updated the PTR CHANGELOG entry. Pinned by a fixture-gated CLI test asserting --count 3 renders a 3/3 repeat row labeled with the target IP."
+    },
+    "ISS-042": {
+      "id": "ISS-042",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T05:39:23+00:00",
+      "updated_at": "2026-08-23T05:42:37+00:00",
+      "touched_round": 0,
+      "severity": "low",
+      "summary": "diagnose probes forward DNS (A/AAAA) but never reverse DNS, so when an operator diagnoses an IP literal they cannot see the hostname rDNS maps to it (identifying what server/infrastructure they are actually probing). dns --record-type PTR exists (TASK-047) but the flagship 'full picture' diagnose command omits it, leaving an identification gap for IP-targeted diagnostics."
+    },
+    "TASK-050": {
+      "id": "TASK-050",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T05:39:23+00:00",
+      "updated_at": "2026-08-23T05:42:37+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.35,
+      "unlock_factor": 1,
+      "summary": "Add an opt-in --reverse flag to diagnose: for an IP-literal target, build the reverse-zone name (reusing the shared reverse_zone helper) and add a PTR DnsObservation to the DNS evidence stack (system + --server + --doh + --dot resolvers), so the identify-the-host rDNS name surfaces in human/JSON output. Evidence-only (no diagnosis, since many IPs legitimately lack PTR), so --strict is unaffected. Pinned by a fixture-gated CLI test: diagnose 192.0.2.77 --reverse --doh <fixture>/dns-ptr-query --insecure surfaces host.example."
+    },
+    "DEC-049": {
+      "id": "DEC-049",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T05:39:23+00:00",
+      "updated_at": "2026-08-23T05:39:23+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-23): add reverse DNS context to diagnose for IP-literal targets. dns got PTR (DEC-046) but diagnose -- the flagship full-picture command -- still cannot show what hostname rDNS maps an IP to, which is how an operator identifies what they are probing. Add an opt-in --reverse flag (keeps default diagnose behavior unchanged), reusing the shared reverse_zone helper and the same PTR query path. Evidence-only, so absent PTR is never an anomaly and --strict is unaffected. No new dependency or API.",
+      "alternatives_rejected": "always-on reverse for every target (adds a query+noise to every run; opt-in is right); hostname targets reverse-resolving every resolved IP (complex and noisy; IP-literal is the clean, unambiguous use); folding into an existing flag (a dedicated --reverse reads clearly)."
+    },
+    "CHG-043": {
+      "id": "CHG-043",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T05:42:37+00:00",
+      "updated_at": "2026-08-23T05:42:37+00:00",
+      "touched_round": 0,
+      "commit": "e67e409fc2c377099a179384f3bb3498c28462bc",
+      "summary": "Added diagnose --reverse: for an IP-literal target, builds the reverse-zone name via the now-shared reverse_zone helper and queries PTR through system/--server + --doh/--dot resolvers, adding the mapped hostname to the DNS evidence stack (human + JSON). Opt-in and evidence-only (absent PTR never raises an anomaly; --strict unaffected). Shared reverse_zone exposed pub(super); --reverse arg added to the diagnose command. README + CHANGELOG updated. Pinned by a fixture-gated CLI test: diagnose 192.0.2.77 --reverse --doh /dns-ptr-query surfaces host.example."
     }
   },
   "edges": [
@@ -4354,6 +4402,42 @@
       "to": "ISS-041",
       "type": "resolves",
       "created_at": "2026-08-23T05:35:23+00:00"
+    },
+    {
+      "from": "ISS-042",
+      "to": "COMP-diagnose",
+      "type": "located_in",
+      "created_at": "2026-08-23T05:39:23+00:00"
+    },
+    {
+      "from": "TASK-050",
+      "to": "ISS-042",
+      "type": "addresses",
+      "created_at": "2026-08-23T05:39:23+00:00"
+    },
+    {
+      "from": "DEC-049",
+      "to": "TASK-050",
+      "type": "governs",
+      "created_at": "2026-08-23T05:39:23+00:00"
+    },
+    {
+      "from": "DEC-049",
+      "to": "DEC-048",
+      "type": "supersedes",
+      "created_at": "2026-08-23T05:39:23+00:00"
+    },
+    {
+      "from": "CHG-043",
+      "to": "TASK-050",
+      "type": "implements",
+      "created_at": "2026-08-23T05:42:37+00:00"
+    },
+    {
+      "from": "CHG-043",
+      "to": "ISS-042",
+      "type": "resolves",
+      "created_at": "2026-08-23T05:42:37+00:00"
     }
   ]
 }
