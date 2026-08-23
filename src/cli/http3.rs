@@ -27,6 +27,7 @@ pub(super) async fn run_http3(sub_m: &ArgMatches) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    let output_body = sub_m.try_get_one::<String>("output-body").ok().flatten().cloned();
     run_probe_flow(
         sub_m,
         render_http,
@@ -38,9 +39,28 @@ pub(super) async fn run_http3(sub_m: &ArgMatches) -> ExitCode {
             let path = path.clone();
             let headers = headers.clone();
             let body = body.clone();
+            let output_body = output_body.clone();
             async move {
                 let header_refs: Vec<(&str, &str)> = headers.iter().map(|(n, v)| (n.as_str(), v.as_str())).collect();
-                if insecure {
+                if let Some(out) = output_body.as_deref() {
+                    let out = std::path::Path::new(out);
+                    if insecure {
+                        ip_http3::probe_insecure_output(
+                            dest,
+                            &host,
+                            &method,
+                            &path,
+                            &header_refs,
+                            body.as_deref(),
+                            timeout,
+                            out,
+                        )
+                        .await
+                    } else {
+                        ip_http3::probe_output(dest, &host, &method, &path, &header_refs, body.as_deref(), timeout, out)
+                            .await
+                    }
+                } else if insecure {
                     ip_http3::probe_insecure(dest, &host, &method, &path, &header_refs, body.as_deref(), timeout).await
                 } else {
                     ip_http3::probe(dest, &host, &method, &path, &header_refs, body.as_deref(), timeout).await

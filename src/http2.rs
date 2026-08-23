@@ -38,6 +38,7 @@ pub async fn probe(
         timeout,
         crate::tls::TlsMode::Roots(&crate::tls::roots()),
         crate::tls::TlsProtocol::Auto,
+        None,
     )
     .await
 }
@@ -64,6 +65,7 @@ pub async fn probe_with_version(
         timeout,
         crate::tls::TlsMode::Roots(&crate::tls::roots()),
         protocol,
+        None,
     )
     .await
 }
@@ -90,6 +92,7 @@ pub async fn probe_with_roots(
         timeout,
         crate::tls::TlsMode::Roots(roots),
         crate::tls::TlsProtocol::Auto,
+        None,
     )
     .await
 }
@@ -114,6 +117,36 @@ pub async fn probe_insecure(
         timeout,
         crate::tls::TlsMode::Insecure,
         crate::tls::TlsProtocol::Auto,
+        None,
+    )
+    .await
+}
+
+/// [`probe_with_version`] that also writes the bounded response body to
+/// `output` (the `--output-body` flag).
+#[allow(clippy::too_many_arguments)] // destination/host/method/path/headers/body/timeout/protocol/output
+pub async fn probe_with_version_output(
+    destination: SocketAddr,
+    host: &str,
+    method: &str,
+    path: &str,
+    headers: &[(&str, &str)],
+    body: Option<&[u8]>,
+    timeout: Duration,
+    protocol: crate::tls::TlsProtocol,
+    output: &std::path::Path,
+) -> HttpObservation {
+    probe_impl(
+        destination,
+        host,
+        method,
+        path,
+        headers,
+        body,
+        timeout,
+        crate::tls::TlsMode::Roots(&crate::tls::roots()),
+        protocol,
+        Some(output),
     )
     .await
 }
@@ -140,6 +173,36 @@ pub async fn probe_insecure_with_version(
         timeout,
         crate::tls::TlsMode::Insecure,
         protocol,
+        None,
+    )
+    .await
+}
+
+/// [`probe_insecure_with_version`] that also writes the bounded response body
+/// to `output` (the `--output-body` flag).
+#[allow(clippy::too_many_arguments)] // destination/host/method/path/headers/body/timeout/protocol/output
+pub async fn probe_insecure_with_version_output(
+    destination: SocketAddr,
+    host: &str,
+    method: &str,
+    path: &str,
+    headers: &[(&str, &str)],
+    body: Option<&[u8]>,
+    timeout: Duration,
+    protocol: crate::tls::TlsProtocol,
+    output: &std::path::Path,
+) -> HttpObservation {
+    probe_impl(
+        destination,
+        host,
+        method,
+        path,
+        headers,
+        body,
+        timeout,
+        crate::tls::TlsMode::Insecure,
+        protocol,
+        Some(output),
     )
     .await
 }
@@ -156,6 +219,7 @@ async fn probe_impl(
     timeout: Duration,
     mode: crate::tls::TlsMode<'_>,
     protocol: crate::tls::TlsProtocol,
+    body_output: Option<&std::path::Path>,
 ) -> HttpObservation {
     let start = Instant::now();
     // Name the protocol up front so a *failed* observation keeps its identity
@@ -258,6 +322,7 @@ async fn probe_impl(
     let mut bytes_read: u64 = 0;
     let mut ended = false;
     let mut snippet: Vec<u8> = Vec::with_capacity(BODY_SNIPPET_BYTES);
+    let mut full_body: Vec<u8> = Vec::new();
     loop {
         let chunk = match tokio::time::timeout(timeout, body.data()).await {
             Ok(Some(Ok(chunk))) => chunk,
@@ -270,6 +335,9 @@ async fn probe_impl(
         };
         push_body_snippet(&mut snippet, &chunk[..]);
         bytes_read = bytes_read.saturating_add(chunk.len() as u64);
+        if body_output.is_some() {
+            full_body.extend_from_slice(&chunk[..]);
+        }
         let _ = body.flow_control().release_capacity(chunk.len());
         if bytes_read >= MAX_BODY_BYTES {
             ended = true;
@@ -278,6 +346,11 @@ async fn probe_impl(
     }
 
     let body_snippet = body_snippet_string(&snippet, (bytes_read as usize) > snippet.len());
+    if let Some(path) = body_output {
+        if let Err(e) = crate::http_common::write_body_to_file(path, &full_body) {
+            eprintln!("Warning: could not write response body to {}: {e}", path.display());
+        }
+    }
     HttpObservation {
         tls: Some(tls_obs),
         status: Some(status),

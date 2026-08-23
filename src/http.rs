@@ -42,6 +42,7 @@ pub async fn probe(
         timeout,
         crate::tls::TlsMode::Roots(&crate::tls::roots()),
         crate::tls::TlsProtocol::Auto,
+        None,
     )
     .await
 }
@@ -68,6 +69,7 @@ pub async fn probe_with_version(
         timeout,
         crate::tls::TlsMode::Roots(&crate::tls::roots()),
         protocol,
+        None,
     )
     .await
 }
@@ -94,6 +96,7 @@ pub async fn probe_with_roots(
         timeout,
         crate::tls::TlsMode::Roots(roots),
         crate::tls::TlsProtocol::Auto,
+        None,
     )
     .await
 }
@@ -118,6 +121,41 @@ pub async fn probe_insecure(
         timeout,
         crate::tls::TlsMode::Insecure,
         crate::tls::TlsProtocol::Auto,
+        None,
+    )
+    .await
+}
+
+/// [`probe_with_version`] that also writes the response body to `output`.
+///
+/// The bounded body bytes are persisted verbatim (the `--output-body` flag),
+/// so a WAF block page, JS challenge, captive-portal prompt or API error is
+/// inspectable without a re-run in curl. The observation
+/// (status/snippet/size/latency) is unchanged; only the body is additionally
+/// persisted.
+#[allow(clippy::too_many_arguments)] // destination/host/method/path/headers/body/timeout/protocol/output
+pub async fn probe_with_version_output(
+    destination: SocketAddr,
+    host: &str,
+    method: &str,
+    path: &str,
+    headers: &[(&str, &str)],
+    body: Option<&[u8]>,
+    timeout: Duration,
+    protocol: crate::tls::TlsProtocol,
+    output: &std::path::Path,
+) -> HttpObservation {
+    probe_impl(
+        destination,
+        host,
+        method,
+        path,
+        headers,
+        body,
+        timeout,
+        crate::tls::TlsMode::Roots(&crate::tls::roots()),
+        protocol,
+        Some(output),
     )
     .await
 }
@@ -144,6 +182,36 @@ pub async fn probe_insecure_with_version(
         timeout,
         crate::tls::TlsMode::Insecure,
         protocol,
+        None,
+    )
+    .await
+}
+
+/// [`probe_insecure_with_version`] that also writes the bounded response body
+/// to `output` (the `--output-body` flag).
+#[allow(clippy::too_many_arguments)] // destination/host/method/path/headers/body/timeout/protocol/output
+pub async fn probe_insecure_with_version_output(
+    destination: SocketAddr,
+    host: &str,
+    method: &str,
+    path: &str,
+    headers: &[(&str, &str)],
+    body: Option<&[u8]>,
+    timeout: Duration,
+    protocol: crate::tls::TlsProtocol,
+    output: &std::path::Path,
+) -> HttpObservation {
+    probe_impl(
+        destination,
+        host,
+        method,
+        path,
+        headers,
+        body,
+        timeout,
+        crate::tls::TlsMode::Insecure,
+        protocol,
+        Some(output),
     )
     .await
 }
@@ -160,6 +228,7 @@ async fn probe_impl(
     timeout: Duration,
     mode: crate::tls::TlsMode<'_>,
     protocol: crate::tls::TlsProtocol,
+    body_output: Option<&std::path::Path>,
 ) -> HttpObservation {
     let start = Instant::now();
     // Name the protocol up front so a *failed* observation keeps its identity
@@ -258,6 +327,11 @@ async fn probe_impl(
     let mut bytes_read: u64 = 0;
     let mut ended = false;
     let mut snippet: Vec<u8> = Vec::with_capacity(BODY_SNIPPET_BYTES);
+    // When `--output-body` is requested, also retain the bounded full body so
+    // it can be written verbatim to the file after the probe completes (the
+    // snippet alone would force a re-run in curl to inspect a WAF page, a JS
+    // challenge, a captive-portal prompt or an API error).
+    let mut full_body: Vec<u8> = Vec::new();
     loop {
         let frame = match tokio::time::timeout(timeout, body.frame()).await {
             Ok(Some(Ok(frame))) => frame,
@@ -271,6 +345,11 @@ async fn probe_impl(
         if let Ok(data) = frame.into_data() {
             push_body_snippet(&mut snippet, &data[..]);
             bytes_read = bytes_read.saturating_add(data.len() as u64);
+            if body_output.is_some() {
+                // The read is already bounded by MAX_BODY_BYTES below, so the
+                // retained copy cannot exceed the cap.
+                full_body.extend_from_slice(&data[..]);
+            }
         }
         if bytes_read >= MAX_BODY_BYTES {
             ended = true;
@@ -279,6 +358,13 @@ async fn probe_impl(
     }
     let body_bytes = ended.then_some(bytes_read);
     let body_snippet = body_snippet_string(&snippet, (bytes_read as usize) > snippet.len());
+    if let Some(path) = body_output {
+        // Best effort: a write failure is reported on stderr but does not
+        // turn a completed probe into a failure — the observation is valid.
+        if let Err(e) = crate::http_common::write_body_to_file(path, &full_body) {
+            eprintln!("Warning: could not write response body to {}: {e}", path.display());
+        }
+    }
 
     HttpObservation {
         tls: Some(tls_obs),

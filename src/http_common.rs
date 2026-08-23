@@ -83,3 +83,12 @@ pub fn body_snippet_string(snippet: &[u8], truncated: bool) -> Option<String> {
     }
     Some(text)
 }
+
+/// Write the accumulated bounded response body to `path` (best effort). Only
+/// the bytes read up to [`MAX_BODY_BYTES`] are retained, so a hostile or
+/// multi-megabyte body is capped just like the in-memory body handling. The
+/// write happens only after the probe body loop finishes, so a write error
+/// doesn't corrupt an otherwise-complete observation.
+pub fn write_body_to_file(path: &std::path::Path, body: &[u8]) -> std::io::Result<()> {
+    std::fs::write(path, body)
+}

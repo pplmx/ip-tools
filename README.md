@@ -359,6 +359,12 @@ status code meaningful — a WAF block page, an auth/JSON error, a rate-limit
 message, a JS challenge, a captive-portal prompt — surfacing it completes the
 HTTP observation (request control, headers, status, and now content).
 
+`--output-body FILE` (on `http`/`http2`/`http3`) additionally writes the
+full response body (bounded to the same 1 MiB read cap) verbatim to a file,
+so an operator can inspect the actual bytes of a block page, challenge, or
+API error without re-running in curl — the in-memory report still shows only
+the 1 KiB snippet and the total byte count.
+
 Example output:
 
 ```

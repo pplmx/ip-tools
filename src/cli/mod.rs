@@ -96,6 +96,7 @@ fn parser() -> ArgMatches {
                 path_arg(),
                 header_arg(),
                 body_arg(),
+                output_body_arg(),
                 ipv4_arg(),
                 ipv6_arg(),
                 csv_arg(),
@@ -132,6 +133,7 @@ fn parser() -> ArgMatches {
                 path_arg(),
                 header_arg(),
                 body_arg(),
+                output_body_arg(),
                 ipv4_arg(),
                 ipv6_arg(),
                 csv_arg(),
@@ -149,6 +151,7 @@ fn parser() -> ArgMatches {
                 path_arg(),
                 header_arg(),
                 body_arg(),
+                output_body_arg(),
                 ipv4_arg(),
                 ipv6_arg(),
                 csv_arg(),
@@ -381,6 +384,17 @@ fn body_arg() -> Arg {
         .value_name("TEXT|@FILE|-")
         .action(ArgAction::Set)
         .help("HTTP request body to send verbatim; '--body @file' reads a file, '--body -' reads stdin")
+}
+
+/// `--output-body` argument: write the bounded response body verbatim to a
+/// file, so the actual bytes of a WAF block page, JS challenge, captive-portal
+/// prompt or API error are inspectable without a re-run in curl.
+fn output_body_arg() -> Arg {
+    Arg::new("output-body")
+        .long("output-body")
+        .value_name("FILE")
+        .action(ArgAction::Set)
+        .help("write the bounded response body verbatim to FILE")
 }
 
 /// `--csv` argument for `diagnose`: emit per-diagnosis rows in CSV.

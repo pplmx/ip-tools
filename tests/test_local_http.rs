@@ -1395,6 +1395,53 @@ fn http_cli_includes_body_content_snippet() {
 }
 
 #[test]
+fn http_output_body_writes_full_body_to_file() {
+    // `--output-body FILE` must persist the actual response body verbatim (not
+    // just the 1 KiB snippet) for the http/http2/http3 probes, so a WAF page /
+    // API error body is inspectable without a re-run in curl. The fixture's
+    // ordinary route serves a small "ok" body.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+
+    for (cmd, dest_addr) in [
+        ("http", fixture.tcp_addr().to_string()),
+        ("http2", fixture.tcp_addr().to_string()),
+        ("http3", fixture.udp_addr().to_string()),
+    ] {
+        let dir = std::env::temp_dir();
+        let out_path = dir.join(format!("ip-tools-output-body-{cmd}-{}.txt", std::process::id()));
+        let _ = std::fs::remove_file(&out_path);
+        let out = Command::cargo_bin("ip-tools")
+            .expect("ip-tools binary")
+            .args([
+                cmd,
+                &dest_addr,
+                "--insecure",
+                "--output-body",
+                out_path.to_str().unwrap(),
+                "--timeout",
+                "2000",
+            ])
+            .output()
+            .unwrap_or_else(|e| panic!("run {cmd} --output-body: {e}"));
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            out.status.success(),
+            "{cmd} --output-body should exit 0: {stdout}
+{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let written = std::fs::read_to_string(&out_path)
+            .unwrap_or_else(|e| panic!("read {cmd} output body file {out_path:?}: {e}"));
+        assert_eq!(written, "ok", "{cmd} must write the full body verbatim to the file");
+        let _ = std::fs::remove_file(&out_path);
+    }
+}
+
+#[test]
 fn http_cli_truncates_large_body_snippet() {
     // `big.invalid` streams 2 MiB of 'x'. The captured snippet must be capped
     // at BODY_SNIPPET_BYTES and carry the explicit truncation marker.
