@@ -105,6 +105,92 @@ async fn http_and_http2_probes_force_tls_version() {
     assert_eq!(h2.status, Some(200));
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn repeat_probes_force_tls_version() {
+    // The `probe` (repeat) command's TLS-over-TCP protocols must honor
+    // `--tls-version`: forcing TLS 1.3 against the fixture (which supports
+    // 1.2 and 1.3) handshakes and succeeds over repeated tls/http/http2.
+    let fixture = FixtureServer::start().await;
+    let addr = fixture.tcp_addr();
+
+    let tls_r = probe::tls_repeat_with_version(addr, "localhost", 3, timeout(), true, tls::TlsProtocol::Tls13).await;
+    assert_eq!(tls_r.failures, 0, "forced TLS 1.3 repeated tls failed: {tls_r:?}");
+    assert!(tls_r.success_rate > 0.0);
+
+    let h1 = probe::http_repeat_with_version(
+        addr,
+        "localhost",
+        "GET",
+        "/",
+        &[],
+        None,
+        3,
+        timeout(),
+        true,
+        tls::TlsProtocol::Tls13,
+    )
+    .await;
+    assert_eq!(h1.failures, 0, "forced TLS 1.3 repeated http failed: {h1:?}");
+
+    let h2 = probe::http2_repeat_with_version(
+        addr,
+        "localhost",
+        "GET",
+        "/",
+        &[],
+        None,
+        3,
+        timeout(),
+        true,
+        tls::TlsProtocol::Tls13,
+    )
+    .await;
+    assert_eq!(h2.failures, 0, "forced TLS 1.3 repeated http2 failed: {h2:?}");
+}
+
+#[test]
+fn probe_cli_tls_version_forces_protocol() {
+    // `probe --tls-version 1.3` over tls/http/http2 must succeed against the
+    // local fixture — proving the flag threads through the repeat-probe CLI.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let addr = fixture.tcp_addr().to_string();
+
+    for protocol in ["tls", "http", "http2"] {
+        let out = Command::cargo_bin("ip-tools")
+            .expect("ip-tools binary")
+            .args([
+                "probe",
+                &addr,
+                "--protocol",
+                protocol,
+                "--count",
+                "2",
+                "--insecure",
+                "--tls-version",
+                "1.3",
+                "--timeout",
+                "2000",
+            ])
+            .output()
+            .unwrap_or_else(|e| panic!("run probe --protocol {protocol} --tls-version 1.3: {e}"));
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            out.status.success(),
+            "probe --protocol {protocol} --tls-version 1.3 should succeed: {stdout}
+{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(
+            stdout.contains("success:  2"),
+            "expected a 2/2 success row for {protocol}: {stdout}"
+        );
+    }
+}
+
 #[test]
 fn http_cli_tls_version_forces_protocol() {
     let rt = tokio::runtime::Builder::new_multi_thread()

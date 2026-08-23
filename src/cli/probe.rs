@@ -23,6 +23,7 @@ pub(super) async fn run_probe(sub_m: &ArgMatches) -> ExitCode {
     let method = sub_m.get_one::<String>("method").expect("method has default").clone();
     let path = sub_m.get_one::<String>("path").expect("path has default").clone();
     let insecure = sub_m.get_flag("insecure");
+    let tls_protocol = super::parse_tls_protocol(sub_m);
     let protocol = sub_m
         .get_one::<String>("protocol")
         .expect("protocol has default")
@@ -56,9 +57,11 @@ pub(super) async fn run_probe(sub_m: &ArgMatches) -> ExitCode {
             async move {
                 let header_refs: Vec<(&str, &str)> = headers.iter().map(|(n, v)| (n.as_str(), v.as_str())).collect();
                 match protocol.as_str() {
-                    "tls" => ip_probe::tls_repeat(dest, &host, count, timeout, insecure).await,
+                    "tls" => {
+                        ip_probe::tls_repeat_with_version(dest, &host, count, timeout, insecure, tls_protocol).await
+                    }
                     "http" => {
-                        ip_probe::http_repeat(
+                        ip_probe::http_repeat_with_version(
                             dest,
                             &host,
                             &method,
@@ -68,11 +71,12 @@ pub(super) async fn run_probe(sub_m: &ArgMatches) -> ExitCode {
                             count,
                             timeout,
                             insecure,
+                            tls_protocol,
                         )
                         .await
                     }
                     "http2" => {
-                        ip_probe::http2_repeat(
+                        ip_probe::http2_repeat_with_version(
                             dest,
                             &host,
                             &method,
@@ -82,6 +86,7 @@ pub(super) async fn run_probe(sub_m: &ArgMatches) -> ExitCode {
                             count,
                             timeout,
                             insecure,
+                            tls_protocol,
                         )
                         .await
                     }

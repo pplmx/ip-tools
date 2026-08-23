@@ -118,6 +118,7 @@ fn parser() -> ArgMatches {
                 csv_arg(),
                 ipv4_arg(),
                 ipv6_arg(),
+                tls_version_arg(),
             ],
         ))
         .subcommand(probe_command(

@@ -36,11 +36,32 @@ pub async fn tls_repeat(
     timeout: Duration,
     insecure: bool,
 ) -> ProbeResult {
+    tls_repeat_with_version(
+        destination,
+        sni,
+        attempts,
+        timeout,
+        insecure,
+        crate::tls::TlsProtocol::Auto,
+    )
+    .await
+}
+
+/// [`tls_repeat`] offering only the given TLS protocol version during the
+/// handshake (the `--tls-version` slice of the repeat probes).
+pub async fn tls_repeat_with_version(
+    destination: SocketAddr,
+    sni: &str,
+    attempts: usize,
+    timeout: Duration,
+    insecure: bool,
+    protocol: crate::tls::TlsProtocol,
+) -> ProbeResult {
     repeat_impl(destination, attempts, || async {
         let obs = if insecure {
-            crate::tls::probe_insecure(destination, sni, timeout).await
+            crate::tls::probe_insecure_with_version(destination, sni, timeout, protocol).await
         } else {
-            crate::tls::probe(destination, sni, timeout).await
+            crate::tls::probe_with_version(destination, sni, timeout, protocol).await
         };
         if obs.success {
             (true, obs.latency_ms, None)
@@ -105,11 +126,42 @@ pub async fn http_repeat(
     timeout: Duration,
     insecure: bool,
 ) -> ProbeResult {
+    http_repeat_with_version(
+        destination,
+        host,
+        method,
+        path,
+        headers,
+        body,
+        attempts,
+        timeout,
+        insecure,
+        crate::tls::TlsProtocol::Auto,
+    )
+    .await
+}
+
+/// [`http_repeat`] offering only the given TLS protocol version (the
+/// `--tls-version` slice of the repeat probes).
+#[allow(clippy::too_many_arguments)]
+pub async fn http_repeat_with_version(
+    destination: SocketAddr,
+    host: &str,
+    method: &str,
+    path: &str,
+    headers: &[(&str, &str)],
+    body: Option<&[u8]>,
+    attempts: usize,
+    timeout: Duration,
+    insecure: bool,
+    protocol: crate::tls::TlsProtocol,
+) -> ProbeResult {
     repeat_impl(destination, attempts, || async {
         let obs = if insecure {
-            crate::http::probe_insecure(destination, host, method, path, headers, body, timeout).await
+            crate::http::probe_insecure_with_version(destination, host, method, path, headers, body, timeout, protocol)
+                .await
         } else {
-            crate::http::probe(destination, host, method, path, headers, body, timeout).await
+            crate::http::probe_with_version(destination, host, method, path, headers, body, timeout, protocol).await
         };
         http_outcome(obs)
     })
@@ -144,11 +196,42 @@ pub async fn http2_repeat(
     timeout: Duration,
     insecure: bool,
 ) -> ProbeResult {
+    http2_repeat_with_version(
+        destination,
+        host,
+        method,
+        path,
+        headers,
+        body,
+        attempts,
+        timeout,
+        insecure,
+        crate::tls::TlsProtocol::Auto,
+    )
+    .await
+}
+
+/// [`http2_repeat`] offering only the given TLS protocol version (the
+/// `--tls-version` slice of the repeat probes).
+#[allow(clippy::too_many_arguments)]
+pub async fn http2_repeat_with_version(
+    destination: SocketAddr,
+    host: &str,
+    method: &str,
+    path: &str,
+    headers: &[(&str, &str)],
+    body: Option<&[u8]>,
+    attempts: usize,
+    timeout: Duration,
+    insecure: bool,
+    protocol: crate::tls::TlsProtocol,
+) -> ProbeResult {
     repeat_impl(destination, attempts, || async {
         let obs = if insecure {
-            crate::http2::probe_insecure(destination, host, method, path, headers, body, timeout).await
+            crate::http2::probe_insecure_with_version(destination, host, method, path, headers, body, timeout, protocol)
+                .await
         } else {
-            crate::http2::probe(destination, host, method, path, headers, body, timeout).await
+            crate::http2::probe_with_version(destination, host, method, path, headers, body, timeout, protocol).await
         };
         http_outcome(obs)
     })
