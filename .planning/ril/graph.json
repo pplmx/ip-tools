@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-23T00:34:33+00:00",
+  "updated_at": "2026-08-23T00:35:29+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -1793,10 +1793,10 @@
     "TASK-033": {
       "id": "TASK-033",
       "type": "task",
-      "status": "active",
-      "version": 1,
+      "status": "superseded",
+      "version": 2,
       "created_at": "2026-08-23T00:34:15+00:00",
-      "updated_at": "2026-08-23T00:34:15+00:00",
+      "updated_at": "2026-08-23T00:35:29+00:00",
       "touched_round": 0,
       "category": "core-feature",
       "severity": 0.5,
@@ -1815,6 +1815,17 @@
       "touched_round": 0,
       "commit": "413b1428f327182b23b0bcc1f458f32ba7c8356e",
       "summary": "Added --output-body FILE to single-shot http/http2/http3: body_output threaded through probe_impl and new *output public fns, full bounded body written verbatim best-effort; first slice (repeat/diagnose follow as TASK-033)."
+    },
+    "DEC-032": {
+      "id": "DEC-032",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T00:35:29+00:00",
+      "updated_at": "2026-08-23T00:35:29+00:00",
+      "touched_round": 0,
+      "rationale": "Reject the --output-body follow-on for the repeat probe and diagnose (supersedes TASK-033). The repeat probe aggregates N attempts into latency stats and diagnose runs HTTP/1.1+2+3 across every resolved address, so there is no single response body to persist — a single output file cannot represent N attempts or a 3-protocol multi-address sweep unambiguously (last-writer-wins would be misleading). The single-shot http/http2/http3 --output-body slice (CHG-026) already covers the full-body-inspection use case cleanly; repeat/diagnose remain latency/aggregate commands where a body dump has no clear meaning.",
+      "alternatives_rejected": "writing only the last attempt/address body (arbitrary and confusing, not a real user need); lowering to a snippet-cap flag (out of scope, snippet already surfaced); requiring a directory of per-protocol files (scope creep, unclear naming))."
     }
   },
   "edges": [
@@ -2987,6 +2998,18 @@
       "to": "ISS-025",
       "type": "resolves",
       "created_at": "2026-08-23T00:34:33+00:00"
+    },
+    {
+      "from": "DEC-032",
+      "to": "DEC-031",
+      "type": "supersedes",
+      "created_at": "2026-08-23T00:35:29+00:00"
+    },
+    {
+      "from": "DEC-032",
+      "to": "TASK-033",
+      "type": "governs",
+      "created_at": "2026-08-23T00:35:29+00:00"
     }
   ]
 }
