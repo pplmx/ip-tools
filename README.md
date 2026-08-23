@@ -595,7 +595,9 @@ exclusive.
 Repeatedly probe connectivity and report latency statistics per address.
 TCP is the default; `--protocol tls|http|http2|http3` repeats a TLS handshake
 or an HTTP/1.1, HTTP/2 or HTTP/3 request instead (with `--method` on the HTTP
-protocols and, for self-signed endpoints, `--insecure`):
+protocols and, for self-signed endpoints, `--insecure`). `--protocol http
+--plain` repeats a **cleartext** HTTP/1.1 request (no TLS handshake) — the
+repeat form of `http --plain`, for plaintext HTTP health/stability sweeps:
 
 ```shell
 ip-tools probe example.com --count 100
@@ -604,6 +606,7 @@ ip-tools probe example.com --protocol tls --count 50
 ip-tools probe example.com --protocol tls --count 50 --tls-version 1.3
 ip-tools probe example.com --protocol http2 --count 100 --method HEAD
 ip-tools probe example.com --protocol http3 --count 30 --insecure
+ip-tools probe 10.0.0.5:8080 --protocol http --count 30 --plain
 ```
 
 Per-address attempts run sequentially (so the latency distribution reflects

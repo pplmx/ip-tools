@@ -114,6 +114,7 @@ fn parser() -> ArgMatches {
                 strict_arg(),
                 protocol_arg(),
                 method_arg(),
+                plain_arg(),
                 insecure_arg(),
                 sni_arg(),
                 path_arg(),

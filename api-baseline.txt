@@ -423,6 +423,7 @@ pub async fn ip_tools::probe::http2_repeat(core::net::socket_addr::SocketAddr, &
 pub async fn ip_tools::probe::http2_repeat_with_version(core::net::socket_addr::SocketAddr, &str, &str, &str, &[(&str, &str)], core::option::Option<&[u8]>, usize, core::time::Duration, bool, ip_tools::tls::TlsProtocol) -> ip_tools::model::probe::ProbeResult
 pub async fn ip_tools::probe::http3_repeat(core::net::socket_addr::SocketAddr, &str, &str, &str, &[(&str, &str)], core::option::Option<&[u8]>, usize, core::time::Duration, bool) -> ip_tools::model::probe::ProbeResult
 pub async fn ip_tools::probe::http_repeat(core::net::socket_addr::SocketAddr, &str, &str, &str, &[(&str, &str)], core::option::Option<&[u8]>, usize, core::time::Duration, bool) -> ip_tools::model::probe::ProbeResult
+pub async fn ip_tools::probe::http_repeat_plain(core::net::socket_addr::SocketAddr, &str, &str, &str, &[(&str, &str)], core::option::Option<&[u8]>, usize, core::time::Duration) -> ip_tools::model::probe::ProbeResult
 pub async fn ip_tools::probe::http_repeat_with_version(core::net::socket_addr::SocketAddr, &str, &str, &str, &[(&str, &str)], core::option::Option<&[u8]>, usize, core::time::Duration, bool, ip_tools::tls::TlsProtocol) -> ip_tools::model::probe::ProbeResult
 pub async fn ip_tools::probe::tcp_repeat(core::net::socket_addr::SocketAddr, usize, core::time::Duration) -> ip_tools::model::probe::ProbeResult
 pub async fn ip_tools::probe::tls_repeat(core::net::socket_addr::SocketAddr, &str, usize, core::time::Duration, bool) -> ip_tools::model::probe::ProbeResult

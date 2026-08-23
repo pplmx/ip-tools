@@ -11,6 +11,7 @@ use std::process::ExitCode;
 /// using the protocol selected by `--protocol` (TCP by default; HTTP/1.1,
 /// HTTP/2, HTTP/3 via `--protocol`). Per-address attempts run sequentially;
 /// addresses are probed in parallel.
+#[allow(clippy::too_many_lines)] // one match arm per protocol is clearest inline
 pub(super) async fn run_probe(sub_m: &ArgMatches) -> ExitCode {
     let count = *sub_m.get_one::<usize>("count").expect("count has default");
     if count == 0 {
@@ -28,6 +29,11 @@ pub(super) async fn run_probe(sub_m: &ArgMatches) -> ExitCode {
         .get_one::<String>("protocol")
         .expect("protocol has default")
         .clone();
+    let plain = sub_m.get_flag("plain");
+    if plain && protocol.as_str() != "http" {
+        eprintln!("Error: --plain only applies to --protocol http (cleartext HTTP/1.1)");
+        return ExitCode::FAILURE;
+    }
     let headers = match super::parse_custom_headers(sub_m) {
         Ok(v) => v,
         Err(e) => {
@@ -61,19 +67,33 @@ pub(super) async fn run_probe(sub_m: &ArgMatches) -> ExitCode {
                         ip_probe::tls_repeat_with_version(dest, &host, count, timeout, insecure, tls_protocol).await
                     }
                     "http" => {
-                        ip_probe::http_repeat_with_version(
-                            dest,
-                            &host,
-                            &method,
-                            &path,
-                            &header_refs,
-                            body.as_deref(),
-                            count,
-                            timeout,
-                            insecure,
-                            tls_protocol,
-                        )
-                        .await
+                        if plain {
+                            ip_probe::http_repeat_plain(
+                                dest,
+                                &host,
+                                &method,
+                                &path,
+                                &header_refs,
+                                body.as_deref(),
+                                count,
+                                timeout,
+                            )
+                            .await
+                        } else {
+                            ip_probe::http_repeat_with_version(
+                                dest,
+                                &host,
+                                &method,
+                                &path,
+                                &header_refs,
+                                body.as_deref(),
+                                count,
+                                timeout,
+                                insecure,
+                                tls_protocol,
+                            )
+                            .await
+                        }
                     }
                     "http2" => {
                         ip_probe::http2_repeat_with_version(

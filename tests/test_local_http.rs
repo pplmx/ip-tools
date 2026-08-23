@@ -277,6 +277,22 @@ async fn plain_probe_gets_200_from_cleartext_fixture() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn plain_repeat_aggregates_cleartext_http() {
+    // `probe::http_repeat_plain` repeatedly probes plaintext HTTP/1.1 and
+    // aggregates success + status: against the fixture's plain listener all
+    // attempts succeed with a stable 200.
+    let fixture = FixtureServer::start().await;
+    let r = probe::http_repeat_plain(fixture.plain_addr(), "localhost", "GET", "/", &[], None, 3, timeout()).await;
+    assert_eq!(r.failures, 0, "plaintext repeat should be all-success: {r:?}");
+    assert_eq!(r.successes, 3, "expected 3/3 success: {r:?}");
+    assert_eq!(
+        r.status_counts.iter().find(|s| s.status == 200).map(|s| s.count),
+        Some(3),
+        "expected 200x3 status distribution: {r:?}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn http2_probe_gets_200_from_local_fixture() {
     let fixture = FixtureServer::start().await;
     let obs = http2::probe_with_roots(
@@ -1966,6 +1982,73 @@ fn probe_http_csv_export_includes_statuses() {
     assert!(
         stdout.lines().any(|l| l.contains("200x3")),
         "the HTTP status distribution must appear in the CSV: {stdout}"
+    );
+}
+
+#[test]
+fn probe_cli_plain_repeats_cleartext_http() {
+    // `probe --protocol http --plain` repeatedly probes cleartext HTTP/1.1
+    // (no TLS handshake) and aggregates the status/latency — a plaintext HTTP
+    // health/stability sweep. Against the fixture's plain listener it must
+    // report 3/3 success (stable 200) rather than a TLS handshake failure.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let addr = fixture.plain_addr().to_string();
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "probe",
+            &addr,
+            "--protocol",
+            "http",
+            "--count",
+            "3",
+            "--plain",
+            "--timeout",
+            "2000",
+        ])
+        .output()
+        .expect("run probe --protocol http --plain");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "probe --protocol http --plain should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.contains("100.0%") && stdout.contains("success:  3"),
+        "the plaintext HTTP repeat should be all-success: {stdout}"
+    );
+    assert!(
+        stdout.contains("200x3"),
+        "the plaintext HTTP status distribution (200x3) must appear: {stdout}"
+    );
+
+    // --plain only makes sense for cleartext HTTP, so a non-http protocol
+    // must be rejected with a clear error.
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "probe",
+            &addr,
+            "--protocol",
+            "tls",
+            "--count",
+            "2",
+            "--plain",
+            "--timeout",
+            "2000",
+        ])
+        .output()
+        .expect("run probe --protocol tls --plain");
+    assert!(
+        !out.status.success(),
+        "probe --plain with a non-http protocol must fail: {}",
+        String::from_utf8_lossy(&out.stdout)
     );
 }
 

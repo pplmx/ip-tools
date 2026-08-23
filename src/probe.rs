@@ -168,6 +168,30 @@ pub async fn http_repeat_with_version(
     .await
 }
 
+/// Repeatedly probe cleartext HTTP/1.1 (`--plain`) to `destination` presenting
+/// `host` as the `Host` header `attempts` times.
+///
+/// Aggregates latency statistics like [`http_repeat_with_version`] but without
+/// any TLS handshake — for internal services, captive portals and HTTP-only
+/// health checks that a TLS repeat would fail to observe.
+#[allow(clippy::too_many_arguments)] // see `http_repeat`
+pub async fn http_repeat_plain(
+    destination: SocketAddr,
+    host: &str,
+    method: &str,
+    path: &str,
+    headers: &[(&str, &str)],
+    body: Option<&[u8]>,
+    attempts: usize,
+    timeout: Duration,
+) -> ProbeResult {
+    repeat_impl(destination, attempts, || async {
+        let obs = crate::http::probe_plain(destination, host, method, path, headers, body, timeout).await;
+        http_outcome(obs)
+    })
+    .await
+}
+
 /// Repeatedly probe HTTPS/HTTP2 to `destination` presenting `host`/`method`
 /// `attempts` times, aggregating latency statistics like [`tcp_repeat`].
 ///
