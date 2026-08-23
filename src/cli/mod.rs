@@ -199,6 +199,7 @@ fn parser() -> ArgMatches {
                 csv_arg(),
                 tls_version_arg(),
                 max_body_bytes_arg(),
+                reverse_arg(),
             ],
         ))
         .get_matches()
@@ -434,6 +435,16 @@ fn csv_arg() -> Arg {
         .long("csv")
         .action(ArgAction::SetTrue)
         .help("output the results as CSV rows instead of human text")
+}
+
+/// `--reverse` argument for `diagnose`: include reverse-DNS (PTR) evidence
+/// for an IP-literal target in the DNS stack, so the hostname rDNS maps to it
+/// surfaces alongside the forward records.
+fn reverse_arg() -> Arg {
+    Arg::new("reverse")
+        .long("reverse")
+        .action(ArgAction::SetTrue)
+        .help("add reverse-DNS (PTR) evidence for an IP-literal target")
 }
 
 /// Shared `--insecure` argument (skip TLS/QUIC certificate validation).

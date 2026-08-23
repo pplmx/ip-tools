@@ -460,7 +460,7 @@ fn parse_record_type(s: &str) -> Option<DnsRecordType> {
 /// Build the reverse-zone name for an IP address: RFC 1035 `in-addr.arpa`
 /// for IPv4 (reversed octets) and RFC 3596 `ip6.arpa` for IPv6 (reversed hex
 /// nibbles), so a PTR (reverse DNS) lookup can be issued for a literal target.
-fn reverse_zone(ip: IpAddr) -> String {
+pub(super) fn reverse_zone(ip: IpAddr) -> String {
     match ip {
         IpAddr::V4(v4) => {
             let o = v4.octets();

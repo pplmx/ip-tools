@@ -484,6 +484,7 @@ repeated probes) then evaluate the evidence with the deterministic engine:
 ```shell
 ip-tools diagnose example.com
 ip-tools diagnose example.com --json
+ip-tools diagnose 192.0.2.77 --reverse   # add reverse-DNS (PTR) evidence for an IP target
 ```
 
 `diagnose` accepts **multiple targets** — a fleet/health sweep. Hosts are

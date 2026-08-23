@@ -944,6 +944,49 @@ fn dns_cli_ptr_repeat_honors_count() {
 }
 
 #[test]
+fn diagnose_reverse_surfaces_ptr_evidence() {
+    // `diagnose <ip> --reverse` adds reverse-DNS (PTR) evidence for an
+    // IP-literal target. Against the fixture's canned PTR endpoint the
+    // operator sees the hostname rDNS maps the address to (`host.example`),
+    // which identifies what they are probing.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let endpoint = format!("https://{}/dns-ptr-query", fixture.tcp_addr());
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "diagnose",
+            "192.0.2.77",
+            "--reverse",
+            "--doh",
+            &endpoint,
+            "--insecure",
+            "--timeout",
+            "1500",
+        ])
+        .output()
+        .expect("run diagnose --reverse");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "diagnose --reverse should exit 0 (absent PTR / probe failures are observations): {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.contains("host.example"),
+        "reverse PTR evidence (host.example) must surface: {stdout}"
+    );
+    assert!(
+        stdout.contains("192.0.2.77") && stdout.contains("PTR"),
+        "the PTR evidence should be labeled by the target IP and type: {stdout}"
+    );
+}
+
+#[test]
 fn output_body_respects_raised_max_body_bytes() {
     // With the default 1 MiB cap, --output-body writes only ~1 MiB of the
     // fixture's 2 MiB big.invalid body; raising --max-body-bytes captures the

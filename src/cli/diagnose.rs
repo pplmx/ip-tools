@@ -32,6 +32,7 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
     let json = sub_m.get_flag("json");
     let csv = sub_m.get_flag("csv");
     let insecure = sub_m.get_flag("insecure");
+    let reverse = sub_m.get_flag("reverse");
     let tls_protocol = super::parse_tls_protocol(sub_m);
     let max_body_bytes = *sub_m
         .get_one::<u64>("max-body-bytes")
@@ -110,6 +111,7 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
             let custom_servers = custom_servers.clone();
             let doh_endpoints = doh_endpoints.clone();
             let dot_eps = dot_eps.clone();
+            let reverse = reverse;
             async move {
                 let report = diagnose_one(
                     &target,
@@ -126,6 +128,7 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
                     insecure,
                     tls_protocol,
                     max_body_bytes,
+                    reverse,
                 )
                 .await;
                 (idx, report)
@@ -198,6 +201,7 @@ async fn diagnose_one(
     insecure: bool,
     tls_protocol: ip_tools::tls::TlsProtocol,
     max_body_bytes: u64,
+    reverse: bool,
 ) -> Option<DiagnoseReport> {
     // Resolve once: the DNS observations and the probed addresses come from
     // the same lookups. Custom `--server`/`--doh`/`--dot` resolvers are
@@ -243,6 +247,34 @@ async fn diagnose_one(
             target.host
         );
         return None;
+    }
+    // `--reverse`: an IP-literal target gets its reverse-DNS (PTR) name added
+    // to the DNS evidence stack, so the operator can see what hostname rDNS
+    // maps it to (reusing the shared reverse-zone builder). Evidence only —
+    // an absent PTR is normal for many addresses, so it never raises an
+    // anomaly and `--strict` is unaffected.
+    if reverse {
+        if let Ok(ip_literal) = target
+            .host
+            .trim_start_matches('[')
+            .trim_end_matches(']')
+            .parse::<IpAddr>()
+        {
+            let query_name = super::dns::reverse_zone(ip_literal);
+            let mut rev_obs = dns_client.resolve(&query_name, DnsRecordType::Ptr).await;
+            for endpoint in doh_endpoints {
+                rev_obs
+                    .push(ip_tools::dns::doh_query(endpoint, &query_name, DnsRecordType::Ptr, timeout, insecure).await);
+            }
+            for endpoint in dot_eps {
+                rev_obs
+                    .push(ip_tools::dns::dot_query(endpoint, &query_name, DnsRecordType::Ptr, timeout, insecure).await);
+            }
+            for o in &mut rev_obs {
+                o.hostname.clone_from(&target.host);
+            }
+            dns_obs.extend(rev_obs);
+        }
     }
     let destinations: Vec<SocketAddr> = addresses
         .into_iter()
