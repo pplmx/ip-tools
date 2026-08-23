@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-23T05:15:54+00:00",
+  "updated_at": "2026-08-23T05:25:23+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -2498,6 +2498,54 @@
       "touched_round": 0,
       "commit": "5c3a8365fa66f621d00169da466eee1487146351",
       "summary": "Added PTR (reverse DNS) support: DnsRecordType::Ptr + DnsRecord::Ptr, hickory lookup mapping, DoH/DoT wire builder+parser type 12, parse_record_type PTR, and auto reverse-zone construction (in-addr.arpa / ip6.arpa) so 'dns --record-type PTR <ip>' resolves the mapped hostname(s). Report rt_label/order extended; api-baseline regenerated; README + CHANGELOG updated. Pinned by unit tests (reverse_zone v4/v6, qtype 12, wire PTR decode, parse_record_type) and a fixture CLI test surfacing host.example via --doh /dns-ptr-query."
+    },
+    "ISS-040": {
+      "id": "ISS-040",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T05:20:50+00:00",
+      "updated_at": "2026-08-23T05:25:23+00:00",
+      "touched_round": 0,
+      "severity": "low",
+      "summary": "The diagnostic engine reports per-layer failures (HTTP >=400, truncated bodies, redirects, QUIC failures) but never looks ACROSS paths: a host that returns a different response class over one wire protocol than another on the same destination (e.g. HTTP/1.1 -> 200 but HTTP/2 -> 403), or over one address family than the other (IPv4 200 vs IPv6 503), is a real split-brain signal — a CDN edge / WAF treating protocols or families differently, an A/B or partial deployment, or a per-family cloud edge — yet diagnose reports it Healthy because every path technically works."
+    },
+    "TASK-048": {
+      "id": "TASK-048",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T05:20:50+00:00",
+      "updated_at": "2026-08-23T05:25:23+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.35,
+      "unlock_factor": 1,
+      "summary": "Add a cross-path HTTP consistency rule to the engine: compare only completed HTTP responses (status present, no failure) and raise a Low Http diagnosis when (a) the same destination returns a 2xx on one wire protocol and a non-2xx on another, or (b) one address family is uniformly 2xx while the other returns any non-2xx. Proton/negotiation failures and stalls stay owned by their own layer rules. Confidence Medium, evidence names the per-path statuses; conservative to avoid false positives. Pinned by unit tests for each sub-signal and quiet healthy/negotiation-failure cases."
+    },
+    "DEC-047": {
+      "id": "DEC-047",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T05:20:50+00:00",
+      "updated_at": "2026-08-23T05:20:50+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-23): surface cross-path HTTP inconsistency. The engine aggregates per-layer failures but never compares response classes across protocols or address families, so a host whose paths disagree (CDN edge / WAF split-ACL, A/B deployment, per-family cloud edge) can report Healthy. Compare only completed responses (status present, no failure) so protocol-negotiation failures and stalls stay owned by their own rules; bucket by 2xx-vs-non-2xx to avoid benign status-detail noise; Low severity + Medium confidence with honest alternatives. Reuses the Http category; no new dependency or API.",
+      "alternatives_rejected": "a new category (reuses Http); flagging exact-status != (too noisy: 200 vs 204 vs 302); comparing failed/timed-out observations as a consistency signal (that is other rules' job, and would double count); High severity (a divergent path is not an outage — the host still serves); based on thresholds (none needed — it is a factual status comparison)."
+    },
+    "CHG-041": {
+      "id": "CHG-041",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T05:25:23+00:00",
+      "updated_at": "2026-08-23T05:25:23+00:00",
+      "touched_round": 0,
+      "commit": "d16565792a4ab1d09aaea6866e521c9dcee276b6",
+      "summary": "Added http_consistency_rules to the diagnostic engine: raises a Low Http diagnosis (Medium confidence) when completed responses diverge across wire protocols on the same destination (2xx on one, non-2xx on another) or across address families (one family all-2xx, the other any non-2xx). Only completed responses (status present, no failure) are compared and bucketed 2xx-vs-non-2xx so negotiation failures/stalls stay owned by their own rules and benign status-detail differences are ignored. Wired into diagnose dispatch; CHANGELOG updated. Pinned by unit tests for cross-protocol, cross-family, and quiet healthy/negotiation-failure/single-protocol cases."
     }
   },
   "edges": [
@@ -4186,6 +4234,42 @@
       "to": "ISS-039",
       "type": "resolves",
       "created_at": "2026-08-23T05:15:54+00:00"
+    },
+    {
+      "from": "ISS-040",
+      "to": "COMP-diagnose",
+      "type": "located_in",
+      "created_at": "2026-08-23T05:20:50+00:00"
+    },
+    {
+      "from": "TASK-048",
+      "to": "ISS-040",
+      "type": "addresses",
+      "created_at": "2026-08-23T05:20:51+00:00"
+    },
+    {
+      "from": "DEC-047",
+      "to": "TASK-048",
+      "type": "governs",
+      "created_at": "2026-08-23T05:20:51+00:00"
+    },
+    {
+      "from": "DEC-047",
+      "to": "DEC-046",
+      "type": "supersedes",
+      "created_at": "2026-08-23T05:20:51+00:00"
+    },
+    {
+      "from": "CHG-041",
+      "to": "TASK-048",
+      "type": "implements",
+      "created_at": "2026-08-23T05:25:23+00:00"
+    },
+    {
+      "from": "CHG-041",
+      "to": "ISS-040",
+      "type": "resolves",
+      "created_at": "2026-08-23T05:25:23+00:00"
     }
   ]
 }
