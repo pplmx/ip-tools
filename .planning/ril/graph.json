@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-23T00:15:01+00:00",
+  "updated_at": "2026-08-23T00:34:33+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -1752,6 +1752,69 @@
       "touched_round": 0,
       "commit": "d6f89cfde41e7e29d89105dc9f7b227eee5cac07",
       "summary": "Extended diagnose --tls-version to the full pipeline: forced protocol version in the TLS and http1+http2 phases via probe_with_version/probe_insecure_with_version; http3 and TCP repeat unaffected; fixture CLI test + docs."
+    },
+    "ISS-025": {
+      "id": "ISS-025",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T00:23:41+00:00",
+      "updated_at": "2026-08-23T00:34:33+00:00",
+      "touched_round": 0,
+      "severity": "low",
+      "summary": "The HTTP probes (http/http2/http3) read the full response body (bounded at 1 MiB) purely to report size, then keep only a 1 KiB lossy-UTF8 snippet. An operator inspecting a WAF block page, a JS challenge, a captive-portal prompt, or a JSON API error cannot get the actual body bytes — they must re-run in curl/browser."
+    },
+    "TASK-032": {
+      "id": "TASK-032",
+      "type": "task",
+      "status": "resolved",
+      "version": 3,
+      "created_at": "2026-08-23T00:23:41+00:00",
+      "updated_at": "2026-08-23T00:34:33+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.35,
+      "unlock_factor": 1,
+      "summary": "Add --output-body FILE to the single-shot http/http2/http3 probes: thread an optional body_output path through probe_impl and new *output public fns, accumulate the bounded full body, and write it verbatim so the actual response bytes (WAF page / challenge / API error) are inspectable. Existing snippet/size behavior unchanged. (Repeat probe + diagnose --output-body is a follow-on slice.)"
+    },
+    "DEC-031": {
+      "id": "DEC-031",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T00:23:41+00:00",
+      "updated_at": "2026-08-23T00:23:41+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-23): --output-body FILE on the HTTP-family probes. The probes already read the full body (bounded 1 MiB) but discard all but the 1 KiB snippet; an operator needs the actual WAF/JS-challenge/captive-portal/API-error bytes. Delivers a bounded full-body capture to a file, threading a body_output path through the shared probe fns + CLI (single-shot + repeat + diagnose) following the existing body/headers/path threading precedent (TASK-006/007). Public API change (regenerated api-baseline).",
+      "alternatives_rejected": "raising the snippet cap (still truncates and balloons each report); no flag (forces re-run in curl); unbounded body streams (resource risk, keep 1 MiB cap); writing body in report layer (the library already drained it)."
+    },
+    "TASK-033": {
+      "id": "TASK-033",
+      "type": "task",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T00:34:15+00:00",
+      "updated_at": "2026-08-23T00:34:15+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.25,
+      "unlock_factor": 1,
+      "summary": "Follow-on --output-body slice: thread the option through probe --protocol http|http2|http3 (repeat fns http_repeat_with_version/http2_repeat_with_version/http3_repeat via a body_output param) and diagnose's HTTP phases (collect_http_probes), so a repeated/sweep run can persist each response body too."
+    },
+    "CHG-026": {
+      "id": "CHG-026",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T00:34:33+00:00",
+      "updated_at": "2026-08-23T00:34:33+00:00",
+      "touched_round": 0,
+      "commit": "413b1428f327182b23b0bcc1f458f32ba7c8356e",
+      "summary": "Added --output-body FILE to single-shot http/http2/http3: body_output threaded through probe_impl and new *output public fns, full bounded body written verbatim best-effort; first slice (repeat/diagnose follow as TASK-033)."
     }
   },
   "edges": [
@@ -2870,6 +2933,60 @@
       "to": "ISS-024",
       "type": "resolves",
       "created_at": "2026-08-23T00:15:01+00:00"
+    },
+    {
+      "from": "DEC-031",
+      "to": "TASK-032",
+      "type": "governs",
+      "created_at": "2026-08-23T00:23:41+00:00"
+    },
+    {
+      "from": "DEC-031",
+      "to": "DEC-030",
+      "type": "supersedes",
+      "created_at": "2026-08-23T00:23:41+00:00"
+    },
+    {
+      "from": "TASK-032",
+      "to": "ISS-025",
+      "type": "addresses",
+      "created_at": "2026-08-23T00:23:41+00:00"
+    },
+    {
+      "from": "ISS-025",
+      "to": "COMP-http",
+      "type": "located_in",
+      "created_at": "2026-08-23T00:23:41+00:00"
+    },
+    {
+      "from": "ISS-025",
+      "to": "COMP-http2",
+      "type": "located_in",
+      "created_at": "2026-08-23T00:34:15+00:00"
+    },
+    {
+      "from": "ISS-025",
+      "to": "COMP-http3",
+      "type": "located_in",
+      "created_at": "2026-08-23T00:34:15+00:00"
+    },
+    {
+      "from": "TASK-033",
+      "to": "TASK-032",
+      "type": "depends_on",
+      "created_at": "2026-08-23T00:34:15+00:00"
+    },
+    {
+      "from": "CHG-026",
+      "to": "TASK-032",
+      "type": "implements",
+      "created_at": "2026-08-23T00:34:33+00:00"
+    },
+    {
+      "from": "CHG-026",
+      "to": "ISS-025",
+      "type": "resolves",
+      "created_at": "2026-08-23T00:34:33+00:00"
     }
   ]
 }
