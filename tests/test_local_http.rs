@@ -2149,6 +2149,46 @@ fn diagnose_multiple_targets_preserve_input_order_under_concurrency() {
 }
 
 #[test]
+fn probe_sweep_preserves_input_order_under_concurrency() {
+    // The shared per-protocol probe sweep (`run_probe_flow`, used by tcp/tls/
+    // http/http2/http3/probe) also runs targets concurrently under
+    // `--concurrency` and must re-sort reports back to the given target order.
+    // A multi-target `tcp` sweep labels each target block with its host, so we
+    // assert the first target's label precedes the second's in the output.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let addr1 = fixture.tcp_addr().to_string();
+    let host1 = "127.0.0.1".to_string();
+    let addr2 = "127.0.0.2".to_string();
+    let host2 = "127.0.0.2".to_string();
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args(["tcp", &addr1, &addr2, "--concurrency", "4", "--timeout", "1500"])
+        .output()
+        .expect("run concurrent tcp sweep");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "concurrent tcp sweep should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let p1 = stdout
+        .find(&format!("{host1}:"))
+        .expect("first target's label must render");
+    let p2 = stdout
+        .find(&format!("{host2}:"))
+        .expect("second target's label must render");
+    assert!(
+        p1 < p2,
+        "probe sweep target order must be preserved under --concurrency: {stdout}"
+    );
+}
+
+#[test]
 fn diagnose_cli_strict_aggregates_across_targets() {
     // `--strict` is aggregated across hosts: one unhealthy target (a refused
     // TCP connect on 127.0.0.1:443) makes the whole sweep exit non-zero.

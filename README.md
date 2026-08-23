@@ -202,10 +202,11 @@ ip-tools tcp a.example b.example c.example   # fleet connectivity sweep (multi-t
 ```
 
 Every per-address probe subcommand — `tcp`, `tls`, `http`, `http2`, `http3`
-and `probe` — accepts **multiple targets** (a fleet/connectivity sweep): each
-is resolved and probed in turn. Human output labels each host block; `--json`
-emits a per-target array for more than one host; `--strict` aggregates failed
-probes across all targets.
+and `probe` — accepts **multiple targets** (a fleet/connectivity sweep): hosts
+are resolved and probed concurrently (bounded by `--concurrency`; `1` keeps
+the per-host sequential behavior), with output re-sorted to the given target
+order. Human output labels each host block; `--json` emits a per-target array
+for more than one host; `--strict` aggregates failed probes across all targets.
 
 `--csv` exports a fleet sweep to a spreadsheet: `tcp` rows carry
 `host,destination,success,latency_ms,failure`; `tls` adds the handshake details

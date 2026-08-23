@@ -539,6 +539,10 @@ where
     O: Sized + serde::Serialize + Send + 'static,
     Fut: Future<Output = O> + Send + 'static,
 {
+    // Per-target sweep result tagged with its input index so a concurrent
+    // sweep can be re-sorted back to the caller's target order.
+    type IndexedTarget<O> = (usize, Option<(String, Vec<O>)>);
+
     let json = sub_m.get_flag("json");
     // Only the `probe` subcommand defines `--csv` (it supplies the renderer);
     // the other per-address probe commands have no `csv` arg, so read it
@@ -603,38 +607,57 @@ where
     }
     let single = targets.len() == 1;
 
-    // Probe each target in turn, collecting per-target results.
-    let mut per_target: Vec<(String, Vec<O>)> = Vec::with_capacity(targets.len());
-    let mut unresolved = 0usize;
-    for target in targets {
-        let addresses =
-            match resolve_for_tcp_servers(&target.host, &servers, &doh_endpoints, &dot_eps, insecure, timeout).await {
-                Ok(addrs) => addrs,
+    // Probe targets concurrently (bounded by `--concurrency`; 1 keeps the
+    // per-host sequential behavior), re-sorting back to the given target order
+    // so the human/JSON/CSV output stays deterministic across a fleet sweep.
+    let targets_with_index: Vec<(usize, Target)> = targets.into_iter().enumerate().collect();
+    let mut indexed: Vec<IndexedTarget<O>> = parallel_map(targets_with_index, concurrency, move |(idx, target)| {
+        let servers = servers.clone();
+        let doh_endpoints = doh_endpoints.clone();
+        let dot_eps = dot_eps.clone();
+        let probe = probe.clone();
+        let sni = sni.clone();
+        async move {
+            let result =
+                resolve_for_tcp_servers(&target.host, &servers, &doh_endpoints, &dot_eps, insecure, timeout).await;
+            let output = match result {
+                Ok(addrs) => {
+                    let destinations: Vec<SocketAddr> = addrs
+                        .into_iter()
+                        .filter(|ip| match (ipv4_only, ipv6_only) {
+                            (true, _) => ip.is_ipv4(),
+                            (_, true) => ip.is_ipv6(),
+                            _ => true,
+                        })
+                        .map(|ip| SocketAddr::new(ip, target.port))
+                        .collect();
+                    let host = sni.clone().unwrap_or_else(|| target.host.clone());
+                    let mut results: Vec<O> = parallel_map(destinations, concurrency, move |dest| {
+                        let host = host.clone();
+                        let probe = probe.clone();
+                        async move { probe(host, dest, timeout).await }
+                    })
+                    .await;
+                    results.sort_by_key(sort_key);
+                    Some((target.host.clone(), results))
+                }
                 Err(err) => {
                     eprintln!("Error: {err}");
-                    unresolved += 1;
-                    continue;
+                    None
                 }
             };
-        let destinations: Vec<SocketAddr> = addresses
-            .into_iter()
-            .filter(|ip| match (ipv4_only, ipv6_only) {
-                (true, _) => ip.is_ipv4(),
-                (_, true) => ip.is_ipv6(),
-                _ => true,
-            })
-            .map(|ip| SocketAddr::new(ip, target.port))
-            .collect();
-        let host = sni.clone().unwrap_or_else(|| target.host.clone());
-        let probe = probe.clone();
-        let mut results: Vec<O> = parallel_map(destinations, concurrency, move |dest| {
-            let host = host.clone();
-            let probe = probe.clone();
-            async move { probe(host, dest, timeout).await }
-        })
-        .await;
-        results.sort_by_key(sort_key);
-        per_target.push((target.host.clone(), results));
+            (idx, output)
+        }
+    })
+    .await;
+    indexed.sort_by_key(|(idx, _)| *idx);
+    let mut per_target: Vec<(String, Vec<O>)> = Vec::with_capacity(indexed.len());
+    let mut unresolved = 0usize;
+    for (_, result) in indexed {
+        match result {
+            Some(rt) => per_target.push(rt),
+            None => unresolved += 1,
+        }
     }
 
     if csv {
