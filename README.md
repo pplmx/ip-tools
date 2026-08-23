@@ -272,7 +272,9 @@ whether the served certificate's SANs cover the hostname/SNI you presented
 (RFC 6125-style: exact or single-label wildcard for hostnames, exact match for
 IP literals). This surfaces a wrong-host or wildcard-mismatch certificate even
 under `--insecure`, where chain validation is skipped and the mismatch is
-otherwise silent.
+otherwise silent. The `http`/`http2`/`http3` reports show the same **`cert :`
+row and `covers <name>: yes/no`** verdict (from the same embedded
+observation), so inspecting HTTPS in the terminal keeps the coverage signal.
 
 Example output:
 

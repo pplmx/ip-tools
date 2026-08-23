@@ -321,6 +321,20 @@ pub fn render_http(observations: &[HttpObservation]) -> String {
             if let Some(alpn) = &tls.alpn {
                 out.push_str(&format!("    ALPN: {alpn}\n"));
             }
+            // Parity with the `tls` command: surface the serving certificate
+            // and the SAN-coverage verdict for the presented SNI. This is
+            // what makes a wrong-host/wildcard mismatch visible in an HTTPS
+            // inspection — especially under `--insecure`, where chain
+            // validation is skipped and coverage is the only mismatch signal.
+            if let Some(cert) = &tls.certificate {
+                out.push_str(&format!("    cert : {}\n", render_cert(cert)));
+                let covers = if cert_covers_hostname(&tls.sni, &cert.sans) {
+                    "yes"
+                } else {
+                    "no"
+                };
+                out.push_str(&format!("    covers {}: {covers}\n", tls.sni));
+            }
         }
         // Show the diagnostic-relevant response headers (server identity,
         // CDN/proxy hops, caching, security markers). All headers are in the
@@ -835,6 +849,17 @@ mod tests {
         assert!(out.contains("200"));
         assert!(out.contains("redirect: https://example.com/login"));
         assert!(out.contains("body: 1234 bytes"));
+        // The HTTPS report must now surface the serving certificate and the
+        // SAN-coverage verdict (parity with the `tls` command), not just the
+        // negotiated TLS version/ALPN.
+        assert!(
+            out.contains("cert : CN=example.com"),
+            "http report must show the cert: {out}"
+        );
+        assert!(
+            out.contains("covers example.com: yes"),
+            "http report must show a covers verdict: {out}"
+        );
         assert!(out.contains("request failed"));
         // A failed observation must name its protocol so the HTTP/1.1, HTTP/2
         // and HTTP/3 rows of a failing host are distinguishable.
