@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-23T05:47:10+00:00",
+  "updated_at": "2026-08-23T05:57:07+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -2690,6 +2690,54 @@
       "touched_round": 0,
       "commit": "37b78cac9d4dfdaefb6e6619e13a8e4982d73c69",
       "summary": "Extended diagnose --reverse to hostname targets: it now reverse-resolves each resolved address (in addition to the IP-literal case) and labels each PTR evidence row with the reversed IP, so the flag is never silently ignored. Reuses the shared reverse_zone helper + PTR query path; CHANGELOG updated. Pinned by a fixture-gated CLI test: diagnose host.example --reverse with the fixture's /dns-query + /dns-ptr-query surfaces the PTR evidence."
+    },
+    "ISS-044": {
+      "id": "ISS-044",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T05:50:03+00:00",
+      "updated_at": "2026-08-23T05:57:07+00:00",
+      "touched_round": 0,
+      "severity": "low",
+      "summary": "probe --protocol http|http2|http3 repeats an HTTP endpoint for stability but surfaces no HTTP status codes: the aggregate treats any completed response (including 4xx/5xx) as transport success, so a host returning 503 on every attempt shows 100% success and the operator cannot see status flapping (e.g. 200x8 vs 503x2) that is exactly what a repeat probe exists to reveal."
+    },
+    "TASK-052": {
+      "id": "TASK-052",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T05:50:03+00:00",
+      "updated_at": "2026-08-23T05:57:07+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.4,
+      "unlock_factor": 1,
+      "summary": "Surface the HTTP status distribution in the repeat probes: carry each attempt's status through the shared repeat_impl aggregation, add a status_counts histogram (StatusCount struct) to ProbeResult, and render it in the probe human report and JSON. Keep the documented transport-success semantics (a completed response with any status counts as a successful exchange) — the addition is visibility, not a semantics change. Public API change (ProbeResult gains status_counts; api-baseline regenerated). Pinned by an aggregation unit test and a fixture-gated CLI test: probe --protocol http --count N shows the observed statuses."
+    },
+    "DEC-051": {
+      "id": "DEC-051",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T05:50:03+00:00",
+      "updated_at": "2026-08-23T05:50:03+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-23): surface HTTP statuses in the repeat probes. http_outcome deliberately counts a completed response (even 5xx) as transport success -- a defensible connectivity-first design -- but the probe report relays zero status information, so repeat-probing an HTTP endpoint cannot reveal status flapping (200x8 vs 503x2), which is the whole point of a stability probe. Add a status_counts histogram to ProbeResult, threaded through the shared repeat_impl, without changing the documented success semantics; render it in human + JSON. Public API change (regenerate api-baseline).",
+      "alternatives_rejected": "redefining 5xx as failure (contradicts the deliberate transport-success semantics and would break --strict meaning); a separate probe subcommand flag that only prints status (the histogram belongs in the existing repeat report); changing http_outcome success (same reason as redefining 5xx)."
+    },
+    "CHG-045": {
+      "id": "CHG-045",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T05:57:06+00:00",
+      "updated_at": "2026-08-23T05:57:06+00:00",
+      "touched_round": 0,
+      "commit": "42644a4baa8fb9b60cb993b6c87265b1b66a475c",
+      "summary": "Added an HTTP status distribution to the repeat probes: repeat_impl now carries each attempt's status and aggregates a status_counts histogram (new StatusCount model + ProbeResult.status_counts), rendered in the probe human report (status: 200xN, ...) and JSON, so repeat-probing an HTTP endpoint reveals status flapping that transport pass/fail counts hide. Transport-success semantics preserved (a completed response with any status still counts as a successful exchange). Public API change (api-baseline regenerated); tcp/tls repeats keep an empty list. Pinned by an aggregation unit test and a fixture-gated CLI test surfacing 200x3."
     }
   },
   "edges": [
@@ -4522,6 +4570,42 @@
       "to": "ISS-043",
       "type": "resolves",
       "created_at": "2026-08-23T05:47:10+00:00"
+    },
+    {
+      "from": "ISS-044",
+      "to": "COMP-probe",
+      "type": "located_in",
+      "created_at": "2026-08-23T05:50:03+00:00"
+    },
+    {
+      "from": "TASK-052",
+      "to": "ISS-044",
+      "type": "addresses",
+      "created_at": "2026-08-23T05:50:03+00:00"
+    },
+    {
+      "from": "DEC-051",
+      "to": "TASK-052",
+      "type": "governs",
+      "created_at": "2026-08-23T05:50:04+00:00"
+    },
+    {
+      "from": "DEC-051",
+      "to": "DEC-050",
+      "type": "supersedes",
+      "created_at": "2026-08-23T05:50:04+00:00"
+    },
+    {
+      "from": "CHG-045",
+      "to": "TASK-052",
+      "type": "implements",
+      "created_at": "2026-08-23T05:57:07+00:00"
+    },
+    {
+      "from": "CHG-045",
+      "to": "ISS-044",
+      "type": "resolves",
+      "created_at": "2026-08-23T05:57:07+00:00"
     }
   ]
 }
