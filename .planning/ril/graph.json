@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-23T09:30:01+00:00",
+  "updated_at": "2026-08-23T09:33:19+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -3374,6 +3374,54 @@
       "touched_round": 0,
       "commit": "d3082bfeb617562d6b8fbc9402e3f7004785c819",
       "summary": "Added a records column to render_dns_csv: single-shot rows now emit the resolved DnsRecord values (Display-joined, RFC-4180 quoted) on top of the existing latency/TTL fields; --count repeat rows leave it empty. Renderer-only, no public API change; added a fixture-gated CLI test proving the DoH single-shot rows carry 192.0.2.77 / 2001:db8::77."
+    },
+    "ISS-058": {
+      "id": "ISS-058",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T09:33:13+00:00",
+      "updated_at": "2026-08-23T09:33:19+00:00",
+      "touched_round": 0,
+      "severity": "low",
+      "summary": "The HTTP-family observations capture a bounded response body snippet (body_snippet -- WAF block page, JS challenge, auth/API error, captive-portal prompt), surfaced in the human report and --json, but the http/http2/http3 --csv exporter drops it: a spreadsheet fleet sweep sees status/headers but not the content that makes a status meaningful."
+    },
+    "TASK-066": {
+      "id": "TASK-066",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T09:33:13+00:00",
+      "updated_at": "2026-08-23T09:33:19+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.15,
+      "unlock_factor": 1,
+      "summary": "Add a body_snippet column to http/http2/http3 --csv (renderer-only): emit the bounded response-body text via the shared RFC-4180 csv_field helper (it may span commas/quotes/newlines), on the fleet rows the human/JSON body content already carries. No public API change. Pinned by an http --csv fixture assertion that the row carries the snippet."
+    },
+    "DEC-065": {
+      "id": "DEC-065",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T09:33:13+00:00",
+      "updated_at": "2026-08-23T09:33:13+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-23): surface the HTTP body snippet across output formats. The HTTP --csv fleet rows gained headers (DEC-056) but still dropped the bounded body content -- the WAF block page / auth error / captive-portal prompt that makes a bare status meaningful, and which human + --json already carry. One quoted CSV cell matches the headers/tls-column pattern and keeps a fleet sweep spreadsheet inspectionable.",
+      "alternatives_rejected": "leaving body content out of the http CSV (a spreadsheet sweep would still have to re-run the probe or read JSON to see what the endpoint answered); a separate --csv-body flag (one column belongs in the existing exporter); writing the full unbounded body into a cell (the column carries the same bounded snippet the observation already stores)."
+    },
+    "CHG-059": {
+      "id": "CHG-059",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T09:33:19+00:00",
+      "updated_at": "2026-08-23T09:33:19+00:00",
+      "touched_round": 0,
+      "commit": "1f1d4a84e24b525b3030948a4805a1d4c32793fb",
+      "summary": "Added a body_snippet column to render_http_csv and the HTTP family header: fleet rows now carry the bounded response-body text (RFC-4180 quoted) alongside the status/headers/TLS columns. Renderer-only, no public API change; extended the http --csv fixture test to assert the snippet is present."
     }
   },
   "edges": [
@@ -5710,6 +5758,42 @@
       "to": "ISS-057",
       "type": "resolves",
       "created_at": "2026-08-23T09:30:00+00:00"
+    },
+    {
+      "from": "ISS-058",
+      "to": "COMP-http",
+      "type": "located_in",
+      "created_at": "2026-08-23T09:33:19+00:00"
+    },
+    {
+      "from": "TASK-066",
+      "to": "ISS-058",
+      "type": "addresses",
+      "created_at": "2026-08-23T09:33:19+00:00"
+    },
+    {
+      "from": "DEC-065",
+      "to": "TASK-066",
+      "type": "governs",
+      "created_at": "2026-08-23T09:33:19+00:00"
+    },
+    {
+      "from": "DEC-065",
+      "to": "DEC-064",
+      "type": "supersedes",
+      "created_at": "2026-08-23T09:33:19+00:00"
+    },
+    {
+      "from": "CHG-059",
+      "to": "TASK-066",
+      "type": "implements",
+      "created_at": "2026-08-23T09:33:19+00:00"
+    },
+    {
+      "from": "CHG-059",
+      "to": "ISS-058",
+      "type": "resolves",
+      "created_at": "2026-08-23T09:33:19+00:00"
     }
   ]
 }
