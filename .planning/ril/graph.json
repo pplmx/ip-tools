@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-23T08:35:17+00:00",
+  "updated_at": "2026-08-23T08:41:28+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -3074,6 +3074,54 @@
       "touched_round": 0,
       "commit": "1fc1e512edec4912d617ec193c10650817341ca5",
       "summary": "Added HTTP status flapping detection: new http_status_flapping_rules engine rule raises an Intermittent (High) diagnosis when a repeat probe has >=2 attempts and observed both 2xx and non-2xx status classes (reading ProbeResult.status_counts); and diagnose's probe phase now runs an HTTP/1.1 status repeat alongside the TCP repeat so the rule is reachable end-to-end. Added a fixture 'flap.invalid' route that alternates 200/503 (separate TCP/QUIC counters)."
+    },
+    "ISS-052": {
+      "id": "ISS-052",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T08:41:19+00:00",
+      "updated_at": "2026-08-23T08:41:28+00:00",
+      "touched_round": 0,
+      "severity": "medium",
+      "summary": "The repeat probes already compute per-attempt latency percentiles (p50/p95) and jitter in ProbeResult.latency, but the diagnostic engine never uses them: a transport-healthy, status-stable endpoint with a long latency tail (p95 well above p50 -- degraded backend under load, capacity/rate-limit throttling, congested/flapping path) is invisible because intermittent_rules only fires on transport failures and http_status_flapping only on mixed status classes. The flasking performance analog of status flapping (TASK-059) is undiagnosed."
+    },
+    "TASK-060": {
+      "id": "TASK-060",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T08:41:19+00:00",
+      "updated_at": "2026-08-23T08:41:28+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.7,
+      "confidence": 1,
+      "effort": 0.4,
+      "unlock_factor": 1,
+      "summary": "Flag latency instability: add a latency_instability_rules engine rule that raises an Intermittent (High) diagnosis when a repeat probe succeeds (no transport failures) with >=3 attempts and a latency tail where p95 >= 3*p50. It reads the jitter/percentile data the repeat probes already populate (the HTTP status repeat diagnose now runs), so no public API/CLI change. Pinned by engine unit tests (slow tail fires; tight / <3 attempts / transport failures stay silent) and a fixture-gated CLI test: diagnose <addr> --sni slowflap.invalid (fixture alternates fast / ~120ms with stable 200) surfaces the verdict."
+    },
+    "DEC-059": {
+      "id": "DEC-059",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T08:41:19+00:00",
+      "updated_at": "2026-08-23T08:41:19+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-23): act on the latency statistics the repeat probes already compute instead of just rendering them. diagnose now collects an HTTP status repeat (TASK-059), so per-attempt latency is present, yet nothing flags a long slow tail -- an endpoint that never fails and keeps a stable status but degrades under load (p95 far above p50) is exactly the performance instability an operator running a stability repeat wants surfaced, and it is invisible to transport and status rules. A scale-free p95/p50 ratio keeps the threshold defensible across endpoints.",
+      "alternatives_rejected": "leaving the latency distribution purely informational (it would stay invisible for the exact degrading-backend case it exists to reveal); reusing intermittent_rules (that rule keyed on transport failures, unrelated to a slow healthy tail); a fixed absolute-ms threshold (not scale-free -- inappropriate across local vs internet hops); adding a new CLI flag (the data is already collected)."
+    },
+    "CHG-053": {
+      "id": "CHG-053",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T08:41:28+00:00",
+      "updated_at": "2026-08-23T08:41:28+00:00",
+      "touched_round": 0,
+      "commit": "c29afff2426600516f32b8b671f5235da20eb3af",
+      "summary": "Added latency-instability detection: new latency_instability_rules engine rule raises an Intermittent (High) diagnosis when a repeat probe succeeds with >=3 attempts and p95 >= 3*p50 (a long slow tail on an otherwise transport/status-healthy path). Added a fixture 'slowflap.invalid' route that alternates fast / ~120ms responses with a stable 200 (separate TCP/QUIC counters) and a fixture-gated CLI test proving diagnose surfaces the verdict."
     }
   },
   "edges": [
@@ -5194,6 +5242,42 @@
       "to": "ISS-051",
       "type": "resolves",
       "created_at": "2026-08-23T08:35:16+00:00"
+    },
+    {
+      "from": "ISS-052",
+      "to": "COMP-http",
+      "type": "located_in",
+      "created_at": "2026-08-23T08:41:28+00:00"
+    },
+    {
+      "from": "TASK-060",
+      "to": "ISS-052",
+      "type": "addresses",
+      "created_at": "2026-08-23T08:41:28+00:00"
+    },
+    {
+      "from": "DEC-059",
+      "to": "TASK-060",
+      "type": "governs",
+      "created_at": "2026-08-23T08:41:28+00:00"
+    },
+    {
+      "from": "DEC-059",
+      "to": "DEC-058",
+      "type": "supersedes",
+      "created_at": "2026-08-23T08:41:28+00:00"
+    },
+    {
+      "from": "CHG-053",
+      "to": "TASK-060",
+      "type": "implements",
+      "created_at": "2026-08-23T08:41:28+00:00"
+    },
+    {
+      "from": "CHG-053",
+      "to": "ISS-052",
+      "type": "resolves",
+      "created_at": "2026-08-23T08:41:28+00:00"
     }
   ]
 }
