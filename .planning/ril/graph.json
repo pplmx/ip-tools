@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-23T09:09:01+00:00",
+  "updated_at": "2026-08-23T09:15:47+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -3230,6 +3230,54 @@
       "touched_round": 0,
       "commit": "62380ffbb1b1f1fea109d70db3e6eb9a57d7012b",
       "summary": "Added probe::http_repeat_plain (repeats cleartext HTTP/1.1 and aggregates status+latency) and routed probe --protocol http --plain through it in the CLI, rejecting --plain for non-http protocols. Public API change (api-baseline regenerated); added a library test + a fixture-gated CLI test proving the plaintext repeat aggregates 200x3 and --protocol tls --plain fails."
+    },
+    "ISS-055": {
+      "id": "ISS-055",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T09:15:39+00:00",
+      "updated_at": "2026-08-23T09:15:46+00:00",
+      "touched_round": 0,
+      "severity": "low",
+      "summary": "The DNS TTL feature (DEC-054/TASK-055) surfaced the record TTL on single-shot rows (human/JSON/CSV), but the dns --count repeat row still leaves the CSV ttl column empty and omits TTL from the human repeat report and repeated-probe JSON -- aggregate_repeat discards each observation's ttl, so a stability sweep cannot see the caching-relevant TTL on the aggregated rows. Inconsistent with the single-shot TTL surface."
+    },
+    "TASK-063": {
+      "id": "TASK-063",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T09:15:39+00:00",
+      "updated_at": "2026-08-23T09:15:47+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.3,
+      "unlock_factor": 1,
+      "summary": "Surface the minimum record TTL on dns --count repeat rows: add a ttl: Option<u32> field to DnsRepeatResult, compute it in aggregate_repeat as the minimum across the successful answers (the caching-relevant bound), render it in the human repeat report (ttl: N s) and the repeat CSV ttl column (which exists but was left empty). Public API change (api-baseline regenerated). Pinned by an aggregation unit test (min TTL across a bucket), the render unit test, and a fixture-gated CLI test: dns host.example --doh <fixture> --count 3 --csv carries ttl=60 on the repeat row."
+    },
+    "DEC-062": {
+      "id": "DEC-062",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T09:15:39+00:00",
+      "updated_at": "2026-08-23T09:15:39+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-23): complete the DNS TTL feature across the repeat surface. Single-shot rows carry TTL, but dns --count aggregates away each attempt's TTL, leaving the repeat CSV ttl column empty and omitting it from the repeated-probe human/JSON output -- inconsistent for the same feature. Carry the minimum TTL across the successful answers, which is the caching-relevant bound (a record with a shorter TTL expires sooner) and stays meaningful when aggregating.",
+      "alternatives_rejected": "leaving repeat rows TTL-less (an inconsistency with the single-shot TTL feature); the maximum or mean TTL across attempts (the minimum is the conservative caching-relevant bound that matters operationally); a per-record multi-value TTL on the aggregated row (the repeat surface is keyed by resolver+record-type, so a single minimum is the right shape)."
+    },
+    "CHG-056": {
+      "id": "CHG-056",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T09:15:46+00:00",
+      "updated_at": "2026-08-23T09:15:46+00:00",
+      "touched_round": 0,
+      "commit": "77fb75f89bb0f83e13e2963d80e3f1502983d453",
+      "summary": "Added a ttl field to DnsRepeatResult, computed in aggregate_repeat as the minimum TTL across the successful answers; rendered in the human repeat report (ttl: N s) and the repeat CSV ttl column. Public API change (api-baseline regenerated); added an aggregation unit test, the render unit test, and a fixture-gated CLI test proving dns --count 3 --csv carries ttl=60."
     }
   },
   "edges": [
@@ -5458,6 +5506,42 @@
       "to": "ISS-054",
       "type": "resolves",
       "created_at": "2026-08-23T09:09:01+00:00"
+    },
+    {
+      "from": "ISS-055",
+      "to": "COMP-dns",
+      "type": "located_in",
+      "created_at": "2026-08-23T09:15:46+00:00"
+    },
+    {
+      "from": "TASK-063",
+      "to": "ISS-055",
+      "type": "addresses",
+      "created_at": "2026-08-23T09:15:46+00:00"
+    },
+    {
+      "from": "DEC-062",
+      "to": "TASK-063",
+      "type": "governs",
+      "created_at": "2026-08-23T09:15:46+00:00"
+    },
+    {
+      "from": "DEC-062",
+      "to": "DEC-061",
+      "type": "supersedes",
+      "created_at": "2026-08-23T09:15:46+00:00"
+    },
+    {
+      "from": "CHG-056",
+      "to": "TASK-063",
+      "type": "implements",
+      "created_at": "2026-08-23T09:15:46+00:00"
+    },
+    {
+      "from": "CHG-056",
+      "to": "ISS-055",
+      "type": "resolves",
+      "created_at": "2026-08-23T09:15:46+00:00"
     }
   ]
 }
