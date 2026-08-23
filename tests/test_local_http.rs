@@ -2426,6 +2426,45 @@ fn diagnose_cli_csv_export_renders_diagnosis_rows() {
 }
 
 #[test]
+fn diagnose_flags_http_status_flapping_on_transport_healthy_path() {
+    // `diagnose` must surface HTTP status flapping: the fixture's `flap.invalid`
+    // route alternates 200/503 per request, so a repeated HTTP probe succeeds
+    // at the transport layer every time yet sees both response classes. TCP
+    // pass/fail alone would report stable connectivity, so the flapping verdict
+    // is the user-visible signal that the backend is flapping.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let addr = fixture.tcp_addr().to_string();
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "diagnose",
+            &addr,
+            "--sni",
+            "flap.invalid",
+            "--insecure",
+            "--timeout",
+            "1500",
+        ])
+        .output()
+        .expect("run diagnose against flapping route");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "diagnose should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.contains("HTTP status flapping") && stdout.contains("flapping / degraded backend"),
+        "the flapping diagnosis (and its possible cause) must surface: {stdout}"
+    );
+}
+
+#[test]
 fn diagnose_cli_multiple_targets_render_each_and_emit_json_array() {
     // `diagnose` accepts multiple targets (a fleet sweep): each host runs the
     // full pipeline, human output shows every host's report, and `--json`

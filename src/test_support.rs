@@ -169,12 +169,22 @@ enum FixtureRoute {
     /// A custom request header (`x-fixture-marker: present`) was sent; answers
     /// 202 to prove the header reached the server on the wire.
     MarkerPresent,
+    /// Alternate 200 / 503 per request so a repeated HTTP probe observes HTTP
+    /// status flapping on an otherwise transport-healthy path.
+    Flap,
 }
 
 /// Size of the oversized body served for [`FixtureRoute::LargeBody`] — larger
 /// than the probes' `MAX_BODY_BYTES` (1 MiB) so the cap must truncate it.
 /// `bytes::Bytes` needs a runtime buffer, so this is built per request.
 const LARGE_BODY_BYTES: usize = 2 * 1024 * 1024;
+
+/// Request counter for the [`FixtureRoute::Flap`] route: alternates the HTTP
+/// status (200/503) so repeated probes observe status flapping.
+static FLAP_COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+/// Separate counter for the QUIC flap arm so the two servers' alternations
+/// do not desynchronize.
+static QUIC_FLAP_COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 /// Classify a request by its host (URI authority first, then `Host` header,
 /// which covers HTTP/2/3's `:authority` and HTTP/1.1's `Host` alike).
@@ -198,6 +208,7 @@ fn route_for(req: &hyper::Request<impl Sized>) -> FixtureRoute {
         "stall.invalid" => FixtureRoute::StalledBody,
         "echo.invalid" => FixtureRoute::BodyEcho,
         "quiesce.invalid" => FixtureRoute::Quiesce,
+        "flap.invalid" => FixtureRoute::Flap,
         _ => FixtureRoute::Normal,
     }
 }
@@ -259,6 +270,7 @@ const DOH_PTR_RESPONSE: &[u8] = &[
 
 /// Accept TLS connections and serve HTTP/1.1 or HTTP/2 chosen by negotiated
 /// ALPN.
+#[allow(clippy::too_many_lines)] // one hand-written arm per fixture route is clearest inline
 async fn run_tcp_server(listener: tokio::net::TcpListener, acceptor: tokio_rustls::TlsAcceptor) {
     loop {
         let Ok((tcp, _peer)) = listener.accept().await else {
@@ -323,6 +335,26 @@ async fn run_tcp_server(listener: tokio::net::TcpListener, acceptor: tokio_rustl
                             .body(http_body_util::Full::new(bytes::Bytes::from_static(b"marker")).boxed())
                             .expect("static marker response"),
                     ),
+                    FixtureRoute::Flap => {
+                        // Alternate 200/503 per request so a repeated HTTP
+                        // probe observes status flapping on a transport-healthy
+                        // path. NOT shared with the QUIC server (that path has
+                        // its own handler below and would skew the counter).
+                        let status = if FLAP_COUNT
+                            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+                            .is_multiple_of(2)
+                        {
+                            200
+                        } else {
+                            503
+                        };
+                        Ok::<_, std::convert::Infallible>(
+                            hyper::Response::builder()
+                                .status(status)
+                                .body(http_body_util::Full::new(bytes::Bytes::from_static(b"flap")).boxed())
+                                .expect("static flap response"),
+                        )
+                    }
                     FixtureRoute::BodyEcho => {
                         // Read the request body and echo it back, proving a
                         // `--body` actually reached the server on the wire.
@@ -414,6 +446,7 @@ async fn run_stalled_quic_server(endpoint: quinn::Endpoint) {
     }
 }
 
+#[allow(clippy::too_many_lines)] // one hand-written arm per fixture route is clearest inline
 async fn serve_quic_connection(incoming: quinn::Incoming) {
     let Ok(conn) = incoming.await else {
         return;
@@ -514,6 +547,21 @@ async fn serve_quic_connection(incoming: quinn::Incoming) {
                     return;
                 }
                 if stream.send_data(bytes::Bytes::from_static(b"marker")).await.is_err() {
+                    return;
+                }
+                let _ = stream.finish().await;
+            }
+            FixtureRoute::Flap => {
+                let status = if QUIC_FLAP_COUNT
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+                    .is_multiple_of(2)
+                {
+                    200
+                } else {
+                    503
+                };
+                let response = hyper::Response::builder().status(status).body(()).expect("status");
+                if stream.send_response(response).await.is_err() {
                     return;
                 }
                 let _ = stream.finish().await;

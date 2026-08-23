@@ -181,6 +181,55 @@ pub(super) fn intermittent_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosi
     }
 }
 
+/// HTTP status flapping on a repeat probe: the transport layer succeeded on
+/// every attempt yet the observed HTTP statuses span both success (2xx) and
+/// non-2xx classes. Transport pass/fail hides this — `intermittent_rules`
+/// only fires when attempts actually fail — so an endpoint that returns 200
+/// half the time and 503 the other half (flapping backend, A/B deployment,
+/// capacity / rate-limit cycling) is otherwise silent even though it is
+/// genuinely unhealthy for users.
+pub(super) fn http_status_flapping_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosis>) {
+    for p in input.probes {
+        if p.attempts < 2 || p.status_counts.is_empty() {
+            continue;
+        }
+        let content = p.status_counts.iter().any(|s| (200..300).contains(&s.status));
+        let non_content = p.status_counts.iter().any(|s| !(200..300).contains(&s.status));
+        if content && non_content {
+            let distribution = p
+                .status_counts
+                .iter()
+                .map(|s| format!("{}x{}", s.status, s.count))
+                .collect::<Vec<_>>()
+                .join(", ");
+            out.push(Diagnosis {
+                severity: Severity::Low,
+                category: DiagnosticCategory::Intermittent,
+                confidence: Confidence::High,
+                summary: format!(
+                    "HTTP status flapping for {} ({:.1}% transport success)",
+                    p.destination,
+                    p.success_rate * 100.0
+                ),
+                evidence: vec![
+                    Evidence {
+                        detail: format!("status distribution across {} attempts: {distribution}", p.attempts),
+                    },
+                    Evidence {
+                        detail: "transport succeeded on every classified attempt; the HTTP response class changed"
+                            .into(),
+                    },
+                ],
+                possible_causes: vec![
+                    "flapping / degraded backend returning intermittent 5xx".into(),
+                    "A/B or partial deployment across origins".into(),
+                    "capacity limits / rate-limiting cycling".into(),
+                ],
+            });
+        }
+    }
+}
+
 /// Automated certificate-lifetime diagnosis: a serving certificate that is
 /// already expired, or expires within the same 30-day window the human TLS
 /// report annotates, should surface from `diagnose` so an automated /
@@ -482,6 +531,7 @@ fn failure_summary_opt(p: &ProbeResult) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::probe::StatusCount;
     use crate::model::{
         FailureCount, FailureKind, HttpObservation, LatencyStats, ProbeError, TcpObservation, TlsObservation,
     };
@@ -529,6 +579,29 @@ mod tests {
                 Vec::new()
             },
             status_counts: Vec::new(),
+        }
+    }
+
+    /// A repeated HTTP probe that succeeded at the transport layer on every
+    /// attempt but observed the given per-status counts (status *count*).
+    fn probe_flapping(statuses: &[(u16, usize)]) -> ProbeResult {
+        let attempts: usize = statuses.iter().map(|(_, c)| c).sum();
+        let mut stats = LatencyStats::default();
+        for _ in 0..attempts {
+            stats.push(10);
+        }
+        ProbeResult {
+            destination: "1.1.1.1:443".parse().unwrap(),
+            attempts,
+            successes: attempts,
+            failures: 0,
+            success_rate: 1.0,
+            latency: stats.summarize(),
+            failure_counts: Vec::new(),
+            status_counts: statuses
+                .iter()
+                .map(|(s, c)| StatusCount { status: *s, count: *c })
+                .collect(),
         }
     }
 
@@ -1023,6 +1096,44 @@ mod tests {
         assert_eq!(d.unwrap().confidence, Confidence::High);
         // The failure distribution is reported in the evidence.
         assert_eq!(d.unwrap().evidence.len(), 2);
+    }
+
+    #[test]
+    fn http_status_flapping_fires_when_transport_is_healthy() {
+        // 100% transport success but statuses flap 200<->503: this is a real
+        // user-visible instability that transport pass/fail alone hides.
+        let flap = [probe_flapping(&[(200, 8), (503, 2)])];
+        let mut out = Vec::new();
+        http_status_flapping_rules(&input(&[], &[], &flap), &mut out);
+        let d = out.iter().find(|d| d.category == DiagnosticCategory::Intermittent);
+        assert!(d.is_some(), "status flapping should fire: {out:?}");
+        assert!(d.unwrap().summary.contains("flapping"));
+        // The status distribution is reported as evidence.
+        assert!(
+            out[0].evidence.iter().any(|e| e.detail.contains("200x8, 503x2")),
+            "evidence should carry the distribution: {out:?}"
+        );
+    }
+
+    #[test]
+    fn http_status_flapping_silent_for_single_class_or_single_attempt() {
+        // All 2xx (no flap).
+        let stable = [probe_flapping(&[(200, 5)])];
+        let mut out = Vec::new();
+        http_status_flapping_rules(&input(&[], &[], &stable), &mut out);
+        assert!(out.is_empty(), "uniform 2xx must not flap: {out:?}");
+
+        // All non-2xx consistently (that's a uniform server error, not a flap).
+        let all_err = [probe_flapping(&[(503, 5)])];
+        let mut out = Vec::new();
+        http_status_flapping_rules(&input(&[], &[], &all_err), &mut out);
+        assert!(out.is_empty(), "uniform 5xx must not flap: {out:?}");
+
+        // Single attempt cannot "flap".
+        let single = [probe_flapping(&[(200, 1)])];
+        let mut out = Vec::new();
+        http_status_flapping_rules(&input(&[], &[], &single), &mut out);
+        assert!(out.is_empty(), "single attempt cannot flap: {out:?}");
     }
 
     fn tls_with_cert(not_after: &str) -> TlsObservation {

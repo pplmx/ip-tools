@@ -681,6 +681,13 @@ performs no network I/O.
   diagnosis (Medium) — this is what catches a mismatch under `--insecure`,
   where chain validation is skipped and the `covers <sni>: no` row would
   otherwise be the only visible signal.
+- **HTTP status flapping** is reported as a `Intermittent` diagnosis: when a
+  repeated HTTP probe succeeds at the transport layer on every attempt yet
+  observes both 2xx and non-2xx status classes (e.g. `200` most attempts but
+  `503` on some), the endpoint is flapping (degraded backend, A/B /
+  partial deployment, or capacity / rate-limit cycling). `diagnose` now runs
+  an HTTP status repeat alongside its TCP repeat so this visible instability
+  is not hidden by transport pass/fail counts.
 
 **`ip-tools` does not claim a network failure is censorship merely because a
 connection fails.** Many mundane explanations (CDN node failure, routing

@@ -312,10 +312,50 @@ async fn diagnose_one(
     )
     .await;
 
-    let probe_obs: Vec<ProbeResult> = parallel_map(destinations.clone(), concurrency, move |d| async move {
-        ip_probe::tcp_repeat(d, 3, timeout).await
+    // The repeated-probe phase measures per-address stability. Keep the TCP
+    // transport repeat (which `intermittent_rules` uses for transport
+    // flapping) and add an HTTP/1.1 status repeat, so `http_status_flapping`
+    // can catch a transport-healthy endpoint that flaps its HTTP status
+    // (200 <-> 503) across attempts — invisible to TCP pass/fail alone.
+    let (header_host, header_method, header_path, header_headers, header_body) = (
+        presented.to_string(),
+        method.to_string(),
+        path.to_string(),
+        headers.to_vec(),
+        body.map(<[u8]>::to_vec),
+    );
+    // Each `parallel_map` closure is `Fn` (re-invoked per destination), so it
+    // must clone the captured request shape before the `async move`.
+    let probe_obs: Vec<ProbeResult> = parallel_map(destinations.clone(), concurrency, move |d| {
+        let (host, method, path, headers, body) = (
+            header_host.clone(),
+            header_method.clone(),
+            header_path.clone(),
+            header_headers.clone(),
+            header_body.clone(),
+        );
+        async move {
+            let header_refs: Vec<(&str, &str)> = headers.iter().map(|(n, v)| (n.as_str(), v.as_str())).collect();
+            let http = ip_probe::http_repeat_with_version(
+                d,
+                &host,
+                &method,
+                &path,
+                &header_refs,
+                body.as_deref(),
+                3,
+                timeout,
+                insecure,
+                tls_protocol,
+            )
+            .await;
+            [ip_probe::tcp_repeat(d, 3, timeout).await, http]
+        }
     })
-    .await;
+    .await
+    .into_iter()
+    .flatten()
+    .collect();
 
     let input = DiagnosticInput {
         hostname: &target.host,
