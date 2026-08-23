@@ -1256,6 +1256,53 @@ fn dns_cli_multiple_targets_render_each_and_emit_json_array() {
 }
 
 #[test]
+fn dns_cli_concurrency_parallelizes_and_preserves_target_order() {
+    // `dns --concurrency N` parallelizes a multi-target DNS health sweep, but
+    // must still render targets in input order (deterministic human/JSON/CSV).
+    // IP literals short-circuit resolution, so they complete fast and any
+    // reordering bug would show in the JSON array.
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args(["dns", "1.1.1.1", "8.8.8.8", "--concurrency", "2", "--json"])
+        .output()
+        .expect("run dns --concurrency 2 --json");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "dns --concurrency should exit 0: {stdout}
+{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("dns --json must parse");
+    let reports = parsed.as_array().expect(">1 target must yield a JSON array");
+    assert_eq!(reports.len(), 2, "expected 2 reports: {stdout}");
+    let targets: Vec<&str> = reports
+        .iter()
+        .filter_map(|r| r.get("target").and_then(serde_json::Value::as_str))
+        .collect();
+    assert_eq!(
+        targets,
+        vec!["1.1.1.1", "8.8.8.8"],
+        "concurrent dns must preserve input target order: {targets:?}"
+    );
+
+    // `--concurrency 0` must clamp to a safe minimum (not deadlock/divide), the
+    // same way the probe commands bound concurrency.
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args(["dns", "1.1.1.1", "8.8.8.8", "--concurrency", "0", "--json"])
+        .output()
+        .expect("run dns --concurrency 0");
+    assert!(
+        out.status.success(),
+        "dns --concurrency 0 should clamp and succeed: {}
+{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[test]
 fn dns_cli_csv_export_renders_rows() {
     // `dns --csv` emits a header + one row per (host,resolver,record_type)
     // across every target, so a DNS health sweep loads into a spreadsheet.

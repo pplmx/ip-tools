@@ -65,6 +65,7 @@ fn parser() -> ArgMatches {
                 .arg(dns_count_arg())
                 .arg(strict_arg())
                 .arg(timeout_arg())
+                .arg(dns_concurrency_arg())
                 .arg(csv_arg()),
         )
         .subcommand(probe_command(
@@ -270,6 +271,18 @@ fn concurrency_arg() -> Arg {
         .value_parser(clap::value_parser!(usize))
         .default_value("32")
         .help("maximum number of parallel probes")
+}
+
+/// `--concurrency` for the `dns` health sweep: parallelize resolving many
+/// targets. Defaults to 1 (sequential) to preserve the original single-target
+/// ordering and DNS semantics; raising it parallelizes a multi-target sweep.
+fn dns_concurrency_arg() -> Arg {
+    Arg::new("concurrency")
+        .long("concurrency")
+        .value_name("N")
+        .value_parser(clap::value_parser!(usize))
+        .default_value("1")
+        .help("maximum number of target hosts to resolve in parallel; 1 runs a sweep sequentially (default)")
 }
 
 /// `--ipv4` argument: probe only the IPv4 addresses of each target.

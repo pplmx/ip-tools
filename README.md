@@ -77,7 +77,8 @@ ip-tools dns example.com example.org another.net   # DNS health sweep (multi-tar
 ```
 
 `dns` accepts **multiple targets** — a DNS health sweep — resolving each in
-turn. Human output renders every host; `--json` with >1 target emits a
+turn (or in parallel with `--concurrency N`, which keeps output in target
+order). Human output renders every host; `--json` with >1 target emits a
 per-target array; `--strict` fails if any resolver on any target failed.
 `--csv` emits a `host,resolver,record_type,attempts,success_rate,p50,p95,max,
 failures` row per (resolver, record type) — single-shot rows are attempts=1,

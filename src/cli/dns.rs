@@ -1,6 +1,6 @@
 //! `dns` subcommand handler.
 
-use super::{parse_custom_servers, DEFAULT_PORT};
+use super::{parallel_map, parse_custom_servers, DEFAULT_PORT};
 use clap::ArgMatches;
 use ip_tools::dns::{aggregate_repeat, DnsClient};
 use ip_tools::model::{DnsObservation, DnsRecord, DnsRecordType, DnsRepeatResult, ResolverKind};
@@ -55,6 +55,9 @@ pub(super) async fn run_dns(sub_m: &ArgMatches) -> ExitCode {
         .map(|vals| vals.cloned().collect())
         .unwrap_or_default();
     let count = *sub_m.get_one::<usize>("count").expect("count has default");
+    // `--concurrency` parallelizes a multi-target DNS health sweep (default 1
+    // preserves the original sequential ordering/semantics).
+    let concurrency = *sub_m.get_one::<usize>("concurrency").expect("concurrency has default");
 
     // `--record-type` requests one specific type; else `--ipv6` restricts to
     // AAAA; else both A and AAAA (the historical default).
@@ -71,10 +74,18 @@ pub(super) async fn run_dns(sub_m: &ArgMatches) -> ExitCode {
         vec![DnsRecordType::A, DnsRecordType::Aaaa]
     };
 
-    let mut outputs: Vec<TargetDns> = Vec::with_capacity(targets.len());
-    for target in targets {
-        outputs.push(
-            dns_compute(
+    // Resolve every target, parallelizing across hosts when `--concurrency` > 1.
+    // `parallel_map` returns results in completion order, so each item carries
+    // its input index and the outputs are re-sorted back to target order to keep
+    // the human/JSON/CSV rendering deterministic.
+    let targets_with_index: Vec<(usize, Target)> = targets.into_iter().enumerate().collect();
+    let mut indexed: Vec<(usize, TargetDns)> = parallel_map(targets_with_index, concurrency, move |(idx, target)| {
+        let record_types = record_types.clone();
+        let custom = custom.clone();
+        let doh_endpoints = doh_endpoints.clone();
+        let dot_eps = dot_eps.clone();
+        async move {
+            let result = dns_compute(
                 &target,
                 &record_types,
                 &custom,
@@ -84,9 +95,13 @@ pub(super) async fn run_dns(sub_m: &ArgMatches) -> ExitCode {
                 timeout,
                 insecure,
             )
-            .await,
-        );
-    }
+            .await;
+            (idx, result)
+        }
+    })
+    .await;
+    indexed.sort_by_key(|(idx, _)| *idx);
+    let outputs: Vec<TargetDns> = indexed.into_iter().map(|(_, o)| o).collect();
 
     if csv {
         print!("{}", render_dns_csv(&outputs));
