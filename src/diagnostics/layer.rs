@@ -188,6 +188,36 @@ pub(super) fn intermittent_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosi
 pub(super) fn certificate_lifetime_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosis>) {
     for t in input.tls {
         let Some(cert) = t.certificate.as_ref() else { continue };
+        // A certificate whose `notBefore` is in the future is NOT YET valid:
+        // real clients (and any chain-validation path) will refuse it even
+        // though an `--insecure` handshake completes, so this must not be
+        // reported as Healthy. The cause is inherently ambiguous — server
+        // misissuance vs. clock skew on either side — hence Medium confidence.
+        // Integer-day granularity means only strictly-future dates are flagged
+        // (a same-day notBefore avoids short-period clock jitter).
+        if let Some(not_before) = cert.not_before_utc.as_deref() {
+            if let Some(days) = crate::report::days_until_from_rfc3339(not_before) {
+                if days > 0 {
+                    out.push(Diagnosis {
+                        severity: Severity::Medium,
+                        category: DiagnosticCategory::Certificate,
+                        confidence: Confidence::Medium,
+                        summary: format!(
+                            "Certificate for {} is not yet valid (starts in {days} day(s), subject {})",
+                            t.sni, cert.subject
+                        ),
+                        evidence: vec![Evidence {
+                            detail: format!("peer certificate notBefore is in the future: {not_before}"),
+                        }],
+                        possible_causes: vec![
+                            "certificate issued with a future notBefore (misissuance)".into(),
+                            "server or client clock skew".into(),
+                            "certificate deployed before its validity window began".into(),
+                        ],
+                    });
+                }
+            }
+        }
         let Some(not_after) = cert.not_after_utc.as_deref() else {
             continue;
         };
@@ -848,6 +878,62 @@ mod tests {
         let mut out = Vec::new();
         certificate_lifetime_rules(&input(&far, &[], &[]), &mut out);
         assert!(out.is_empty(), "far expiry must not raise a verdict: {out:?}");
+    }
+
+    #[test]
+    fn certificate_lifetime_raises_not_yet_valid() {
+        // A cert whose `notBefore` is in the future is not yet valid: even
+        // though an --insecure handshake completes, real clients/validation
+        // would refuse it, so diagnose must not report Healthy. The verdict
+        // is a Medium Certificate diagnosis naming how far off validity is.
+        let tls_with_bounds = |not_before: &str, not_after: &str| TlsObservation {
+            destination: "1.1.1.1:443".parse().unwrap(),
+            sni: "example.com".into(),
+            success: true,
+            version: Some("TLSv1.3".into()),
+            cipher: Some("AES_256_GCM".into()),
+            alpn: Some("h2".into()),
+            certificate: Some(crate::model::CertificateSummary {
+                subject: "CN=example.com".into(),
+                issuer: "CN=CA".into(),
+                not_before_utc: Some(not_before.into()),
+                not_after_utc: Some(not_after.into()),
+                sans: Vec::new(),
+            }),
+            latency_ms: Some(7),
+            failure: None,
+        };
+
+        // notBefore in the future -> Medium not-yet-valid verdict.
+        let not_yet = [tls_with_bounds(
+            &crate::report::rfc3339_days_from_now(10),
+            &crate::report::rfc3339_days_from_now(400),
+        )];
+        let mut out = Vec::new();
+        certificate_lifetime_rules(&input(&not_yet, &[], &[]), &mut out);
+        let d = out
+            .iter()
+            .find(|d| d.category == DiagnosticCategory::Certificate)
+            .expect("not-yet-valid verdict");
+        assert_eq!(d.severity, Severity::Medium);
+        assert_eq!(d.confidence, Confidence::Medium);
+        assert!(
+            d.summary.contains("not yet valid"),
+            "summary names the not-yet-valid state: {}",
+            d.summary
+        );
+
+        // A cert already past its notBefore must not raise the verdict.
+        let started = [tls_with_bounds(
+            &crate::report::rfc3339_days_from_now(-100),
+            &crate::report::rfc3339_days_from_now(400),
+        )];
+        let mut out = Vec::new();
+        certificate_lifetime_rules(&input(&started, &[], &[]), &mut out);
+        assert!(
+            !out.iter().any(|d| d.summary.contains("not yet valid")),
+            "past notBefore must not raise not-yet-valid: {out:?}"
+        );
     }
 
     #[test]
