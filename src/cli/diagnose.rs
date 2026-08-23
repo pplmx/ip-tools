@@ -40,6 +40,11 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
     let timeout_ms = *sub_m.get_one::<u64>("timeout").expect("timeout has default");
     let concurrency = *sub_m.get_one::<usize>("concurrency").expect("concurrency has default");
     let timeout = Duration::from_millis(timeout_ms);
+    let count = *sub_m.get_one::<usize>("count").expect("count has default");
+    if count == 0 {
+        eprintln!("Error: --count must be at least 1");
+        return ExitCode::FAILURE;
+    }
 
     let targets = match super::parse_targets(sub_m) {
         Ok(t) => t,
@@ -122,6 +127,7 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
                     tls_protocol,
                     max_body_bytes,
                     reverse,
+                    count,
                 )
                 .await;
                 (idx, report)
@@ -195,6 +201,7 @@ async fn diagnose_one(
     tls_protocol: ip_tools::tls::TlsProtocol,
     max_body_bytes: u64,
     reverse: bool,
+    count: usize,
 ) -> Option<DiagnoseReport> {
     // Resolve once: the DNS observations and the probed addresses come from
     // the same lookups. Custom `--server`/`--doh`/`--dot` resolvers are
@@ -312,11 +319,13 @@ async fn diagnose_one(
     )
     .await;
 
-    // The repeated-probe phase measures per-address stability. Keep the TCP
-    // transport repeat (which `intermittent_rules` uses for transport
-    // flapping) and add an HTTP/1.1 status repeat, so `http_status_flapping`
-    // can catch a transport-healthy endpoint that flaps its HTTP status
-    // (200 <-> 503) across attempts — invisible to TCP pass/fail alone.
+    // The repeated-probe phase measures per-address stability over `--count`
+    // attempts (default 3). Keep the TCP transport repeat (which
+    // `intermittent_rules` uses for transport flapping) and add an HTTP/1.1
+    // status repeat, so `http_status_flapping` can catch a transport-healthy
+    // endpoint that flaps its HTTP status (200 <-> 503) across attempts —
+    // invisible to TCP pass/fail alone. A larger `--count` gives a longer
+    // observation window for subtler instability.
     let (header_host, header_method, header_path, header_headers, header_body) = (
         presented.to_string(),
         method.to_string(),
@@ -343,13 +352,13 @@ async fn diagnose_one(
                 &path,
                 &header_refs,
                 body.as_deref(),
-                3,
+                count,
                 timeout,
                 insecure,
                 tls_protocol,
             )
             .await;
-            [ip_probe::tcp_repeat(d, 3, timeout).await, http]
+            [ip_probe::tcp_repeat(d, count, timeout).await, http]
         }
     })
     .await

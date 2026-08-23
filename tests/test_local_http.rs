@@ -2654,6 +2654,69 @@ fn diagnose_flags_http_status_flapping_on_transport_healthy_path() {
 }
 
 #[test]
+fn diagnose_count_controls_the_stability_repeat() {
+    // `diagnose --count N` sizes the stability phase's repeated attempts per
+    // address (both the TCP transport repeat and the HTTP status repeat).
+    // Against the flapping fixture, a single attempt (`--count 1`) cannot
+    // observe both 200 and 503, so the flapping verdict must NOT fire — while
+    // the default 3 (or a larger `--count`) does. This proves the flag is
+    // actually threaded through the repeat phase, not ignored.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let addr = fixture.tcp_addr().to_string();
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "diagnose",
+            &addr,
+            "--sni",
+            "flap.invalid",
+            "--insecure",
+            "--count",
+            "1",
+            "--timeout",
+            "1500",
+        ])
+        .output()
+        .expect("run diagnose --count 1");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "diagnose --count 1 should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        !stdout.contains("HTTP status flapping"),
+        "a single attempt cannot observe status flapping, so --count 1 must suppress the verdict: {stdout}"
+    );
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "diagnose",
+            &addr,
+            "--sni",
+            "flap.invalid",
+            "--insecure",
+            "--count",
+            "5",
+            "--timeout",
+            "1500",
+        ])
+        .output()
+        .expect("run diagnose --count 5");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("HTTP status flapping"),
+        "a 5-attempt stability repeat should observe 200/503 flapping: {stdout}"
+    );
+}
+
+#[test]
 fn diagnose_flags_latency_instability_on_stable_transport() {
     // `diagnose` must surface latency instability: the fixture's
     // `slowflap.invalid` route keeps a stable 200 status but alternates fast /

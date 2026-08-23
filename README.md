@@ -505,7 +505,13 @@ repeated probes) then evaluate the evidence with the deterministic engine:
 ip-tools diagnose example.com
 ip-tools diagnose example.com --json
 ip-tools diagnose 192.0.2.77 --reverse   # add reverse-DNS (PTR) evidence for an IP target
+ip-tools diagnose example.com --count 30 # longer stability window (default 3)
 ```
+
+`--count N` sizes the stability phase — the repeated TCP and HTTP attempts per
+address that drive the intermittent / status-flapping / latency-instability
+rules (default `3`, matching the sample those rules were validated against). A
+larger count gives a longer observation window for subtler instability.
 
 `diagnose` accepts **multiple targets** — a fleet/health sweep. Hosts are
 probed concurrently (bounded by `--concurrency`, which also bounds the

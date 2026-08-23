@@ -198,6 +198,7 @@ fn parser() -> ArgMatches {
                 path_arg(),
                 header_arg(),
                 body_arg(),
+                diagnose_count_arg(),
                 csv_arg(),
                 tls_version_arg(),
                 max_body_bytes_arg(),
@@ -325,6 +326,20 @@ fn dns_count_arg() -> Arg {
         .value_parser(clap::value_parser!(usize))
         .default_value("1")
         .help("number of repeated resolutions to aggregate")
+}
+
+/// `--count` for the `diagnose` subcommand: how many repeated attempts the
+/// stability phase makes per address (both the TCP transport repeat and the
+/// HTTP status repeat). Default 3 keeps the flapping / latency-instability /
+/// intermittent rules tuned to the sample they were validated with; a larger
+/// count gives a longer observation window for subtler instability.
+fn diagnose_count_arg() -> Arg {
+    Arg::new("count")
+        .long("count")
+        .value_name("N")
+        .value_parser(clap::value_parser!(usize))
+        .default_value("3")
+        .help("number of repeated attempts per address in the stability phase")
 }
 
 /// `--protocol` argument selecting which transport/protocol to repeat-probe.
