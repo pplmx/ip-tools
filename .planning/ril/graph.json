@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-23T09:15:47+00:00",
+  "updated_at": "2026-08-23T09:21:04+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -3278,6 +3278,54 @@
       "touched_round": 0,
       "commit": "77fb75f89bb0f83e13e2963d80e3f1502983d453",
       "summary": "Added a ttl field to DnsRepeatResult, computed in aggregate_repeat as the minimum TTL across the successful answers; rendered in the human repeat report (ttl: N s) and the repeat CSV ttl column. Public API change (api-baseline regenerated); added an aggregation unit test, the render unit test, and a fixture-gated CLI test proving dns --count 3 --csv carries ttl=60."
+    },
+    "ISS-056": {
+      "id": "ISS-056",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T09:20:56+00:00",
+      "updated_at": "2026-08-23T09:21:04+00:00",
+      "touched_round": 0,
+      "severity": "low",
+      "summary": "The diagnostic engine compares HTTP status consistency across wire protocols (cross-protocol) and across address families (IPv4 vs IPv6), but not across the independently-probed addresses of the same hostname: a CDN/anycast/load-balanced host where one address returns 200 and another returns 403/503 (partial deployment, per-node WAF, draining member, one edge failing) is reported per-address but never diagnosed as a cross-address inconsistency."
+    },
+    "TASK-064": {
+      "id": "TASK-064",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T09:20:56+00:00",
+      "updated_at": "2026-08-23T09:21:04+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.3,
+      "unlock_factor": 1,
+      "summary": "Add cross-address HTTP status divergence to http_consistency_rules: group completed HTTP observations by (protocol, address family); when a group has >=2 distinct addresses and both 2xx and non-2xx classes, raise a Low Http (Medium confidence) diagnosis naming the divergent addresses and statuses, complementing the existing cross-protocol and cross-family checks. No public API change. Pinned by engine unit tests: cross-address divergence fires (200 vs 503 on two addresses, same protocol+family); a single address or uniform addresses stay quiet."
+    },
+    "DEC-063": {
+      "id": "DEC-063",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T09:20:56+00:00",
+      "updated_at": "2026-08-23T09:20:56+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-23): complete the HTTP consistency surface by comparing across the independently-probed addresses of the same host. The engine already flags cross-protocol and cross-family divergence, but the README's headline multi-address case (CDN/anycast/load balancing/partial filtering -- addresses tested independently) was never diagnosed: one address returning 2xx and another non-2xx is a genuine partial-deployment / per-node / draining-member / edge-failure signal that the per-address rows alone leave silent. Group by (protocol, family) so only genuine same-wire, same-family address pairs diverge, and it can't fold into or double-report the existing cross-family/protocol checks.",
+      "alternatives_rejected": "leaving multi-address divergence undiagnosed (it is the README's explicit independently-tested case and a real partial-deployment signal); folding addresses together across protocols or families (would double-report the existing cross-protocol/cross-family verdicts and be ambiguous); a separate command or flag (this is an engine rule that belongs in the existing diagnose consistency pass)."
+    },
+    "CHG-057": {
+      "id": "CHG-057",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T09:21:04+00:00",
+      "updated_at": "2026-08-23T09:21:04+00:00",
+      "touched_round": 0,
+      "commit": "cceee3b8e88164fc9b2d6384940550c3baf41204",
+      "summary": "Added cross-address HTTP status divergence to http_consistency_rules: completed HTTP observations grouped by (protocol, family); a group with >=2 distinct addresses spanning both 2xx and non-2xx raises a Low Http (Medium confidence) diagnosis naming the divergent addresses and statuses. Added unit tests (fires on 200 vs 503 across two addresses; quiet for single address or uniform addresses)."
     }
   },
   "edges": [
@@ -5542,6 +5590,42 @@
       "to": "ISS-055",
       "type": "resolves",
       "created_at": "2026-08-23T09:15:46+00:00"
+    },
+    {
+      "from": "ISS-056",
+      "to": "COMP-http",
+      "type": "located_in",
+      "created_at": "2026-08-23T09:21:04+00:00"
+    },
+    {
+      "from": "TASK-064",
+      "to": "ISS-056",
+      "type": "addresses",
+      "created_at": "2026-08-23T09:21:04+00:00"
+    },
+    {
+      "from": "DEC-063",
+      "to": "TASK-064",
+      "type": "governs",
+      "created_at": "2026-08-23T09:21:04+00:00"
+    },
+    {
+      "from": "DEC-063",
+      "to": "DEC-062",
+      "type": "supersedes",
+      "created_at": "2026-08-23T09:21:04+00:00"
+    },
+    {
+      "from": "CHG-057",
+      "to": "TASK-064",
+      "type": "implements",
+      "created_at": "2026-08-23T09:21:04+00:00"
+    },
+    {
+      "from": "CHG-057",
+      "to": "ISS-056",
+      "type": "resolves",
+      "created_at": "2026-08-23T09:21:04+00:00"
     }
   ]
 }
