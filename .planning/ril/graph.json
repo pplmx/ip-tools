@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-23T04:39:47+00:00",
+  "updated_at": "2026-08-23T04:43:50+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -2258,6 +2258,54 @@
       "touched_round": 0,
       "commit": "c58eeafdd22fc1d0ff182905b53b6c73de20db0d",
       "summary": "Added an automated redirect diagnosis: redirect_rules scans HTTP observations and raises a Low Http diagnosis naming the Location when a 3xx status occurs on a reachable host. Wired into the diagnose dispatch, unit-tested (fires on 3xx+Location, silent on 2xx/failure) and fixture-gated via diagnose --sni redirect.invalid."
+    },
+    "ISS-035": {
+      "id": "ISS-035",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T04:42:19+00:00",
+      "updated_at": "2026-08-23T04:43:50+00:00",
+      "touched_round": 0,
+      "severity": "medium",
+      "summary": "The diagnostic engine checks certificate expiry (notAfter in the past / near-expiry) but is silent on a certificate that is NOT YET valid — a notBefore in the future. Under --insecure, chain validation is skipped, so a host presenting a premature cert reports Healthy while real clients (and any validation path) would refuse it. not_before_utc is already captured on the CertificateSummary but never analyzed."
+    },
+    "TASK-043": {
+      "id": "TASK-043",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T04:42:19+00:00",
+      "updated_at": "2026-08-23T04:43:50+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.25,
+      "unlock_factor": 1,
+      "summary": "Add a not-yet-valid certificate diagnosis to the lifetime rule family: when a peer cert's notBefore is in the future (days_until > 0), raise a Medium Certificate diagnosis naming how far in the future validity starts, with clock-skew / premature-issuance causes. Pinned by a unit test building a future notBefore."
+    },
+    "DEC-042": {
+      "id": "DEC-042",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T04:42:19+00:00",
+      "updated_at": "2026-08-23T04:42:19+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-23): flag not-yet-valid certificates. The lifetime rules handle expired and near-expiry but ignore a future notBefore — under --insecure that yields a false Healthy for a host whose cert is not yet valid. Add a Medium Certificate verdict when notBefore is in the future, reusing the existing report days_until helper and the Certificate category (no API change, rule only). Mirrors the accepted expiry/coverage series (DEC-036/037).",
+      "alternatives_rejected": "a new category (reuses Certificate); raising High confidence (future notBefore is inherently ambiguous — client or server clock skew — so Medium); a separate rule file (belongs in the lifetime family); flagging same-day notBefore (integer-day granularity: only strictly-future dates, avoiding clock jitter)"
+    },
+    "CHG-036": {
+      "id": "CHG-036",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T04:43:50+00:00",
+      "updated_at": "2026-08-23T04:43:50+00:00",
+      "touched_round": 0,
+      "commit": "7fefc307d8c49f908bcb735bb272de7e1f27c47c",
+      "summary": "Added a not-yet-valid certificate rule to the lifetime family: when a peer cert's notBefore is in the future (integer-day days_until > 0), raise a Medium Certificate diagnosis naming how far off validity starts, with misissuance / clock-skew / premature-deployment causes. Unit-tested (future notBefore raises; past notBefore silent)."
     }
   },
   "edges": [
@@ -3766,6 +3814,42 @@
       "to": "ISS-034",
       "type": "resolves",
       "created_at": "2026-08-23T04:39:47+00:00"
+    },
+    {
+      "from": "ISS-035",
+      "to": "COMP-diagnose",
+      "type": "located_in",
+      "created_at": "2026-08-23T04:42:23+00:00"
+    },
+    {
+      "from": "TASK-043",
+      "to": "ISS-035",
+      "type": "addresses",
+      "created_at": "2026-08-23T04:42:23+00:00"
+    },
+    {
+      "from": "DEC-042",
+      "to": "TASK-043",
+      "type": "governs",
+      "created_at": "2026-08-23T04:42:23+00:00"
+    },
+    {
+      "from": "DEC-042",
+      "to": "DEC-041",
+      "type": "supersedes",
+      "created_at": "2026-08-23T04:42:23+00:00"
+    },
+    {
+      "from": "CHG-036",
+      "to": "TASK-043",
+      "type": "implements",
+      "created_at": "2026-08-23T04:43:50+00:00"
+    },
+    {
+      "from": "CHG-036",
+      "to": "ISS-035",
+      "type": "resolves",
+      "created_at": "2026-08-23T04:43:50+00:00"
     }
   ]
 }
