@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-23T06:21:00+00:00",
+  "updated_at": "2026-08-23T08:12:33+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -2882,6 +2882,54 @@
       "touched_round": 0,
       "commit": "ebfd00f7d9e993b41366bec934d0f7d5e9844c30",
       "summary": "Added DNS record TTL to dns output: DnsObservation gains a ttl: Option<u32> field, populated from the hickory system/--server lookup (first matching answer's ttl) and from the DoH/DoT wire parser (the first answer's TTL, which the parser previously skipped). Render_dns shows '..., ttl Ns' and --json carries it. Public API change (api-baseline regenerated); no new dependency. Pinned by a wire-parser TTL unit test and the DoH fixture CLI test asserting the canned 60s TTL renders."
+    },
+    "ISS-048": {
+      "id": "ISS-048",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T08:12:20+00:00",
+      "updated_at": "2026-08-23T08:12:33+00:00",
+      "touched_round": 0,
+      "severity": "low",
+      "summary": "The DNS TTL milestone (TASK-055) surfaced the record time-to-live in the dns report and --json, but the dns --csv exporter still emits only host,resolver,record_type,attempts,success_rate,latency_p50_ms,latency_p95_ms,latency_max_ms,failures -- the spreadsheet export loses TTL, the same format-parity gap the probe status feature closed (ISS-045)."
+    },
+    "TASK-056": {
+      "id": "TASK-056",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T08:12:20+00:00",
+      "updated_at": "2026-08-23T08:12:33+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.15,
+      "unlock_factor": 1,
+      "summary": "Add a ttl column to dns --csv: emit the DnsObservation.ttl (single-shot rows; repeat --count rows aggregate away per-answer TTL so the field stays empty), so the spreadsheet export is consistent with the human/JSON TTL feature. Pinned by a fixture-gated CLI test: dns host.example --doh <fixture>/dns-query --insecure --csv carries the 60s TTL."
+    },
+    "DEC-055": {
+      "id": "DEC-055",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T08:12:20+00:00",
+      "updated_at": "2026-08-23T08:12:20+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-23): complete DNS TTL across output formats. TASK-055 delivered TTL to human + JSON but not the dns --csv exporter, leaving an inconsistency (a spreadsheet health sweep cannot see the caching/propagation datum) -- the same parity gap the probe status feature closed (DEC-052/DEC-053).",
+      "alternatives_rejected": "leaving dns --csv without a ttl column (the exporters would disagree on the same feature); piping TTL through the --count repeat aggregation (repeat rows intentionally aggregate away per-answer TTL, mirroring how the human repeat report omits it); a separate --csv flag just for TTL (one column belongs in the existing exporter)."
+    },
+    "CHG-049": {
+      "id": "CHG-049",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T08:12:26+00:00",
+      "updated_at": "2026-08-23T08:12:26+00:00",
+      "touched_round": 0,
+      "commit": "5e966b28c31d5e288975349f5513f28a9d047913",
+      "summary": "Added a ttl column to dns --csv: render_dns_csv now emits host,resolver,record_type,attempts,success_rate,latency_p50_ms,latency_p95_ms,latency_max_ms,failures,ttl, populating the field from DnsObservation.ttl on single-shot rows and leaving it empty for --count repeat rows (which aggregate away the per-answer TTL), so the spreadsheet export matches the human/JSON TTL feature."
     }
   },
   "edges": [
@@ -4858,6 +4906,42 @@
       "to": "ISS-047",
       "type": "resolves",
       "created_at": "2026-08-23T06:21:00+00:00"
+    },
+    {
+      "from": "ISS-048",
+      "to": "COMP-dns",
+      "type": "located_in",
+      "created_at": "2026-08-23T08:12:26+00:00"
+    },
+    {
+      "from": "TASK-056",
+      "to": "ISS-048",
+      "type": "addresses",
+      "created_at": "2026-08-23T08:12:26+00:00"
+    },
+    {
+      "from": "DEC-055",
+      "to": "TASK-056",
+      "type": "governs",
+      "created_at": "2026-08-23T08:12:26+00:00"
+    },
+    {
+      "from": "DEC-055",
+      "to": "DEC-054",
+      "type": "supersedes",
+      "created_at": "2026-08-23T08:12:27+00:00"
+    },
+    {
+      "from": "CHG-049",
+      "to": "TASK-056",
+      "type": "implements",
+      "created_at": "2026-08-23T08:12:27+00:00"
+    },
+    {
+      "from": "CHG-049",
+      "to": "ISS-048",
+      "type": "resolves",
+      "created_at": "2026-08-23T08:12:27+00:00"
     }
   ]
 }
