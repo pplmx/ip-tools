@@ -1,8 +1,8 @@
 {
   "ril_version": 1,
-  "round": 1,
+  "round": 2,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-23T14:41:30+00:00",
+  "updated_at": "2026-08-23T18:10:55+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -71,7 +71,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 0,
+      "touched_round": 2,
       "desc": "Repeated probing with latency stats (min/p50/p90/p95/p99/max/jitter/failure-dist) for tcp/tls/http/http2/http3"
     },
     "COMP-route": {
@@ -3526,7 +3526,7 @@
       "version": 1,
       "created_at": "2026-08-23T13:36:04+00:00",
       "updated_at": "2026-08-23T13:36:04+00:00",
-      "touched_round": 1,
+      "touched_round": 2,
       "rationale": "New milestone (2026-08-23): add --plain to diagnose so the full pipeline can observe a cleartext HTTP endpoint. The http single-shot (DEC-060) and the repeat probe (DEC-061) already probe plaintext HTTP/1.1, but diagnose always runs TLS probes, so a plaintext internal service / captive portal / HTTP-only health check gets a false 'TLS handshake fails where TCP connects' verdict and the HTTP phase fails at the handshake. diagnose --plain skips the TLS observation phase and runs the HTTP phase + the stability repeat over cleartext HTTP/1.1 -- the endpoint is then observed truthfully end-to-end.",
       "alternatives_rejected": "not adding --plain to http2/http3 in diagnose (they are TLS-only protocols; cleartext HTTP/2 (h2c) would be a separate, larger feature and is out of scope); not silently skipping TLS when the target is a plain listener (an explicit opt-in flag keeps the TLS evidence for HTTPS-only targets)"
     },
@@ -3566,6 +3566,54 @@
       "touched_round": 1,
       "commit": "e451869c63e985cf4160cde7c2fd158bc32d2817",
       "summary": "diagnose --plain: skip the TLS phase and probe the HTTP phase + stability repeat over cleartext HTTP/1.1 (probe_plain_output, http_repeat_plain) so a plaintext endpoint is observed truthfully"
+    },
+    "DEC-069": {
+      "id": "DEC-069",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T15:26:01+00:00",
+      "updated_at": "2026-08-23T15:26:01+00:00",
+      "touched_round": 2,
+      "rationale": "New milestone (2026-08-23): aggregate TTFB in the repeated HTTP probes. The single-shot http/http2/http3 probes already capture ttfb_ms -- the time from request to response headers, the server-response-latency signal -- but the stability repeats (probe --protocol http/http2/http3 --count, the diagnose stability phase) aggregate only total latency, so a repeat sweep cannot tell a slow-to-respond server from a slow body transfer. Surfacing a TTFB LatencySummary (min/p50/p95/max) per HTTP ProbeResult gives HTTP health/stability sweeps the server-response dimension the single-shot report already shows. Public API change (ProbeResult gains a ttfb field; api-baseline regenerated), no new dependency. Pinned by an aggregation unit test + the render/CSV unit tests and a fixture-gated CLI test.",
+      "alternatives_rejected": "not wiring a new diagnosis rule off TTFB in the same slice (the surface first, diagnose later pattern that TTL/status used); not adding TTFB to the transport repeats (tcp/tls have no such signal -- the field stays empty)"
+    },
+    "ISS-062": {
+      "id": "ISS-062",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T15:27:25+00:00",
+      "updated_at": "2026-08-23T18:10:55+00:00",
+      "touched_round": 2,
+      "severity": "low",
+      "summary": "The http/http2/http3 repeat probes (probe --protocol http|http2|http3 --count, and diagnose's stability phase) aggregate success rate, total latency percentiles and status distribution but drop time-to-first-byte -- the server-response-latency signal the single-shot probes already capture (HttpObservation.ttfb_ms). A stability sweep therefore cannot tell a slow-to-respond server from a slow body transfer, which is exactly the distinction an HTTP health sweep needs."
+    },
+    "TASK-070": {
+      "id": "TASK-070",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T15:29:40+00:00",
+      "updated_at": "2026-08-23T18:10:55+00:00",
+      "touched_round": 2,
+      "category": "core-feature",
+      "severity": 0.4,
+      "confidence": 1,
+      "effort": 0.25,
+      "unlock_factor": 1.1,
+      "summary": "Aggregate TTFB in the repeat HTTP probes: extend the shared repeat_impl tuple to carry an optional per-attempt ttfb_ms, collect it (successful or not) into a TTFB LatencyStats alongside total latency, add a ttfb: LatencySummary field to ProbeResult (empty for tcp/tls transport repeats via the existing summarize), and render it in the human probe report (ttfb: min/p50/p95/max rows), --json (automatic via Serialize), and probe --csv (ttfb_p50/ttfb_p95 columns). reuses existing entry points; no change on failed-attempt-only repeats. Public API change (api-baseline regenerated). Pinned by an aggregation unit test (mixed ttfb values summarize into the field) + render/CSV unit tests + a fixture-gated CLI test."
+    },
+    "CHG-063": {
+      "id": "CHG-063",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T18:10:55+00:00",
+      "updated_at": "2026-08-23T18:10:55+00:00",
+      "touched_round": 2,
+      "commit": "bdf987717cdbb8d3bd9d6322b2900f464ea6d1ee",
+      "summary": "ProbeResult.ttfb LatencySummary aggregated from each completed HTTP repeat response; human ttfb block, --json field, probe --csv ttfb_* columns; api-baseline regenerated (also records the cert_covers_hostname visibility)"
     }
   },
   "edges": [
@@ -6046,6 +6094,42 @@
       "to": "ISS-061",
       "type": "resolves",
       "created_at": "2026-08-23T14:41:30+00:00"
+    },
+    {
+      "from": "DEC-069",
+      "to": "TASK-070",
+      "type": "governs",
+      "created_at": "2026-08-23T15:31:08+00:00"
+    },
+    {
+      "from": "DEC-069",
+      "to": "DEC-068",
+      "type": "supersedes",
+      "created_at": "2026-08-23T15:31:08+00:00"
+    },
+    {
+      "from": "TASK-070",
+      "to": "ISS-062",
+      "type": "addresses",
+      "created_at": "2026-08-23T15:31:08+00:00"
+    },
+    {
+      "from": "ISS-062",
+      "to": "COMP-probe",
+      "type": "located_in",
+      "created_at": "2026-08-23T15:31:08+00:00"
+    },
+    {
+      "from": "CHG-063",
+      "to": "TASK-070",
+      "type": "implements",
+      "created_at": "2026-08-23T18:10:55+00:00"
+    },
+    {
+      "from": "CHG-063",
+      "to": "ISS-062",
+      "type": "resolves",
+      "created_at": "2026-08-23T18:10:55+00:00"
     }
   ]
 }
