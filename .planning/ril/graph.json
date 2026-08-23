@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-23T04:55:20+00:00",
+  "updated_at": "2026-08-23T04:59:31+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -2354,6 +2354,54 @@
       "touched_round": 0,
       "commit": "9c2f4b95ad7dc8885d0a289c4a89b8271ac9f238",
       "summary": "Parallelized the diagnose multi-target sweep: the per-host pipeline now runs concurrently bounded by --concurrency (1 stays strictly sequential), using parallel_map + index re-sort so human/JSON/CSV output stays in input order (mirrors dns --concurrency, DEC-040). Updated --concurrency docs in README; pinned by a fixture test asserting input order is preserved under --concurrency 4."
+    },
+    "ISS-037": {
+      "id": "ISS-037",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T04:59:19+00:00",
+      "updated_at": "2026-08-23T04:59:31+00:00",
+      "touched_round": 0,
+      "severity": "low",
+      "summary": "The per-address probe subcommands (tcp, tls, http, http2, http3, probe) share run_probe_flow, which sweeps a fleet of targets sequentially per host — each target waits for the previous. diagnose already gained concurrent sweeps (TASK-044) but these connectivity sweeps did not, so large fleet probes are needlessly slow."
+    },
+    "TASK-045": {
+      "id": "TASK-045",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T04:59:19+00:00",
+      "updated_at": "2026-08-23T04:59:31+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.35,
+      "unlock_factor": 1,
+      "summary": "Parallelize the shared probe sweep (run_probe_flow, used by tcp/tls/http/http2/http3/probe) across targets: run the per-host resolve+probe concurrently bounded by --concurrency (1 = strictly sequential), re-sorting per-target results back to input order so human/JSON/CSV output stays deterministic. Mirrors diagnose TASK-044 and dns DEC-040. Pinned by a fixture test asserting a tcp sweep preserves input order under --concurrency 4."
+    },
+    "DEC-044": {
+      "id": "DEC-044",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T04:59:19+00:00",
+      "updated_at": "2026-08-23T04:59:19+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-23): extend the accepted concurrent-sweep direction (dns DEC-040, diagnose TASK-044) to the per-address probe subcommands. They share run_probe_flow, so parallelizing there fixes all of tcp/tls/http/http2/http3/probe at once. Reuse --concurrency (also bounds per-address probes), re-sort by input index so output stays deterministic, keep --concurrency 1 as the sequential baseline. No API/format change.",
+      "alternatives_rejected": "a per-subcommand flag (they share run_probe_flow; reusing --concurrency is consistent); changing output order (no — index re-sort preserves it); leaving diagnose-only (inconsistent — probe sweeps are the same user story)."
+    },
+    "CHG-038": {
+      "id": "CHG-038",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T04:59:31+00:00",
+      "updated_at": "2026-08-23T04:59:31+00:00",
+      "touched_round": 0,
+      "commit": "7bd3d6686f759e5f93f61029c516930e49e93233",
+      "summary": "Parallelized the shared probe sweep (run_probe_flow) across targets: tcp/tls/http/http2/http3/probe now resolve+probe hosts concurrently bounded by --concurrency (1 stays strictly sequential), re-sorting per-target results back to input order so human/JSON/CSV output stays deterministic (mirrors diagnose TASK-044 and dns DEC-040). Updated the fleet-sweep README; pinned by a fixture test asserting a tcp sweep preserves input order under --concurrency 4."
     }
   },
   "edges": [
@@ -3934,6 +3982,42 @@
       "to": "ISS-036",
       "type": "resolves",
       "created_at": "2026-08-23T04:55:20+00:00"
+    },
+    {
+      "from": "ISS-037",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-23T04:59:19+00:00"
+    },
+    {
+      "from": "TASK-045",
+      "to": "ISS-037",
+      "type": "addresses",
+      "created_at": "2026-08-23T04:59:19+00:00"
+    },
+    {
+      "from": "DEC-044",
+      "to": "TASK-045",
+      "type": "governs",
+      "created_at": "2026-08-23T04:59:19+00:00"
+    },
+    {
+      "from": "DEC-044",
+      "to": "DEC-043",
+      "type": "supersedes",
+      "created_at": "2026-08-23T04:59:19+00:00"
+    },
+    {
+      "from": "CHG-038",
+      "to": "TASK-045",
+      "type": "implements",
+      "created_at": "2026-08-23T04:59:31+00:00"
+    },
+    {
+      "from": "CHG-038",
+      "to": "ISS-037",
+      "type": "resolves",
+      "created_at": "2026-08-23T04:59:31+00:00"
     }
   ]
 }
