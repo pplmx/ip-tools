@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-23T00:46:38+00:00",
+  "updated_at": "2026-08-23T00:57:54+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -1874,6 +1874,54 @@
       "touched_round": 0,
       "commit": "ce4973288d5c7f3453087e72eb051edf5885d7e0",
       "summary": "Extended --doh/--dot encrypted-resolver resolution to the per-address probe commands (tcp/tls/http/http2/http3/probe): doh/dot endpoint lists + insecure threaded through resolve_for_tcp_servers and run_probe_flow; --doh/--dot added to every probe subcommand; no API change."
+    },
+    "ISS-027": {
+      "id": "ISS-027",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T00:49:11+00:00",
+      "updated_at": "2026-08-23T00:57:54+00:00",
+      "touched_round": 0,
+      "severity": "low",
+      "summary": "The HTTP probes hard-code a 1 MiB MAX_BODY_BYTES read cap (and now --output-body writes only up to that cap), so an operator inspecting a >1 MiB response — a large API error, a big page, or a file download — cannot capture the full body; there is no way to raise or lower the cap at the CLI."
+    },
+    "TASK-035": {
+      "id": "TASK-035",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T00:49:11+00:00",
+      "updated_at": "2026-08-23T00:57:54+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.3,
+      "unlock_factor": 1,
+      "summary": "Add --max-body-bytes N to http/http2/http3 (default 1 MiB) so the response-body read cap is configurable: thread a max_body_bytes param through probe_impl and the *output public fns, use it for both the read cap and the --output-body write, and keep the 1 KiB snippet semantics unchanged. Testable against the fixture's 2 MiB big.invalid route."
+    },
+    "DEC-034": {
+      "id": "DEC-034",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T00:49:11+00:00",
+      "updated_at": "2026-08-23T00:49:11+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-23): configurable --max-body-bytes on the HTTP-family probes. The probes hard-resource-bound body reads to 1 MiB (a deliberate safety cap) and --output-body inherits that limit, so a >1 MiB response cannot be captured. Making the cap configurable (default unchanged) lets an operator inspecting a large API error / big page / download raise the bound, while keeping the hostile-body safety valve intact. Threaded through the same probe_impl/CLI plumbing used by body/headers/output; snippet semantics unchanged. Public API change (regenerated api-baseline).",
+      "alternatives_rejected": "raising the default cap (weakens the hostile-body resource bound for everyone); no flag (leaves >1 MiB bodies uncapturable); snippet-only (doesn't help --output-body)."
+    },
+    "CHG-028": {
+      "id": "CHG-028",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T00:57:54+00:00",
+      "updated_at": "2026-08-23T00:57:54+00:00",
+      "touched_round": 0,
+      "commit": "b6d27f21a01441ad1e359bd901ced219a6b2c327",
+      "summary": "Added --max-body-bytes N to http/http2/http3: maxim_body_bytes threaded through probe_impl and the configurable *output entry points (now take max_body_bytes + optional output), driving both read cap and --output-body write; api-baseline regenerated; fixture test."
     }
   },
   "edges": [
@@ -3094,6 +3142,42 @@
       "to": "ISS-026",
       "type": "resolves",
       "created_at": "2026-08-23T00:46:38+00:00"
+    },
+    {
+      "from": "DEC-034",
+      "to": "TASK-035",
+      "type": "governs",
+      "created_at": "2026-08-23T00:49:11+00:00"
+    },
+    {
+      "from": "DEC-034",
+      "to": "DEC-033",
+      "type": "supersedes",
+      "created_at": "2026-08-23T00:49:11+00:00"
+    },
+    {
+      "from": "TASK-035",
+      "to": "ISS-027",
+      "type": "addresses",
+      "created_at": "2026-08-23T00:49:11+00:00"
+    },
+    {
+      "from": "ISS-027",
+      "to": "COMP-http",
+      "type": "located_in",
+      "created_at": "2026-08-23T00:49:11+00:00"
+    },
+    {
+      "from": "CHG-028",
+      "to": "TASK-035",
+      "type": "implements",
+      "created_at": "2026-08-23T00:57:54+00:00"
+    },
+    {
+      "from": "CHG-028",
+      "to": "ISS-027",
+      "type": "resolves",
+      "created_at": "2026-08-23T00:57:54+00:00"
     }
   ]
 }
