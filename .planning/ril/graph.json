@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-23T04:59:31+00:00",
+  "updated_at": "2026-08-23T05:03:52+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -2402,6 +2402,54 @@
       "touched_round": 0,
       "commit": "7bd3d6686f759e5f93f61029c516930e49e93233",
       "summary": "Parallelized the shared probe sweep (run_probe_flow) across targets: tcp/tls/http/http2/http3/probe now resolve+probe hosts concurrently bounded by --concurrency (1 stays strictly sequential), re-sorting per-target results back to input order so human/JSON/CSV output stays deterministic (mirrors diagnose TASK-044 and dns DEC-040). Updated the fleet-sweep README; pinned by a fixture test asserting a tcp sweep preserves input order under --concurrency 4."
+    },
+    "ISS-038": {
+      "id": "ISS-038",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T05:03:44+00:00",
+      "updated_at": "2026-08-23T05:03:52+00:00",
+      "touched_round": 0,
+      "severity": "low",
+      "summary": "The repo maintains a detailed Keep-a-Changelog Unreleased/Added section documenting every feature with its test evidence, but the four most recent milestones did not add entries: redirect diagnosis (CHG-035), not-yet-valid certificate (CHG-036), diagnose concurrent sweep (CHG-037) and probe concurrent sweep (CHG-038). The CHANGELOG is a documented deliverable; omitting these features breaks the acceptance convention and makes the release notes incomplete."
+    },
+    "TASK-046": {
+      "id": "TASK-046",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T05:03:44+00:00",
+      "updated_at": "2026-08-23T05:03:52+00:00",
+      "touched_round": 0,
+      "category": "docs",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.2,
+      "unlock_factor": 1,
+      "summary": "Add Keep-a-Changelog entries for the four most recent milestones (redirect diagnosis, not-yet-valid certificate, diagnose concurrent sweep, probe concurrent sweep), each in the repo's established style (user-visible behaviour + public-API note + pinned-by-test evidence), inserted at the top of Unreleased/Added (newest-first), verified lint-clean under rumdl."
+    },
+    "DEC-045": {
+      "id": "DEC-045",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T05:03:44+00:00",
+      "updated_at": "2026-08-23T05:03:44+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-23): close the changelog acceptance gap. The four most recent milestones shipped without CHANGELOG entries, violating the repo's documented Keep-a-Changelog convention (every prior feature has an entry with test evidence). Add the four entries in the established style so the Unreleased notes are complete and accurate. Catches a real gap in delivery acceptance, not a cosmetic nicety.",
+      "alternatives_rejected": "regenerating/auto-filling the whole changelog (out of scope, and the convention is hand-maintained); deferring until release (the Unreleased section should track each feature as it lands); editing entries for prior milestones (they are already correctly documented)."
+    },
+    "CHG-039": {
+      "id": "CHG-039",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T05:03:52+00:00",
+      "updated_at": "2026-08-23T05:03:52+00:00",
+      "touched_round": 0,
+      "commit": "f77d683dd890b9a5c924f6457556207481f9b028",
+      "summary": "Added four Keep-a-Changelog Unreleased/Added entries (newest-first at the top) documenting the redirect diagnosis, not-yet-valid certificate, diagnose concurrent sweep and probe concurrent sweep milestones, each in the repo's established style with a public-API note and pinned-by-test evidence. Verified no new rumdl lint issues from the additions."
     }
   },
   "edges": [
@@ -4018,6 +4066,42 @@
       "to": "ISS-037",
       "type": "resolves",
       "created_at": "2026-08-23T04:59:31+00:00"
+    },
+    {
+      "from": "ISS-038",
+      "to": "COMP-report",
+      "type": "located_in",
+      "created_at": "2026-08-23T05:03:44+00:00"
+    },
+    {
+      "from": "TASK-046",
+      "to": "ISS-038",
+      "type": "addresses",
+      "created_at": "2026-08-23T05:03:44+00:00"
+    },
+    {
+      "from": "DEC-045",
+      "to": "TASK-046",
+      "type": "governs",
+      "created_at": "2026-08-23T05:03:44+00:00"
+    },
+    {
+      "from": "DEC-045",
+      "to": "DEC-044",
+      "type": "supersedes",
+      "created_at": "2026-08-23T05:03:44+00:00"
+    },
+    {
+      "from": "CHG-039",
+      "to": "TASK-046",
+      "type": "implements",
+      "created_at": "2026-08-23T05:03:52+00:00"
+    },
+    {
+      "from": "CHG-039",
+      "to": "ISS-038",
+      "type": "resolves",
+      "created_at": "2026-08-23T05:03:52+00:00"
     }
   ]
 }
