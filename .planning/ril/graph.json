@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 0,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-23T01:35:24+00:00",
+  "updated_at": "2026-08-23T04:39:47+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -2210,6 +2210,54 @@
       "touched_round": 0,
       "commit": "0a3869e332d28f59355c963df4b5fa478a3bc7d9",
       "summary": "Added dns --concurrency N (default 1) to parallelize multi-target DNS health sweeps via parallel_map, re-sorting outputs to input order; no API change; CLI test."
+    },
+    "ISS-034": {
+      "id": "ISS-034",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T01:38:04+00:00",
+      "updated_at": "2026-08-23T04:39:47+00:00",
+      "touched_round": 0,
+      "severity": "low",
+      "summary": "The diagnostic engine flags HTTP status >= 400 and stalled bodies, but is silent on a 3xx redirect — even though a redirect is a very common real-world observation (a captive portal, a login/auth wall, a moved domain, or middleware rewriting). diagnose currently returns Healthy (or unrelated verdicts) for a host that redirects, so an automated health sweep cannot tell you 'this host redirected to X'."
+    },
+    "TASK-042": {
+      "id": "TASK-042",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-23T01:38:04+00:00",
+      "updated_at": "2026-08-23T04:39:47+00:00",
+      "touched_round": 0,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.25,
+      "unlock_factor": 1,
+      "summary": "Add an automated redirect diagnosis: a rule that scans HTTP observations and, when a 3xx status with a Location is observed on an otherwise-reachable host, raises a Low Http diagnosis naming the redirect target — surfacing captive-portal / login-wall / moved-domain evidence that today is invisible to diagnose. Pinned by a unit test and a fixture-gated test using the redirect.invalid 302 route; no new category needed (reuses Http)."
+    },
+    "DEC-041": {
+      "id": "DEC-041",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-23T01:38:04+00:00",
+      "updated_at": "2026-08-23T01:38:04+00:00",
+      "touched_round": 0,
+      "rationale": "New milestone (2026-08-23): automate redirect observation into a diagnosis. The engine flags >=400 and stalled bodies but is silent on 3xx redirects — yet a host that redirects you (captive portal, auth wall, moved domain, middleware rewrite) is a very common real-world observable. Add a redirect rule that raises a Low Http diagnosis naming the Location when a 3xx status occurs on a reachable host, reusing the Http category. No new public API (rule only). Complements the existing Dec-003 'redirect is an observation' stance — this surfaces it in diagnose, not by following it.",
+      "alternatives_rejected": "a new category (reuses Http, cleaner); following redirects (explicitly rejected DEC-003); raising Medium (a redirect is not inherently a failure — Low); only 4xx/redirect-to-login heuristic (capturing any 3xx + Location is the honest, simple signal)."
+    },
+    "CHG-035": {
+      "id": "CHG-035",
+      "type": "change",
+      "status": "active",
+      "version": 2,
+      "created_at": "2026-08-23T04:39:36+00:00",
+      "updated_at": "2026-08-23T04:39:47+00:00",
+      "touched_round": 0,
+      "commit": "c58eeafdd22fc1d0ff182905b53b6c73de20db0d",
+      "summary": "Added an automated redirect diagnosis: redirect_rules scans HTTP observations and raises a Low Http diagnosis naming the Location when a 3xx status occurs on a reachable host. Wired into the diagnose dispatch, unit-tested (fires on 3xx+Location, silent on 2xx/failure) and fixture-gated via diagnose --sni redirect.invalid."
     }
   },
   "edges": [
@@ -3682,6 +3730,42 @@
       "to": "ISS-033",
       "type": "resolves",
       "created_at": "2026-08-23T01:35:24+00:00"
+    },
+    {
+      "from": "DEC-041",
+      "to": "TASK-042",
+      "type": "governs",
+      "created_at": "2026-08-23T01:38:05+00:00"
+    },
+    {
+      "from": "DEC-041",
+      "to": "DEC-040",
+      "type": "supersedes",
+      "created_at": "2026-08-23T01:38:05+00:00"
+    },
+    {
+      "from": "TASK-042",
+      "to": "ISS-034",
+      "type": "addresses",
+      "created_at": "2026-08-23T01:38:05+00:00"
+    },
+    {
+      "from": "ISS-034",
+      "to": "COMP-http",
+      "type": "located_in",
+      "created_at": "2026-08-23T01:38:05+00:00"
+    },
+    {
+      "from": "CHG-035",
+      "to": "TASK-042",
+      "type": "implements",
+      "created_at": "2026-08-23T04:39:47+00:00"
+    },
+    {
+      "from": "CHG-035",
+      "to": "ISS-034",
+      "type": "resolves",
+      "created_at": "2026-08-23T04:39:47+00:00"
     }
   ]
 }
