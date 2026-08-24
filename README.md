@@ -579,6 +579,12 @@ verdict; evidence and possible causes are semicolon-joined so the reason
 behind each verdict stays in the spreadsheet); `--strict` exits non-zero if
 **any** host raised an anomaly.
 
+When an anomaly was found, the human report ends with a one-line colored
+verdict — `Anomalies: 2 (HIGH: 1, MEDIUM: 1)` — red when a High-severity
+verdict is present, yellow otherwise, so a fleet scan's "did anything turn
+up?" is answered without reading every row. A fully healthy run prints no
+such line (its output is unchanged).
+
 Example output (on a host whose IPv6 has no route — the IPv4 path works, the
 IPv6 and QUIC paths fail locally):
 

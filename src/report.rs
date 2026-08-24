@@ -13,8 +13,8 @@
 #![allow(clippy::format_push_string)]
 
 use crate::model::{
-    CertificateSummary, Diagnosis, DnsObservation, DnsRecordType, DnsRepeatResult, HttpObservation, ProbeResult,
-    ResolverKind, Severity, TcpObservation, TlsObservation,
+    CertificateSummary, Diagnosis, DiagnosticCategory, DnsObservation, DnsRecordType, DnsRepeatResult, HttpObservation,
+    ProbeResult, ResolverKind, Severity, TcpObservation, TlsObservation,
 };
 use crate::style::Style;
 use crate::{RouteHop, RouteRepeat};
@@ -665,6 +665,34 @@ pub fn render_diagnoses(style: &Style, diagnoses: &[Diagnosis]) -> String {
         }
         out.push('\n');
     }
+    // A final verdict line answers a fleet scan's one question — "did anything
+    // turn up?" — without reading every row. Rendered only when a non-Healthy
+    // diagnosis exists, so a healthy run stays byte-identical. Colored red
+    // when any High-severity anomaly is present, yellow otherwise.
+    let anomaly_count = diagnoses
+        .iter()
+        .filter(|d| d.category != DiagnosticCategory::Healthy)
+        .count();
+    if anomaly_count > 0 {
+        let mut parts: Vec<String> = Vec::new();
+        for severity in [Severity::High, Severity::Medium, Severity::Low, Severity::Info] {
+            let count = diagnoses
+                .iter()
+                .filter(|d| d.category != DiagnosticCategory::Healthy && d.severity == severity)
+                .count();
+            if count > 0 {
+                parts.push(format!("{severity:?}: {count}").to_uppercase());
+            }
+        }
+        let token = format!("Anomalies: {anomaly_count} ({})", parts.join(", "));
+        let line = if diagnoses.iter().any(|d| d.severity == Severity::High) {
+            style.fail(token)
+        } else {
+            style.warn(token)
+        };
+        out.push_str(&line);
+        out.push('\n');
+    }
     out
 }
 
@@ -1255,6 +1283,11 @@ mod tests {
             }],
             possible_causes: vec!["server down".into(), "firewall".into()],
         };
+        // A healthy-only run stays unchanged: no trailer.
+        assert!(
+            !render_diagnoses(&Style::plain(), std::slice::from_ref(&healthy)).contains("Anomalies:"),
+            "healthy run must have no trailer"
+        );
         let out = render_diagnoses(&Style::plain(), &[healthy, anomaly]);
         assert!(out.contains("Diagnosis"));
         assert!(out.contains("[INFO] Healthy (High confidence)"));
@@ -1262,6 +1295,44 @@ mod tests {
         assert!(out.contains("Evidence:"));
         assert!(out.contains("Possible causes:"));
         assert!(out.contains("firewall"));
+        // A final verdict trailer is appended only when an anomaly exists, and
+        // names the High-severity count.
+        assert!(out.contains("Anomalies: 1 (HIGH: 1)"), "verdict trailer missing: {out}");
+    }
+
+    #[test]
+    fn diagnoses_verdict_trailer_aggregates_severities_and_colors_high_red() {
+        let mk = |severity, category| Diagnosis {
+            severity,
+            category,
+            confidence: Confidence::Low,
+            summary: "s".into(),
+            evidence: Vec::new(),
+            possible_causes: Vec::new(),
+        };
+        let mixed = [
+            mk(Severity::High, DiagnosticCategory::TotalConnectivityLoss),
+            mk(Severity::Medium, DiagnosticCategory::Certificate),
+            mk(Severity::Info, DiagnosticCategory::Healthy),
+        ];
+        let plain = render_diagnoses(&Style::plain(), &mixed);
+        assert!(
+            plain.contains("Anomalies: 2 (HIGH: 1, MEDIUM: 1)"),
+            "severity aggregation missing: {plain}"
+        );
+        // High severity present -> the whole trailer line is red.
+        let colored = render_diagnoses(&Style::colored_for_tests(), &mixed);
+        assert!(
+            colored.contains("\x1b[31mAnomalies: 2 (HIGH: 1, MEDIUM: 1)\x1b[0m"),
+            "trailer must be red when any High anomaly is present: {colored:?}"
+        );
+        // Medium-only -> yellow; an all-INFO/Low anomaly list stays plain.
+        let med = [mk(Severity::Medium, DiagnosticCategory::Certificate)];
+        let colored_med = render_diagnoses(&Style::colored_for_tests(), &med);
+        assert!(
+            colored_med.contains("\x1b[33mAnomalies: 1 (MEDIUM: 1)\x1b[0m"),
+            "trailer must be yellow without High: {colored_med:?}"
+        );
     }
 
     #[test]
