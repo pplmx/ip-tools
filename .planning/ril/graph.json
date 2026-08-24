@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 6,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-24T10:31:58+00:00",
+  "updated_at": "2026-08-24T10:37:28+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -3820,6 +3820,17 @@
       "touched_round": 6,
       "commit": "5801bd2",
       "desc": "live per-host progress counter wired into run_probe_flow / dns sweep / run_diagnose (Arc<Progress> + cloned handles); pure gate truth-tabled and silent path pinned; CLI-only."
+    },
+    "DEC-073": {
+      "id": "DEC-073",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-24T10:35:51+00:00",
+      "updated_at": "2026-08-24T10:35:51+00:00",
+      "touched_round": 6,
+      "rationale": "Milestone closure for the operator-directed UX/beautification goal (DEC-072). Delivered and verified three net-increment vertical slices to main: (1) TTY-aware colored human output with --no-color/NO_COLOR escapes and byte-identical non-TTY text (CHG-066), (2) a colored 'Anomalies: N (HIGH: a, MEDIUM: b)' verdict trailer on diagnose, absent on healthy runs (CHG-067), (3) a stderr TTY-gated per-host progress counter for multi-target sweeps (CHG-068). All gates green at 6 commits: 258 unit+integration tests + 8 doc, clippy -D warnings -W pedantic -W nursery clean, fmt clean, doc -D warnings clean, api-baseline matches, coverage 93.4%, RIL graph consistent.",
+      "alternatives_rejected": "Deferred with rationale to avoid patch-stacking (value-gate §11.2): human-readable latency/byte units ('1234 ms' -> '1.23 s', 'bytes' -> 'KiB') is internal text polish below the gate; get/list prettification is marginal; error-channel (stderr) coloring risks scripted stderr parsing for near-zero gain. Re-activate any of these only if a real user scenario makes them executable-value problems. The color pass itself targeted repeated candidate 'full --color always/never/auto tri-state' and 'an external colorscheme crate' and was rejected in DEC-072 (--no-color + NO_COLOR + TTY gate covers the need at zero dependencies)."
     }
   },
   "edges": [
