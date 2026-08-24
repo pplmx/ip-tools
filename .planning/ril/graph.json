@@ -1,8 +1,8 @@
 {
   "ril_version": 1,
-  "round": 9,
+  "round": 10,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-24T13:51:50+00:00",
+  "updated_at": "2026-08-24T16:41:13+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -71,7 +71,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 2,
+      "touched_round": 10,
       "desc": "Repeated probing with latency stats (min/p50/p90/p95/p99/max/jitter/failure-dist) for tcp/tls/http/http2/http3"
     },
     "COMP-route": {
@@ -3908,6 +3908,52 @@
       "touched_round": 8,
       "commit": "bc1db0f",
       "desc": "lookup_error_message() in dns.rs maps NoRecordsFound/NXDOMAIN to clean text; the AAAA row now reads 'no AAAA records found for host.example' instead of the Query Debug dump; pinned by a local-responder CLI test asserting the clean message and the absence of leaked 'Query {' / 'Name(' text."
+    },
+    "DEC-075": {
+      "id": "DEC-075",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-24T15:24:10+00:00",
+      "updated_at": "2026-08-24T15:24:10+00:00",
+      "touched_round": 10,
+      "rationale": "New milestone (2026-08-24, operator-directed \"start a new milestone\"): extend the user-asserted expectation gate from the single-shot response (DEC-074) to the repeated-probe stability dimension. The single-shot --expect-status/--expect-contains gates one response's shape, but the exit code of `probe` still only reflects completion: it measures reliability (success_rate, latency distribution, HTTP status distribution over --count attempts) yet cannot gate on it, so an operator's \"is this endpoint reliably healthy over time\" CI check still needs to parse the report. Add the same assertion hook to `probe`, evaluated per resolved address on the aggregated ProbeResult: (a) --expect-status SPEC (exact `200` or class `2xx`, reusing StatusSpec/parse_status_spec): every observed status in the per-address status distribution must be in the accepted set; an address whose attempts never completed has no response to assert on and violates. (b) --expect-rate RATE (fraction like 0.97 / 1, or percent like 97%%; 0 excluded as vacuous): the per-address aggregate success_rate must meet the threshold. Exit-code semantics mirror DEC-074: the asserted gate is a verdict on the whole run, independent of --strict, naming each violating destination on stderr (\"expectation violated: <addr> ...\") with the report on stdout untouched. CLI-only (ExpectCheck is cli-internal): no public API change, no api-baseline churn, default/JSON/CSV output byte-identical. Input guard: --expect-status with --protocol tcp|tls errors (no HTTP status exists to assert). This is the DEC-074-deferred \"natural follow-on slice\", now clean because ProbeResult aggregates status_counts (since the TTFB milestone) and success_rate.",
+      "alternatives_rejected": "(1) --expect-p95 <ms> latency bound on probe: a performance-SLO plane (p50/p95 budget) distinct from this availability/shape gate; keeping the assertion grammar single-plane (did it answer, with the accepted status, reliably) and deferring latency budgets to a later slice. (2) --expect-status comma-list on the single-shot family (DEC-074 scope-out #5): an expressiveness extension of a shipped feature at the \"missing an option\" level, and the repeat-form status-set semantics already subsumes its value; deferred. (3) diagnose --expect (DEC-074 scope-out #2): diagnose's job is its own evidence-rule engine producing verdicts; layering user assertions on the orchestrator muddies that separation (a diagnose verdict ALREADY carries its own pass/fail via the anomaly trailer); rejected. (4) --expect-contains on probe (DEC-074 scope-out #1): the aggregated ProbeResult legitimately has no single body to assert on (only a status distribution); unchanged, rejected. (5) TCP/TLS single-shot --expect-status (DEC-074 scope-out #4): no HTTP status to assert against; --expect-rate now naturally covers the transport side of the repeat; rejected."
+    },
+    "TASK-078": {
+      "id": "TASK-078",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-24T15:24:10+00:00",
+      "updated_at": "2026-08-24T16:41:13+00:00",
+      "touched_round": 10,
+      "category": "core-feature",
+      "priority_score": 3.9,
+      "severity": 2,
+      "confidence": 1.0,
+      "desc": "Add a user-asserted reliability gate to the repeated probe: --expect-status SPEC and --expect-rate RATE on the `probe` subcommand, evaluated per resolved address against the aggregated ProbeResult (success_rate + status_counts). --expect-status reuses StatusSpec/parse_status_spec (exact `200` or class `2xx`): every observed status in the per-address distribution must be in the accepted set; empty distribution (no completed attempt) is itself a violation. --expect-rate parses a fraction (0.97, 1) or percent (97%%): the aggregate success_rate must be >= RATE; 0 rejected as vacuous. Both gate the run exit code independent of --strict, naming each violating destination on stderr (\"expectation violated: <addr> ...\"); report on stdout untouched. Guards: --expect-status errors when --protocol tcp|tls. CLI-only (ExpectCheck is cli-internal; no public API change; default/JSON/CSV output byte-identical). Pinned by unit tests (rate parse grammar, status/rate violation truth table) and local-listener + HTTP-fixture CLI tests (all-2xx + high-rate passes; mixed-status distribution fails --expect-status; below-threshold rate fails --expect-rate; invalid spec/rate rejected; tcp + --expect-status rejected)."
+    },
+    "ISS-070": {
+      "id": "ISS-070",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-24T15:24:10+00:00",
+      "updated_at": "2026-08-24T16:41:13+00:00",
+      "touched_round": 10,
+      "desc": "An operator measuring endpoint reliability with the repeated probe (`probe --protocol ... --count N`) sees success rate, latency percentiles and (for the HTTP family) the status distribution, and can assert the shape of a single response (--expect-status / --expect-contains on http/http2/http3, DEC-074) -- but the probe run that exists precisely to gauge stability cannot gate on it: the process exit code only reflects transport completion (--strict) and resolution, so a CI health gate for \"is this endpoint reliably answering 2xx at least 97%% of the time\" still needs to parse the report. The missing link between measuring a repeated probe's aggregate and gating a run on its reliability."
+    },
+    "CHG-071": {
+      "id": "CHG-071",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-24T16:41:13+00:00",
+      "updated_at": "2026-08-24T16:41:13+00:00",
+      "touched_round": 10,
+      "commit": "11dbcf9",
+      "desc": "Deliver the DEC-075 milestone (TASK-078 / ISS-070): 'probe --expect-status' and 'probe --expect-rate' gate the repeated probe on its aggregated reliability. --expect-status asserts the observed HTTP status distribution across --count attempts stays in an exact-code/class set (reuses StatusSpec/parse_status_spec; an address with no completed attempt violates); --expect-rate asserts the aggregate success_rate meets a fraction/percent threshold (0 rejected as vacuous). Both are verdicts on the run, independent of --strict, naming each violating destination on stderr; report on stdout untouched. Guard: --expect-status with --protocol tcp|tls errors. CLI-only (ExpectCheck is cli-internal): api-baseline gate passes unchanged. Pinned by 6 unit tests + 6 CLI integration tests; full suite 303 tests green, clippy -D warnings and rustfmt clean."
     }
   },
   "edges": [
@@ -6616,6 +6662,36 @@
       "to": "ISS-069",
       "type": "resolves",
       "created_at": "2026-08-24T13:50:39+00:00"
+    },
+    {
+      "from": "DEC-075",
+      "to": "TASK-078",
+      "type": "governs",
+      "created_at": "2026-08-24T15:24:10+00:00"
+    },
+    {
+      "from": "TASK-078",
+      "to": "ISS-070",
+      "type": "addresses",
+      "created_at": "2026-08-24T15:24:10+00:00"
+    },
+    {
+      "from": "ISS-070",
+      "to": "COMP-probe",
+      "type": "located_in",
+      "created_at": "2026-08-24T15:24:10+00:00"
+    },
+    {
+      "from": "CHG-071",
+      "to": "TASK-078",
+      "type": "implements",
+      "created_at": "2026-08-24T16:41:13+00:00"
+    },
+    {
+      "from": "CHG-071",
+      "to": "ISS-070",
+      "type": "resolves",
+      "created_at": "2026-08-24T16:41:13+00:00"
     }
   ]
 }
