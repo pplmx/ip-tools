@@ -33,6 +33,13 @@ pub(super) async fn run_http2(sub_m: &ArgMatches, style: Style) -> ExitCode {
     let max_body_bytes = *sub_m
         .get_one::<u64>("max-body-bytes")
         .expect("max-body-bytes has default");
+    let expect_check = match super::parse_expectation(sub_m) {
+        Ok(e) => super::http::expect_check(e),
+        Err(e) => {
+            eprintln!("Error: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
     run_probe_flow(
         sub_m,
         style,
@@ -40,6 +47,7 @@ pub(super) async fn run_http2(sub_m: &ArgMatches, style: Style) -> ExitCode {
         |obs: &HttpObservation| obs.destination,
         |obs: &HttpObservation| obs.failure.is_some(),
         Some(super::http::render_http_csv),
+        expect_check,
         move |host, dest, timeout| {
             let method = method.clone();
             let path = path.clone();

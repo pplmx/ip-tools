@@ -18,6 +18,7 @@ pub(super) async fn run_tcp(sub_m: &ArgMatches, style: Style) -> ExitCode {
         |obs: &TcpObservation| obs.destination,
         |obs: &TcpObservation| !obs.success,
         Some(render_tcp_csv),
+        None, /* `--expect-*` is an HTTP response-shape assertion (`tcp` has no status/body) */
         |_host, dest, timeout| async move { ip_tcp::probe(dest, timeout).await },
     )
     .await

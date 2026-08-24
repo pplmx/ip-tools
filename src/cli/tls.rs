@@ -20,6 +20,7 @@ pub(super) async fn run_tls(sub_m: &ArgMatches, style: Style) -> ExitCode {
         |obs: &TlsObservation| obs.destination,
         |obs: &TlsObservation| !obs.success,
         Some(render_tls_csv),
+        None, /* `--expect-*` is an HTTP response-shape assertion (`tls` has no status/body) */
         move |host, dest, timeout| async move {
             if insecure {
                 ip_tls::probe_insecure_with_version(dest, &host, timeout, protocol).await

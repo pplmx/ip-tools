@@ -110,6 +110,8 @@ fn parser() -> ArgMatches {
                 body_arg(),
                 output_body_arg(),
                 max_body_bytes_arg(),
+                expect_status_arg(),
+                expect_contains_arg(),
                 ipv4_arg(),
                 ipv6_arg(),
                 csv_arg(),
@@ -149,6 +151,8 @@ fn parser() -> ArgMatches {
                 body_arg(),
                 output_body_arg(),
                 max_body_bytes_arg(),
+                expect_status_arg(),
+                expect_contains_arg(),
                 ipv4_arg(),
                 ipv6_arg(),
                 csv_arg(),
@@ -168,6 +172,8 @@ fn parser() -> ArgMatches {
                 body_arg(),
                 output_body_arg(),
                 max_body_bytes_arg(),
+                expect_status_arg(),
+                expect_contains_arg(),
                 ipv4_arg(),
                 ipv6_arg(),
                 csv_arg(),
@@ -521,6 +527,24 @@ fn strict_arg() -> Arg {
         .help("exit non-zero when the run found failures (probes, lookups, lost hops, diagnoses); for scripting/CI")
 }
 
+/// `--expect-status SPEC` argument: assert the response status of every
+/// probed address (an exact code like `200` or a class like `2xx`).
+fn expect_status_arg() -> Arg {
+    Arg::new("expect-status")
+        .long("expect-status")
+        .value_name("SPEC")
+        .help("assert that every probed response has this status (e.g. 200) or status class (e.g. 2xx); the run exits non-zero when any response violates it")
+}
+
+/// `--expect-contains NEEDLE` argument: assert a substring of every probed
+/// response body (checked against the bounded snippet).
+fn expect_contains_arg() -> Arg {
+    Arg::new("expect-contains")
+        .long("expect-contains")
+        .value_name("NEEDLE")
+        .help("assert that every probed response body contains this text (checked against the bounded snippet); the run exits non-zero when any response violates it")
+}
+
 /// Select which DNS record types to query (`--ipv6` only, else both).
 fn record_type_arg() -> Arg {
     Arg::new("ipv6")
@@ -540,6 +564,131 @@ fn dns_record_type_arg() -> Arg {
 
 fn positional_target(help: &'static str) -> Arg {
     Arg::new("target").required(true).value_name("TARGET").help(help)
+}
+
+/// A per-observation expectation checker: returns the violation reason, or
+/// `None` when the observation satisfies the asserted `--expect-*` shape
+/// (bytes are used only after the concurrent sweep has finished, so it just
+/// needs to tolerate being held across the await points).
+type ExpectCheck<O> = Box<dyn Fn(&O) -> Option<String> + Send + Sync>;
+
+/// A parsed `--expect-status` spec: either an exact HTTP status code (`200`)
+/// or a status class (`2xx`) that every status in that class matches.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum StatusSpec {
+    /// An exact status code, e.g. `200`.
+    Exact(u16),
+    /// A status class, e.g. `2xx` — the hundreds digit (100..=599 / 100).
+    Class(u16),
+}
+
+impl StatusSpec {
+    const fn matches(self, status: u16) -> bool {
+        match self {
+            Self::Exact(code) => code == status,
+            Self::Class(hundred) => status / 100 == hundred,
+        }
+    }
+
+    /// The spec as the user wrote it, for violation messages (`200` / `2xx`).
+    fn describes(self) -> String {
+        match self {
+            Self::Exact(code) => code.to_string(),
+            Self::Class(hundred) => format!("{hundred}xx"),
+        }
+    }
+}
+
+/// The user-asserted response expectations of a run (`--expect-status` /
+/// `--expect-contains`), parsed from the subcommand.
+#[derive(Clone, Debug, Default)]
+struct Expectation {
+    status: Option<StatusSpec>,
+    contains: Option<String>,
+}
+
+impl Expectation {
+    /// The reason this observation violates the asserted expectations, or
+    /// `None` when it satisfies them all. A probe that failed to complete
+    /// carries no response to assert on, so it can never satisfy a
+    /// `--expect-*` — that is itself the violation.
+    fn violation(
+        &self,
+        destination: &std::net::SocketAddr,
+        status: Option<u16>,
+        body: Option<&str>,
+        failed: bool,
+    ) -> Option<String> {
+        if failed {
+            return Some(format!(
+                "{destination}: probe failed to complete (no response to assert on)"
+            ));
+        }
+        let mut reasons = Vec::new();
+        if let Some(spec) = &self.status {
+            match status {
+                Some(code) if spec.matches(code) => {}
+                Some(code) => reasons.push(format!("status {code} (expected {})", spec.describes())),
+                None => reasons.push(format!("no status observed (expected {})", spec.describes())),
+            }
+        }
+        if let Some(needle) = &self.contains {
+            let found = body.is_some_and(|b| b.contains(needle.as_str()));
+            if !found {
+                reasons.push(format!("body missing {needle:?} (snippet {})", body.unwrap_or("none")));
+            }
+        }
+        if reasons.is_empty() {
+            None
+        } else {
+            Some(format!("{destination}: {}", reasons.join(", ")))
+        }
+    }
+}
+
+/// Parse the `--expect-status` / `--expect-contains` args of an HTTP-family
+/// subcommand into an [`Expectation`]. Returns `Ok(None)` when neither flag is
+/// present (a no-op run), and a clear error for malformed specs so an
+/// operator catches a typo at the CLI instead of a silently vacuously-passing
+/// or always-failing check.
+fn parse_expectation(sub_m: &ArgMatches) -> Result<Option<Expectation>, String> {
+    let status = match sub_m.try_get_one::<String>("expect-status").ok().flatten() {
+        Some(spec) => Some(parse_status_spec(spec)?),
+        None => None,
+    };
+    let contains = match sub_m.try_get_one::<String>("expect-contains").ok().flatten() {
+        Some(needle) if needle.is_empty() => {
+            return Err("--expect-contains cannot be an empty string (an empty needle matches every body)".into());
+        }
+        Some(needle) => Some(needle.clone()),
+        None => None,
+    };
+    if status.is_none() && contains.is_none() {
+        Ok(None)
+    } else {
+        Ok(Some(Expectation { status, contains }))
+    }
+}
+
+/// Parse a single `--expect-status` spec: `200` (exact) or `2xx` (class).
+fn parse_status_spec(spec: &str) -> Result<StatusSpec, String> {
+    let s = spec.trim();
+    if let Some(class) = s.strip_suffix("xx") {
+        let hundred: u16 = class.parse().map_err(|_| {
+            format!("invalid --expect-status '{spec}': expected an exact code like 200 or a class like 2xx")
+        })?;
+        if !(1..=5).contains(&hundred) {
+            return Err(format!("invalid --expect-status '{spec}': status classes run 1xx..5xx"));
+        }
+        return Ok(StatusSpec::Class(hundred));
+    }
+    let code: u16 = s.parse().map_err(|_| {
+        format!("invalid --expect-status '{spec}': expected an exact code like 200 or a class like 2xx")
+    })?;
+    if !(100..=599).contains(&code) {
+        return Err(format!("invalid --expect-status '{spec}': status codes run 100..599"));
+    }
+    Ok(StatusSpec::Exact(code))
 }
 
 fn handler(app_m: &ArgMatches) -> ExitCode {
@@ -595,7 +744,8 @@ fn run_tokio(name: &str, sub_m: &ArgMatches, style: Style) -> ExitCode {
 /// supplies one.
 type CsvRenderer<O> = fn(&[(String, Vec<O>)]) -> String;
 
-#[allow(clippy::too_many_lines)] // orchestration: resolve, probe, render (json/csv/human)
+#[allow(clippy::too_many_lines)]
+#[allow(clippy::too_many_arguments)] // one small per-concern callback (render/sort/failed/csv/expect/probe)
 pub async fn run_probe_flow<O, Fut>(
     sub_m: &ArgMatches,
     style: Style,
@@ -603,6 +753,7 @@ pub async fn run_probe_flow<O, Fut>(
     sort_key: fn(&O) -> SocketAddr,
     failed: fn(&O) -> bool,
     csv_render: Option<CsvRenderer<O>>,
+    expect: Option<ExpectCheck<O>>,
     probe: impl Fn(String, SocketAddr, Duration) -> Fut + Send + Sync + Clone + 'static,
 ) -> ExitCode
 where
@@ -766,6 +917,24 @@ where
     if unresolved > 0 {
         eprintln!("Error: {unresolved} target(s) did not resolve to any address");
         return ExitCode::FAILURE;
+    }
+    // `--expect-status`/`--expect-contains`: an asserted response shape is a
+    // verdict on the whole run, independent of `--strict` (which only gates
+    // probes that failed to complete). Each violating observation is named on
+    // stderr; the full report above stays on stdout untouched.
+    if let Some(check) = &expect {
+        let mut violated = false;
+        for (_, results) in &per_target {
+            for o in results {
+                if let Some(reason) = check(o) {
+                    eprintln!("expectation violated: {reason}");
+                    violated = true;
+                }
+            }
+        }
+        if violated {
+            return ExitCode::FAILURE;
+        }
     }
     // `--strict`: a failed probe is an observation, not an error, but for
     // scripting/CI a caller often wants a non-zero exit when any address
@@ -1128,5 +1297,105 @@ mod tests {
                 .unwrap(),
             v4
         );
+    }
+
+    #[test]
+    fn parse_status_spec_accepts_exact_codes_and_classes() {
+        assert_eq!(parse_status_spec("200").unwrap(), StatusSpec::Exact(200));
+        assert_eq!(parse_status_spec(" 302 ").unwrap(), StatusSpec::Exact(302));
+        assert_eq!(parse_status_spec("2xx").unwrap(), StatusSpec::Class(2));
+        assert_eq!(parse_status_spec("5xx").unwrap(), StatusSpec::Class(5));
+    }
+
+    #[test]
+    fn parse_status_spec_rejects_malformed_specs() {
+        for bad in [
+            "",
+            "20",
+            "20x",
+            "2X",
+            "999",
+            "0xx",
+            "6xx",
+            "two-hundred",
+            "-200",
+            "200xx",
+        ] {
+            assert!(parse_status_spec(bad).is_err(), "spec {bad:?} must be rejected");
+        }
+    }
+
+    #[test]
+    fn status_spec_matches_exact_and_class() {
+        let exact = StatusSpec::Exact(200);
+        assert!(exact.matches(200));
+        assert!(!exact.matches(201));
+        let class = StatusSpec::Class(2);
+        assert!(class.matches(200));
+        assert!(class.matches(299));
+        assert!(!class.matches(300));
+        assert_eq!(exact.describes(), "200");
+        assert_eq!(class.describes(), "2xx");
+    }
+
+    #[test]
+    fn expectation_violation_is_none_when_everything_satisfied() {
+        let e = Expectation {
+            status: Some(StatusSpec::Class(2)),
+            contains: Some("ok".into()),
+        };
+        let dest: SocketAddr = "192.0.2.1:443".parse().unwrap();
+        assert!(e.violation(&dest, Some(200), Some("ok"), false).is_none());
+    }
+
+    #[test]
+    fn expectation_violation_names_status_and_body_reasons() {
+        let e = Expectation {
+            status: Some(StatusSpec::Exact(200)),
+            contains: Some("ready".into()),
+        };
+        let dest: SocketAddr = "192.0.2.1:443".parse().unwrap();
+        let reason = e.violation(&dest, Some(503), Some("ok"), false).unwrap();
+        assert!(
+            reason.contains("status 503 (expected 200)") && reason.contains("body missing \"ready\""),
+            "both reasons must be named: {reason}"
+        );
+        assert!(reason.starts_with("192.0.2.1:443:"));
+    }
+
+    #[test]
+    fn expectation_violation_treats_failed_probe_as_violation() {
+        let e = Expectation {
+            status: Some(StatusSpec::Class(2)),
+            contains: None,
+        };
+        let dest: SocketAddr = "192.0.2.1:443".parse().unwrap();
+        let reason = e.violation(&dest, None, None, true).unwrap();
+        assert!(reason.contains("failed to complete"), "{reason}");
+    }
+
+    #[test]
+    fn expectation_violation_with_no_expected_status_only_checks_needle() {
+        let e = Expectation {
+            status: None,
+            contains: Some("ok".into()),
+        };
+        let dest: SocketAddr = "192.0.2.1:443".parse().unwrap();
+        // Status irrelevant (not asserted), body satisfies the needle.
+        assert!(e.violation(&dest, Some(503), Some("it is ok"), false).is_none());
+        // Missing needle is the only violation.
+        let reason = e.violation(&dest, Some(200), Some("nope"), false).unwrap();
+        assert!(reason.contains("body missing \"ok\""), "{reason}");
+    }
+
+    #[test]
+    fn expectation_violation_reports_no_status_observed() {
+        let e = Expectation {
+            status: Some(StatusSpec::Exact(200)),
+            contains: None,
+        };
+        let dest: SocketAddr = "192.0.2.1:443".parse().unwrap();
+        let reason = e.violation(&dest, None, None, false).unwrap();
+        assert!(reason.contains("no status observed (expected 200)"), "{reason}");
     }
 }

@@ -459,6 +459,28 @@ large API error, page, or download (the fixture's `big.invalid` serves 2 MiB)
 can be captured in full without weakening the default safety bound for
 everyone.
 
+`--expect-status SPEC` and `--expect-contains NEEDLE` (on `http`, `http2` and
+`http3`) assert the **response shape** you expected, and gate the exit code on
+it — a single-process health check that previously needed a pipe to `grep`:
+
+```shell
+ip-tools http example.com --expect-status 200 && echo "up, 200"
+ip-tools http example.com --expect-status 2xx --expect-contains "<html" || echo "not a normal page"
+```
+
+`--expect-status` takes an exact code (`200`, `503`) or a status class
+(`2xx`, `3xx`, `4xx`, `5xx`); `--expect-contains` checks that the bounded
+body snippet contains the given text. The assertion applies to **every**
+probed address independently: if any observation violates it (a mismatched
+status, a missing needle, or a probe that failed to complete — there is no
+response to assert on), the run exits non-zero and prints one
+`expectation violated: <destination>: ...` line per offender on **stderr**;
+the full report on stdout is still rendered untouched. `--expect-*` is a
+verdict on the actual response, independent of `--strict` (which only gates
+probes that failed to complete), and it works with human, `--json` and
+`--csv` output alike. The default run without `--expect-*` is byte-identical
+to before.
+
 Example output:
 
 ```

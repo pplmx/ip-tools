@@ -34,6 +34,13 @@ pub(super) async fn run_http(sub_m: &ArgMatches, style: Style) -> ExitCode {
     let max_body_bytes = *sub_m
         .get_one::<u64>("max-body-bytes")
         .expect("max-body-bytes has default");
+    let expect_check = match super::parse_expectation(sub_m) {
+        Ok(e) => expect_check(e),
+        Err(e) => {
+            eprintln!("Error: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
     run_probe_flow(
         sub_m,
         style,
@@ -41,6 +48,7 @@ pub(super) async fn run_http(sub_m: &ArgMatches, style: Style) -> ExitCode {
         |obs: &HttpObservation| obs.destination,
         |obs: &HttpObservation| obs.failure.is_some(),
         Some(render_http_csv),
+        expect_check,
         move |host, dest, timeout| {
             let method = method.clone();
             let path = path.clone();
@@ -96,6 +104,23 @@ pub(super) async fn run_http(sub_m: &ArgMatches, style: Style) -> ExitCode {
         },
     )
     .await
+}
+
+/// Build the per-observation `--expect-status` / `--expect-contains` checker
+/// for an HTTP-family probe from its parsed expectation. The asserted shape is
+/// evaluated per observed address; a probe that failed to complete carries no
+/// response to assert on, so it can never satisfy the expectation. Shared by
+/// `http`, `http2` and `http3`.
+pub(super) fn expect_check(expectation: Option<super::Expectation>) -> Option<super::ExpectCheck<HttpObservation>> {
+    let e = expectation?;
+    Some(Box::new(move |obs: &HttpObservation| {
+        e.violation(
+            &obs.destination,
+            obs.status,
+            obs.body_snippet.as_deref(),
+            obs.failure.is_some(),
+        )
+    }) as super::ExpectCheck<HttpObservation>)
 }
 
 /// Render an HTTP family fleet sweep as CSV: a header then one row per

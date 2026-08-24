@@ -3632,3 +3632,203 @@ fn diagnose_cli_request_flags_scope_http_evidence() {
     assert!(stdout.contains("HTTPS"), "HTTP evidence missing: {stdout}");
     assert!(stdout.contains("Diagnosis"), "diagnoses missing: {stdout}");
 }
+
+// ---------------------------------------------------------------------------
+// --expect-status / --expect-contains: user-asserted response checks
+//
+// The HTTP-family probes (`http`, `http2`, `http3`) accept an asserted
+// response shape: `--expect-status SPEC` (exact code or `2xx` class) and
+// `--expect-contains NEEDLE` (substring of the bounded body snippet). Every
+// per-address observation must satisfy the assertions; the run exits non-zero
+// with an `expectation violated: <dest> ...` stderr line when any does not,
+// independent of `--strict`. The report on stdout is untouched.
+// ---------------------------------------------------------------------------
+
+/// Run the ip-tools binary's `HTTP`-family probe with extra args against the
+/// fixture and return (`exit_ok`, stdout, stderr).
+fn run_http_probe(fixture: &FixtureServer, sub: &str, extra: &[&str]) -> (bool, String, String) {
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([sub, &fixture.tcp_addr().to_string(), "--insecure", "--timeout", "1500"])
+        .args(extra)
+        .output()
+        .expect("run http-family probe with expectations");
+    (
+        out.status.success(),
+        String::from_utf8_lossy(&out.stdout).into_owned(),
+        String::from_utf8_lossy(&out.stderr).into_owned(),
+    )
+}
+
+#[test]
+fn http_cli_expect_status_gates_exit_code() {
+    // The default fixture route answers 200. `--expect-status` must gate the
+    // exit code: an exact code and a class both pass, a mismatched code fails
+    // with a stderr verdict naming the destination and the expected value.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+
+    let (ok, _, stderr) = run_http_probe(&fixture, "http", &["--expect-status", "200"]);
+    assert!(ok, "--expect-status 200 should pass on a 200: {stderr}");
+
+    let (ok, _, stderr) = run_http_probe(&fixture, "http", &["--expect-status", "2xx"]);
+    assert!(ok, "--expect-status 2xx should pass on a 200: {stderr}");
+
+    let (ok, stdout, stderr) = run_http_probe(&fixture, "http", &["--expect-status", "403"]);
+    assert!(!ok, "--expect-status 403 must fail on a 200");
+    assert!(
+        stdout.contains("200"),
+        "the report (stdout) still renders the actual status: {stdout}"
+    );
+    assert!(
+        stderr.contains("expectation violated:") && stderr.contains("expected 403"),
+        "the violation verdict must name the destination and expectation: {stderr}"
+    );
+}
+
+#[test]
+fn http_cli_expect_contains_gates_exit_code() {
+    // The default fixture body is `ok`. `--expect-contains` must gate the exit
+    // code on the bounded snippet presence.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+
+    let (ok, _, stderr) = run_http_probe(&fixture, "http", &["--expect-contains", "ok"]);
+    assert!(ok, "--expect-contains ok should pass on body 'ok': {stderr}");
+
+    let (ok, _, stderr) = run_http_probe(&fixture, "http", &["--expect-contains", "deploy-live"]);
+    assert!(!ok, "--expect-contains deploy-live must fail on body 'ok'");
+    assert!(
+        stderr.contains("expectation violated:") && stderr.contains("missing \"deploy-live\""),
+        "the violation verdict must name the missing needle: {stderr}"
+    );
+}
+
+#[test]
+fn http_cli_expect_composes_status_and_contains() {
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+
+    let (ok, _, stderr) = run_http_probe(&fixture, "http", &["--expect-status", "200", "--expect-contains", "ok"]);
+    assert!(ok, "both assertions satisfied on a 200 'ok' response: {stderr}");
+
+    let (ok, _, stderr) = run_http_probe(
+        &fixture,
+        "http",
+        &["--expect-status", "200", "--expect-contains", "gone"],
+    );
+    assert!(!ok, "a failing needle must fail the run even with matching status");
+    assert!(
+        stderr.contains("expected 200") || stderr.contains("missing \"gone\""),
+        "the verdict should mention at least the violating assertion: {stderr}"
+    );
+}
+
+#[test]
+fn http_cli_expect_applies_to_a_redirected_response() {
+    // `--sni redirect.invalid` routes the request to a 302 + Location. The
+    // asserted status class gates the exit: 3xx passes on a 302, 2xx fails —
+    // the redirect is recorded, never followed.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+
+    let (ok, stdout, stderr) = run_http_probe(
+        &fixture,
+        "http",
+        &["--sni", "redirect.invalid", "--expect-status", "3xx"],
+    );
+    assert!(ok, "--expect-status 3xx should pass on a 302: {stderr}");
+    assert!(stdout.contains("302"), "the report must show the actual 302: {stdout}");
+
+    let (ok, _, stderr) = run_http_probe(
+        &fixture,
+        "http",
+        &["--sni", "redirect.invalid", "--expect-status", "2xx"],
+    );
+    assert!(!ok, "--expect-status 2xx must fail on a 302");
+    assert!(stderr.contains("status 302 (expected 2xx)"), "{stderr}");
+}
+
+#[test]
+fn http_cli_expect_rejects_malformed_specs_at_parse() {
+    // A typo in the expectation must fail fast with a clear error instead of
+    // silently passing or failing on every run. Default probe behavior
+    // (no --expect at all) is unaffected.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+
+    for bad in ["20x", "0xx", "999"] {
+        let (ok, _, stderr) = run_http_probe(&fixture, "http", &["--expect-status", bad]);
+        assert!(!ok, "--expect-status {bad} must be rejected");
+        assert!(
+            stderr.contains("invalid --expect-status"),
+            "--expect-status {bad} should error clearly: {stderr}"
+        );
+    }
+
+    let (ok, _, stderr) = run_http_probe(&fixture, "http", &["--expect-contains", ""]);
+    assert!(!ok, "--expect-contains '' must be rejected");
+    assert!(
+        stderr.contains("cannot be an empty string"),
+        "empty needle should error clearly: {stderr}"
+    );
+
+    // A run with no expectation flags still exits 0 (default byte-identical
+    // behavior preserved).
+    let (ok, _, _) = run_http_probe(&fixture, "http", &[]);
+    assert!(ok, "no --expect flags leaves default exit semantics untouched");
+}
+
+#[test]
+fn http2_and_http3_cli_expect_status_gate_exit_code() {
+    // Parity across the three HTTP stacks: the same asserted-status verdict
+    // applies to the HTTP/2 and HTTP/3 probes.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+
+    for (sub, addr) in [
+        ("http2", fixture.tcp_addr().to_string()),
+        ("http3", fixture.udp_addr().to_string()),
+    ] {
+        let out = Command::cargo_bin("ip-tools")
+            .expect("ip-tools binary")
+            .args([sub, &addr, "--insecure", "--timeout", "1500", "--expect-status", "200"])
+            .output()
+            .expect("run http-family probe with expectation");
+        assert!(
+            out.status.success(),
+            "{sub} --expect-status 200 should pass on a 200: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+
+        let out = Command::cargo_bin("ip-tools")
+            .expect("ip-tools binary")
+            .args([sub, &addr, "--insecure", "--timeout", "1500", "--expect-status", "403"])
+            .output()
+            .expect("run http-family probe with expectation");
+        assert!(!out.status.success(), "{sub} --expect-status 403 must fail on a 200");
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            stderr.contains("expectation violated:"),
+            "{sub} violation verdict missing: {stderr}"
+        );
+    }
+}

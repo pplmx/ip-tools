@@ -56,6 +56,7 @@ pub(super) async fn run_probe(sub_m: &ArgMatches, style: Style) -> ExitCode {
         |result: &ProbeResult| result.destination,
         |result: &ProbeResult| result.failures > 0,
         Some(render_probe_csv),
+        None, /* `--expect-*` is a single-shot HTTP response-shape assertion; the repeat ProbeResult has no single body (see DEC-074) */
         move |host, dest, timeout| {
             let method = method.clone();
             let path = path.clone();
