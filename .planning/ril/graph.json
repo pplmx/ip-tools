@@ -1,8 +1,8 @@
 {
   "ril_version": 1,
-  "round": 6,
+  "round": 8,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-24T10:37:28+00:00",
+  "updated_at": "2026-08-24T12:33:13+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -101,7 +101,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 6,
+      "touched_round": 7,
       "desc": "clap arg tree + dispatch; --strict/--json/--timeout/--concurrency/--server/--insecure/--method/--count flags"
     },
     "COMP-model": {
@@ -3831,6 +3831,50 @@
       "touched_round": 6,
       "rationale": "Milestone closure for the operator-directed UX/beautification goal (DEC-072). Delivered and verified three net-increment vertical slices to main: (1) TTY-aware colored human output with --no-color/NO_COLOR escapes and byte-identical non-TTY text (CHG-066), (2) a colored 'Anomalies: N (HIGH: a, MEDIUM: b)' verdict trailer on diagnose, absent on healthy runs (CHG-067), (3) a stderr TTY-gated per-host progress counter for multi-target sweeps (CHG-068). All gates green at 6 commits: 258 unit+integration tests + 8 doc, clippy -D warnings -W pedantic -W nursery clean, fmt clean, doc -D warnings clean, api-baseline matches, coverage 93.4%, RIL graph consistent.",
       "alternatives_rejected": "Deferred with rationale to avoid patch-stacking (value-gate §11.2): human-readable latency/byte units ('1234 ms' -> '1.23 s', 'bytes' -> 'KiB') is internal text polish below the gate; get/list prettification is marginal; error-channel (stderr) coloring risks scripted stderr parsing for near-zero gain. Re-activate any of these only if a real user scenario makes them executable-value problems. The color pass itself targeted repeated candidate 'full --color always/never/auto tri-state' and 'an external colorscheme crate' and was rejected in DEC-072 (--no-color + NO_COLOR + TTY gate covers the need at zero dependencies)."
+    },
+    "DEC-074": {
+      "id": "DEC-074",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-24T11:08:20+00:00",
+      "updated_at": "2026-08-24T11:08:20+00:00",
+      "touched_round": 7,
+      "rationale": "New milestone (2026-08-24, operator-directed \"start a new milestone\"): user-asserted response expectations. The HTTP-family single-shot probes (http/http2/http3) report the actual status and bounded body snippet, but the process exit code only reflects transport completion (--strict) and resolution — an operator's \"is my deploy healthy / did the endpoint answer the way I asserted\" check still needs a shell pipe to grep. Add --expect-status SPEC (exact 200 or class 2xx) and --expect-contains NEEDLE (substring of the bounded body snippet) on http/http2/http3: every per-address observation must satisfy the assertions (a probe that failed to complete can never match — no response to assert on), otherwise the run exits non-zero with \"expectation violated: <dest> ..\" lines on stderr. A single-process, CI-friendly verdict independent of --strict (--strict gates transport completion; --expect gates response shape; they compose). CLI-only (binary-internal cli module, not re-exported in the lib public API): no public API change, no api-baseline churn, default human/JSON/CSV output byte-identical; the observations already carry status + body_snippet, so a JSON consumer can assert the same facts itself.",
+      "alternatives_rejected": "(1) Extending the probe --protocol http|http2|http3 repeat form (it aggregates N attempts into one ProbeResult with no per-attempt body; a \"all attempts matched the status distribution\" semantic is muddier — a natural follow-on slice, not this one); (2) diagnose --expect (its job is the evidence-rule engine producing its own verdicts, not user assertions layered on top); (3) a public-API/JSON schema change carrying expectation results per observation (observations already expose status + body_snippet; JSON consumers can assert themselves; keeping this CLI-run-level avoids api-baseline churn and keeps the data format stable); (4) --expect on tcp/tls (no HTTP status class or body to assert against); (5) comma-list of accepted statuses (a single exact-or-class spec keeps parsing honest; a set-of-codes form can extend later); (6) --follow redirects — already rejected thrice (DEC-003/DEC-041/DEC-070), unchanged here."
+    },
+    "ISS-068": {
+      "id": "ISS-068",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-24T11:08:59+00:00",
+      "updated_at": "2026-08-24T12:30:04+00:00",
+      "touched_round": 7,
+      "desc": "A user running an HTTP-family probe (http/http2/http3) sees the actual status and bounded body snippet in the report, but the process exit code only ever reflects transport completion (--strict) and resolution. An operator's \"is the deploy healthy / did the endpoint answer the way I asserted\" check therefore still needs a shell pipe to grep, so there is no single-process, CI-friendly verdict for \"the endpoint answered the way I asserted\" — the missing link between measuring an HTTP response and gating on its shape."
+    },
+    "TASK-076": {
+      "id": "TASK-076",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-24T11:08:59+00:00",
+      "updated_at": "2026-08-24T12:30:03+00:00",
+      "touched_round": 7,
+      "category": "core-feature",
+      "priority_score": 3.9,
+      "desc": "Add user-asserted response expectations to the HTTP-family single-shot probes: --expect-status SPEC (exact \"200\" or class \"2xx\") and --expect-contains NEEDLE (substring of the bounded body snippet) on http/http2/http3. Every per-address observation must satisfy the assertions (a probe that failed to complete can never match, since there is no response to assert on); the run exits non-zero with \"expectation violated: <dest> ...\" lines on stderr when any observation violates, independent of --strict. CLI-only: shared parse/validate (StatusSpec Exact|Class + Expectation) in cli/mod.rs, threaded through run_probe_flow as an optional per-observation violation callback; no public API change, default output byte-identical. Pinned by unit tests (spec parse/matches, violation truth table) and fixture-gated CLI tests (200/ok passes, 302-vs-200 fails, 2xx class passes, missing needle fails, invalid spec and empty needle rejected)."
+    },
+    "CHG-069": {
+      "id": "CHG-069",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-24T12:28:36+00:00",
+      "updated_at": "2026-08-24T12:28:36+00:00",
+      "touched_round": 7,
+      "commit": "cc29e9a",
+      "desc": "--expect-status SPEC (exact or 2xx-class) and --expect-contains NEEDLE on the http/http2/http3 single-shot probes: shared StatusSpec/Expectation/parse + ExpectCheck threaded through run_probe_flow, per-address violation verdict on stderr + non-zero exit independent of --strict; unit + fixture-gated CLI tests across all three HTTP stacks; README + CHANGELOG; CLI-only, no public API change."
     }
   },
   "edges": [
@@ -6485,6 +6529,36 @@
       "to": "ISS-067",
       "type": "resolves",
       "created_at": "2026-08-24T10:31:58+00:00"
+    },
+    {
+      "from": "TASK-076",
+      "to": "ISS-068",
+      "type": "addresses",
+      "created_at": "2026-08-24T11:09:37+00:00"
+    },
+    {
+      "from": "ISS-068",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-24T11:09:37+00:00"
+    },
+    {
+      "from": "DEC-074",
+      "to": "TASK-076",
+      "type": "governs",
+      "created_at": "2026-08-24T11:09:37+00:00"
+    },
+    {
+      "from": "CHG-069",
+      "to": "TASK-076",
+      "type": "implements",
+      "created_at": "2026-08-24T12:30:03+00:00"
+    },
+    {
+      "from": "CHG-069",
+      "to": "ISS-068",
+      "type": "resolves",
+      "created_at": "2026-08-24T12:30:03+00:00"
     }
   ]
 }
