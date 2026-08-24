@@ -1,8 +1,8 @@
 {
   "ril_version": 1,
-  "round": 4,
+  "round": 5,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-24T05:03:06+00:00",
+  "updated_at": "2026-08-24T05:52:28+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -81,7 +81,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 0,
+      "touched_round": 5,
       "desc": "Linux UDP/ICMP traceroute, root/CAP_NET_RAW gated, IPv4-only"
     },
     "COMP-diagnose": {
@@ -3662,6 +3662,54 @@
       "touched_round": 4,
       "commit": "2516c24",
       "summary": "Add --ipv4/--ipv6 to diagnose: FamilyScope enum threaded through run_diagnose into diagnose_one filters the resolved address pool (DNS evidence unscoped), an IP-literal of the wrong family fails cleanly, and the engine's cross-family rules stay silent on single-family input. CLI-only, no public API change. Pinned by an engine unit test (single-family input never raises AddressFamily; within-family partial connectivity still fires) and a fixture-gated CLI test (--ipv4 probes the fixture's cleartext 200 with no AddressFamily verdict; --ipv6 fails as no address; --ipv4 --ipv6 is a parse error)."
+    },
+    "DEC-071": {
+      "id": "DEC-071",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-24T05:14:01+00:00",
+      "updated_at": "2026-08-24T05:14:01+00:00",
+      "touched_round": 5,
+      "rationale": "New milestone (2026-08-24): repeated traceroute with path-stability visibility (route --count N). The route command is the only probe family without a repeat view: it traces once and reports a single rtt_ms per hop, so an operator cannot see whether the path changes over time (flapping next-hops, load-balanced routers, BGP/MPLS churn) or how stable each hop's latency is -- the layer analogue of probe --count / dns --count / the diagnose stability phase. --count N repeats the trace N times and aggregates per hop: distinct router addresses observed, answer rate, min/p50/max latency, and a path_changed flag when more than one router answered a hop. count=1 (default) stays the current single-trace behavior/CSV exactly. Reuses the existing LatencyStats/LatencySummary accumulator (no new latency code). Public API change (new route::RouteHopStats + route::RouteRepeat + route::traceroute_repeat; api-baseline regenerated). Pinned by lib unit tests (stable path: identical runs aggregate, path_changed false, latency summarizes; divergent path: two routers at a hop set path_changed and list both addrs; lost hops counted) + report/cli render + csv unit tests.",
+      "alternatives_rejected": "deferred: splitting the feature across rounds (surface-repeat now, path-change detection later -- a first slice without path-change would be a thin 're-run N times' and the detection is cheap once aggregating addrs); per-hop jitter/distribution percentiles beyond min/p50/max in the human report (LatencySummary carries them, the CSV keeps min/med/max); --concurrency across route runs (raw-socket trace is sequential by nature); output-body on repeat probes (rejected by DEC-032)."
+    },
+    "ISS-064": {
+      "id": "ISS-064",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-24T05:14:01+00:00",
+      "updated_at": "2026-08-24T05:52:28+00:00",
+      "touched_round": 5,
+      "severity": "low",
+      "summary": "The route (traceroute) command traces once and reports a single rtt_ms per hop, so it cannot show whether the path changes over time -- flapping next-hops, load-balanced routers, BGP/MPLS churn -- or how stable each hop latency is: the one probe family without a repeat view (probe --count, dns --count and the diagnose stability phase all aggregate)."
+    },
+    "TASK-072": {
+      "id": "TASK-072",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-24T05:14:01+00:00",
+      "updated_at": "2026-08-24T05:52:28+00:00",
+      "touched_round": 5,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.2,
+      "unlock_factor": 1,
+      "summary": "Deliver route --count N (default 1 = today): a lib traceroute_repeat(target, cfg, count) that reruns traceroute N times and aggregates per-hop RouteHopStats (distinct addrs, answered/runs, min/p50/max latency via LatencySummary, path_changed when >1 distinct router) into a RouteRepeat; route --count on the CLI (route_count_arg default 1) with new human (Traceroute (N runs) + per-hop addr(s)/N answered/min/p50/max + path changed marker), json (RouteRepeat) and csv (ttl,hostname,addr,rtt_min_ms,rtt_med_ms,rtt_max_ms,answered,runs,path_changed) rendering; reverse-hostname best-effort for the reported addr. Public API change, api-baseline regenerate. Pinned by lib unit tests (stable/divergent/lost aggregation) and report + cli csv unit tests."
+    },
+    "CHG-065": {
+      "id": "CHG-065",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-24T05:52:28+00:00",
+      "updated_at": "2026-08-24T05:52:28+00:00",
+      "touched_round": 5,
+      "commit": "cf66ed4",
+      "summary": "Add route --count N: route::traceroute_repeat + aggregate_runs fold N traces into per-hop RouteHopStats (answered, distinct addrs, min/p50/max via LatencySummary, path_changed when >1 router), a RouteRepeat; route_count_arg (default 1) on the route subcommand; report::render_route_repeat human + repeat --csv renderer; --strict counts fully-lost hops. count=1 keeps single-trace behavior/CSV exactly. Public API change (api-baseline regenerated, 25 lines additive). Pinned by 4 lib aggregation unit tests + report render + cli csv render unit tests."
     }
   },
   "edges": [
@@ -6208,6 +6256,36 @@
       "to": "TASK-071",
       "type": "implements",
       "created_at": "2026-08-24T05:03:06+00:00"
+    },
+    {
+      "from": "TASK-072",
+      "to": "ISS-064",
+      "type": "addresses",
+      "created_at": "2026-08-24T05:14:01+00:00"
+    },
+    {
+      "from": "ISS-064",
+      "to": "COMP-route",
+      "type": "located_in",
+      "created_at": "2026-08-24T05:14:01+00:00"
+    },
+    {
+      "from": "DEC-071",
+      "to": "TASK-072",
+      "type": "governs",
+      "created_at": "2026-08-24T05:14:01+00:00"
+    },
+    {
+      "from": "CHG-065",
+      "to": "ISS-064",
+      "type": "resolves",
+      "created_at": "2026-08-24T05:52:28+00:00"
+    },
+    {
+      "from": "CHG-065",
+      "to": "TASK-072",
+      "type": "implements",
+      "created_at": "2026-08-24T05:52:28+00:00"
     }
   ]
 }
