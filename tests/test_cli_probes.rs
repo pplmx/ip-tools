@@ -7,6 +7,7 @@
 //! engine itself cannot test in-process.
 
 use assert_cmd::Command;
+use predicates::prelude::PredicateBooleanExt;
 use predicates::str::contains;
 use std::net::{IpAddr, SocketAddr, TcpListener, UdpSocket};
 use std::thread;
@@ -224,6 +225,99 @@ fn probe_cli_rejects_zero_count() {
         .assert()
         .failure()
         .stderr(contains("--count"));
+}
+
+#[test]
+fn probe_cli_expect_rate_passes_at_or_above_threshold() {
+    // Every connect to a live local listener succeeds (aggregate success rate
+    // 1.0), so a reliability threshold at or below 1.0 must pass and exit 0.
+    // `--expect-rate` is the repeated probe's assertion on the aggregate
+    // (DEC-075): a single-shot could never gate "reliably 100%".
+    let addr = local_tcp_listener();
+    for rate in ["1", "0.97", "50%", "100%"] {
+        cmd()
+            .args([
+                "probe",
+                &addr.to_string(),
+                "--count",
+                "3",
+                "--timeout",
+                "800",
+                "--expect-rate",
+                rate,
+            ])
+            .assert()
+            .success();
+    }
+}
+
+#[test]
+fn probe_cli_expect_rate_fails_below_threshold() {
+    // `127.0.0.1:1` is a closed port, so every connect is refused and the
+    // aggregate success rate is 0; a 100% threshold must gate the exit code
+    // non-zero and name the destination on stderr with the observed rate.
+    cmd()
+        .args([
+            "probe",
+            "127.0.0.1:1",
+            "--count",
+            "4",
+            "--timeout",
+            "800",
+            "--expect-rate",
+            "1",
+        ])
+        .assert()
+        .failure()
+        .stderr(contains("expectation violated:").and(contains("success rate")));
+}
+
+#[test]
+fn probe_cli_rejects_invalid_expect_rate() {
+    // A zero threshold would make every run pass vacuously, a value above the
+    // valid range is a caller mistake about the grammar, and malformed text is
+    // a typo — all must fail fast with a clear parse error rather than
+    // silently gating nothing (like the single-shot `--expect-status` specs).
+    let addr = local_tcp_listener();
+    for bad in ["0", "2", "abc", "0%"] {
+        cmd()
+            .args([
+                "probe",
+                &addr.to_string(),
+                "--count",
+                "2",
+                "--timeout",
+                "800",
+                "--expect-rate",
+                bad,
+            ])
+            .assert()
+            .failure()
+            .stderr(contains("invalid --expect-rate"));
+    }
+}
+
+#[test]
+fn probe_cli_expect_status_requires_an_http_protocol() {
+    // `--expect-status` asserts an observed HTTP status distribution; a tcp
+    // repeat carries none, so it is a call-time error, not a silent no-op.
+    let addr = local_tcp_listener();
+    cmd()
+        .args([
+            "probe",
+            &addr.to_string(),
+            "--protocol",
+            "tcp",
+            "--count",
+            "2",
+            "--timeout",
+            "800",
+            "--expect-status",
+            "200",
+        ])
+        .assert()
+        .failure()
+        .stderr(contains("--expect-status").and(contains("http")));
 }
 
 #[test]

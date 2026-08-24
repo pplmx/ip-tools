@@ -3832,3 +3832,124 @@ fn http2_and_http3_cli_expect_status_gate_exit_code() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// `probe --expect-status` / `--expect-rate`: assertions on the repeated probe
+//
+// The single-shot `--expect-*` above gates one response's shape. `probe`
+// aggregates `--count` attempts per address and gates on the *aggregate*
+// (DEC-075): the observed HTTP status distribution must stay within the
+// accepted set, and the aggregate success rate must meet a threshold — the
+// stability dimension a single response can never cover.
+
+/// Run `probe --protocol http` against the fixture with the given extra args.
+fn run_probe_expect(fixture: &FixtureServer, extra: &[&str]) -> (bool, String, String) {
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "probe",
+            &fixture.tcp_addr().to_string(),
+            "--insecure",
+            "--timeout",
+            "2000",
+        ])
+        .args(extra)
+        .output()
+        .expect("run repeated probe with expectations");
+    (
+        out.status.success(),
+        String::from_utf8_lossy(&out.stdout).into_owned(),
+        String::from_utf8_lossy(&out.stderr).into_owned(),
+    )
+}
+
+#[test]
+fn probe_cli_expect_status_gates_the_http_repeat_distribution() {
+    // The default fixture route answers 200 on every attempt, so a 200/2xx
+    // status assertion must pass; a mismatched code or class must fail on
+    // stderr, naming the destination and the offending statuses.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+
+    let (ok, _, stderr) = run_probe_expect(
+        &fixture,
+        &["--protocol", "http", "--count", "6", "--expect-status", "200"],
+    );
+    assert!(ok, "--expect-status 200 should pass on an all-200 repeat: {stderr}");
+
+    let (ok, _, stderr) = run_probe_expect(
+        &fixture,
+        &["--protocol", "http", "--count", "6", "--expect-status", "2xx"],
+    );
+    assert!(ok, "--expect-status 2xx should pass on an all-200 repeat: {stderr}");
+
+    let (ok, _, stderr) = run_probe_expect(
+        &fixture,
+        &["--protocol", "http", "--count", "6", "--expect-status", "404"],
+    );
+    assert!(!ok, "--expect-status 404 must fail on an all-200 repeat");
+    assert!(
+        stderr.contains("expectation violated:"),
+        "a violation verdict must name the destination: {stderr}"
+    );
+
+    // A redirect host answers 302 on every attempt: the 3xx class passes, and
+    // a 2xx assertion fails on the observed distribution.
+    let (ok, _, stderr) = run_probe_expect(
+        &fixture,
+        &[
+            "--protocol",
+            "http",
+            "--count",
+            "4",
+            "--sni",
+            "redirect.invalid",
+            "--expect-status",
+            "3xx",
+        ],
+    );
+    assert!(ok, "--expect-status 3xx should pass on an all-302 repeat: {stderr}");
+
+    let (ok, _, stderr) = run_probe_expect(
+        &fixture,
+        &[
+            "--protocol",
+            "http",
+            "--count",
+            "4",
+            "--sni",
+            "redirect.invalid",
+            "--expect-status",
+            "2xx",
+        ],
+    );
+    assert!(!ok, "--expect-status 2xx must fail on an all-302 repeat");
+    assert!(
+        stderr.contains("302x4"),
+        "the violation must show the offending status distribution: {stderr}"
+    );
+}
+
+#[test]
+fn probe_cli_expect_rate_gates_the_http_repeat_aggregate() {
+    // Every attempt against the fixture completes, so the aggregate success
+    // rate is 1.0: a reliability threshold at or below 100% must pass and
+    // leave the default exit semantics untouched.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+
+    for rate in ["0.5", "1", "100%"] {
+        let (ok, _, stderr) =
+            run_probe_expect(&fixture, &["--protocol", "http", "--count", "6", "--expect-rate", rate]);
+        assert!(
+            ok,
+            "--expect-rate {rate} should pass when every attempt succeeds: {stderr}"
+        );
+    }
+}

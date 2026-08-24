@@ -133,6 +133,8 @@ fn parser() -> ArgMatches {
                 header_arg(),
                 body_arg(),
                 csv_arg(),
+                expect_status_repeat_arg(),
+                expect_rate_arg(),
                 ipv4_arg(),
                 ipv6_arg(),
                 tls_version_arg(),
@@ -543,6 +545,30 @@ fn expect_contains_arg() -> Arg {
         .long("expect-contains")
         .value_name("NEEDLE")
         .help("assert that every probed response body contains this text (checked against the bounded snippet); the run exits non-zero when any response violates it")
+}
+
+/// `--expect-status SPEC` argument on the repeated probe: assert that every
+/// observed HTTP status across the `--count` attempts is within the accepted
+/// set (an exact code like `200` or a class like `2xx`). Unlike the
+/// single-shot variant, this gates the aggregate status *distribution* — the
+/// repeat probes surface status flapping (`200` on most attempts, `503`
+/// occasionally), which a single response could never reveal.
+fn expect_status_repeat_arg() -> Arg {
+    Arg::new("expect-status")
+        .long("expect-status")
+        .value_name("SPEC")
+        .help("assert that every observed HTTP status across the repeated attempts is in this set (e.g. 200) or class (e.g. 2xx); the run exits non-zero when any address violates it (--protocol http/http2/http3)")
+}
+
+/// `--expect-rate RATE` argument (repeated probe only): assert the minimum
+/// aggregate success rate over the `--count` attempts. Accepts a fraction
+/// (`0.97`, `1`) or a percent (`97%`); a zero threshold is rejected as a
+/// caller mistake that would make every run pass vacuously.
+fn expect_rate_arg() -> Arg {
+    Arg::new("expect-rate")
+        .long("expect-rate")
+        .value_name("RATE")
+        .help("assert that the aggregate success rate over the repeated attempts meets this threshold (e.g. 0.97, 1, or 97%); the run exits non-zero when any address falls below it")
 }
 
 /// Select which DNS record types to query (`--ipv6` only, else both).
