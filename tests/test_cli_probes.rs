@@ -265,6 +265,38 @@ fn dns_cli_resolves_via_custom_local_server() {
 }
 
 #[test]
+fn dns_cli_no_records_error_is_human_readable() {
+    // A host that has A records but no AAAA records (the responder answers
+    // NOERROR with zero AAAA answers) must surface a plain
+    // "no AAAA records found for ..." message — not hickory's internal
+    // Debug dump (`no records found for Query { name: Name("host.example."),
+    // query_type: AAAA, query_class: IN }`) that used to leak into the report.
+    let server = local_dns_server(&["192.0.2.77"], &[]);
+    let out = stdout(
+        &cmd()
+            .args([
+                "dns",
+                "host.example",
+                "--server",
+                &server.to_string(),
+                "--ipv6",
+                "--timeout",
+                "1200",
+            ])
+            .assert()
+            .success(),
+    );
+    assert!(
+        out.contains("no AAAA records found for host.example"),
+        "the no-records reason should read as plain text: {out}"
+    );
+    assert!(
+        !out.contains("Query {") && !out.contains("Name("),
+        "hickory's internal Query/Name Debug must not leak into the report: {out}"
+    );
+}
+
+#[test]
 fn dns_cli_record_type_selects_a_single_record_type() {
     let server = local_dns_server(&["192.0.2.77"], &["2001:db8::77"]);
 

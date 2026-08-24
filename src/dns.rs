@@ -223,7 +223,7 @@ async fn query(
             None,
             Some(ProbeError {
                 kind: FailureKind::Dns,
-                message: e.to_string(),
+                message: lookup_error_message(&host, record_type, &e),
             }),
         ),
         Err(_elapsed) => (
@@ -245,6 +245,23 @@ async fn query(
         ttl,
         records,
         error,
+    }
+}
+
+/// A human-readable reason for a failed lookup. Hickory's own Display of a
+/// `NoRecordsFound` error prints the internal `Query { name: Name(...), .. }`
+/// Debug struct straight at the operator (`no records found for Query { ... }`),
+/// so the two common empty-answer cases are translated into plain text: a
+/// name that simply has none of the requested record type (`no AAAA records
+/// found for baidu.com`), and a name that does not exist at all (NXDOMAIN).
+/// Anything else keeps hickory's message as the fallback.
+fn lookup_error_message(host: &str, record_type: DnsRecordType, err: &hickory_resolver::net::NetError) -> String {
+    if err.is_nx_domain() {
+        format!("{host} does not exist (NXDOMAIN)")
+    } else if err.is_no_records_found() {
+        format!("no {record_type} records found for {host}")
+    } else {
+        err.to_string()
     }
 }
 
