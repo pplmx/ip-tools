@@ -84,6 +84,13 @@ NO_COLOR=1 ip-tools tcp example.com       # standard env-var escape (no-color.or
 [no-color.org](https://no-color.org) convention; either one disables color,
 which also makes the bytes identical to what older versions printed.
 
+Multi-target sweeps (`dns`, `tcp`, `tls`, `http`, `http2`, `http3`,
+`probe`, `diagnose`) also show a live per-host counter on **stderr**
+(`\r  3/10 hostname`) while the run progresses — so a long fleet sweep is
+watchable instead of a frozen cursor. It is gated the same way (a terminal
+and no `--no-color`/`NO_COLOR`), never printed for a single target, and
+never touches stdout, so piped or redirected results stay byte-clean.
+
 ### DNS diagnostics
 
 Resolve a hostname via the system resolver and any custom servers:

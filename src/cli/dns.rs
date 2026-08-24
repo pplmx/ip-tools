@@ -71,13 +71,17 @@ pub(super) async fn run_dns(sub_m: &ArgMatches, style: Style) -> ExitCode {
     // Resolve every target, parallelizing across hosts when `--concurrency` > 1.
     // `parallel_map` returns results in completion order, so each item carries
     // its input index and the outputs are re-sorted back to target order to keep
-    // the human/JSON/CSV rendering deterministic.
+    // the human/JSON/CSV rendering deterministic. A TTY-gated per-host counter
+    // keeps a large health sweep watchable on stderr (silent when piped).
+    let progress = std::sync::Arc::new(super::Progress::new(targets.len(), sub_m.get_flag("no-color")));
+    let progress_for_tasks = progress.clone();
     let targets_with_index: Vec<(usize, Target)> = targets.into_iter().enumerate().collect();
     let mut indexed: Vec<(usize, TargetDns)> = parallel_map(targets_with_index, concurrency, move |(idx, target)| {
         let record_types = record_types.clone();
         let custom = custom.clone();
         let doh_endpoints = doh_endpoints.clone();
         let dot_eps = dot_eps.clone();
+        let progress = progress_for_tasks.clone();
         async move {
             let result = dns_compute(
                 &target,
@@ -90,10 +94,12 @@ pub(super) async fn run_dns(sub_m: &ArgMatches, style: Style) -> ExitCode {
                 insecure,
             )
             .await;
+            progress.step(&target.host);
             (idx, result)
         }
     })
     .await;
+    progress.finish();
     indexed.sort_by_key(|(idx, _)| *idx);
     let outputs: Vec<TargetDns> = indexed.into_iter().map(|(_, o)| o).collect();
 

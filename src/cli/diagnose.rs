@@ -133,7 +133,10 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches, style: Style) -> ExitCode {
     // 1 keeps the original per-host sequential behavior). `parallel_map`
     // returns in completion order, so each item carries its input index and
     // the reports are re-sorted back to target order to keep the human/JSON/CSV
-    // rendering deterministic.
+    // rendering deterministic. A TTY-gated per-host counter keeps a diagnose
+    // fleet sweep watchable on stderr (silent when piped or a single host).
+    let progress = std::sync::Arc::new(super::Progress::new(targets.len(), sub_m.get_flag("no-color")));
+    let progress_for_tasks = progress.clone();
     let targets_with_index: Vec<(usize, Target)> = targets.into_iter().enumerate().collect();
     let mut indexed: Vec<(usize, Option<DiagnoseReport>)> =
         parallel_map(targets_with_index, concurrency, move |(idx, target)| {
@@ -146,6 +149,7 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches, style: Style) -> ExitCode {
             let doh_endpoints = doh_endpoints.clone();
             let dot_eps = dot_eps.clone();
             let reverse = reverse;
+            let progress = progress_for_tasks.clone();
             async move {
                 let report = diagnose_one(
                     &target,
@@ -168,10 +172,12 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches, style: Style) -> ExitCode {
                     family,
                 )
                 .await;
+                progress.step(&target.host);
                 (idx, report)
             }
         })
         .await;
+    progress.finish();
     indexed.sort_by_key(|(idx, _)| *idx);
     let unresolved = indexed.iter().filter(|(_, r)| r.is_none()).count();
     let mut reports: Vec<DiagnoseReport> = Vec::with_capacity(indexed.len());

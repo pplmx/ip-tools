@@ -10,6 +10,7 @@ mod http;
 mod http2;
 mod http3;
 mod probe;
+mod progress;
 mod route;
 mod tcp;
 mod tls;
@@ -21,6 +22,7 @@ use ip_tools::report::to_json;
 use ip_tools::style::Style;
 use ip_tools::target::Target;
 use ip_tools::{get_local_ip, list_net_ifs};
+use progress::Progress;
 use serde::Serialize;
 use std::future::Future;
 use std::net::{IpAddr, SocketAddr};
@@ -671,6 +673,10 @@ where
     // Probe targets concurrently (bounded by `--concurrency`; 1 keeps the
     // per-host sequential behavior), re-sorting back to the given target order
     // so the human/JSON/CSV output stays deterministic across a fleet sweep.
+    // A TTY-gated per-host progress counter is shown on stderr while the
+    // sweep runs (silent when piped, quieted, or a single target).
+    let progress = std::sync::Arc::new(Progress::new(targets.len(), sub_m.get_flag("no-color")));
+    let progress_for_tasks = progress.clone();
     let targets_with_index: Vec<(usize, Target)> = targets.into_iter().enumerate().collect();
     let mut indexed: Vec<IndexedTarget<O>> = parallel_map(targets_with_index, concurrency, move |(idx, target)| {
         let servers = servers.clone();
@@ -678,6 +684,7 @@ where
         let dot_eps = dot_eps.clone();
         let probe = probe.clone();
         let sni = sni.clone();
+        let progress = progress_for_tasks.clone();
         async move {
             let result =
                 resolve_for_tcp_servers(&target.host, &servers, &doh_endpoints, &dot_eps, insecure, timeout).await;
@@ -707,10 +714,12 @@ where
                     None
                 }
             };
+            progress.step(&target.host);
             (idx, output)
         }
     })
     .await;
+    progress.finish();
     indexed.sort_by_key(|(idx, _)| *idx);
     let mut per_target: Vec<(String, Vec<O>)> = Vec::with_capacity(indexed.len());
     let mut unresolved = 0usize;
