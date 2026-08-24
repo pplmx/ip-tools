@@ -1,8 +1,8 @@
 {
   "ril_version": 1,
-  "round": 5,
+  "round": 6,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-24T05:52:28+00:00",
+  "updated_at": "2026-08-24T09:37:31+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -121,7 +121,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 0,
+      "touched_round": 6,
       "desc": "human + --json rendering of all observation types"
     },
     "COMP-lib": {
@@ -3710,6 +3710,50 @@
       "touched_round": 5,
       "commit": "cf66ed4",
       "summary": "Add route --count N: route::traceroute_repeat + aggregate_runs fold N traces into per-hop RouteHopStats (answered, distinct addrs, min/p50/max via LatencySummary, path_changed when >1 router), a RouteRepeat; route_count_arg (default 1) on the route subcommand; report::render_route_repeat human + repeat --csv renderer; --strict counts fully-lost hops. count=1 keeps single-trace behavior/CSV exactly. Public API change (api-baseline regenerated, 25 lines additive). Pinned by 4 lib aggregation unit tests + report render + cli csv render unit tests."
+    },
+    "DEC-072": {
+      "id": "DEC-072",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-24T08:19:22+00:00",
+      "updated_at": "2026-08-24T08:19:22+00:00",
+      "touched_round": 6,
+      "rationale": "New milestone (2026-08-24, operator-directed): beautify/polish the human output and UX (goal: 优化美化输出, 打磨交互性, 使用性, 实用性). Deliver a TTY-aware presentation pass: colored PASS/FAIL, HTTP status classes, cert-expiry hints, route lost/path-changed markers and diagnosis severity badges (green/red/yellow/cyan), gated on stdout being a TTY with a --no-color CLI escape and NO_COLOR env honour (https://no-color.org). Non-TTY / --no-color output stays byte-identical to today so piping, golden tests and CSV/JSON formats are untouched. Surface is a clean vertical slice one user (interactive terminal user) can see and verify in one sentence; feature-evolution mode already active (prior sessions).",
+      "alternatives_rejected": "(1) Add a colorscheme crate (e.g. owo-colors/colored): rejected — 9 small ANSI helpers are trivial and zero-dependency, keeping the crate lean; (2) Color unconditionally like many CLIs: rejected — breaks piping/grepping and golden-test byte-stability; (3) A full interactive TUI/spinner/REPL: rejected — out of scope for a probe tool whose output is meant to be greppable and scriptable; (4) --color always/never/auto tri-state: rejected for now — --no-color + NO_COLOR + TTY gate covers every real need with the smallest surface."
+    },
+    "ISS-065": {
+      "id": "ISS-065",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-24T08:19:22+00:00",
+      "updated_at": "2026-08-24T09:37:31+00:00",
+      "touched_round": 6,
+      "desc": "Human terminal output is monochrome: PASS/FAIL, HTTP status classes, cert-expiry hints, lost/path-changed route markers and diagnosis severity badges carry no visual weight, so a quick terminal scan cannot tell healthy from broken at a glance."
+    },
+    "TASK-073": {
+      "id": "TASK-073",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-24T08:19:22+00:00",
+      "updated_at": "2026-08-24T09:37:31+00:00",
+      "touched_round": 6,
+      "category": "core-feature",
+      "priority_score": 3.8,
+      "desc": "TTY-aware styled human output: thread a Style (color gate) through report::render_* and colorize PASS/FAIL, status classes, expiry, route markers, severity badges; --no-color flag + NO_COLOR env + TTY auto-detect; non-TTY byte-identical."
+    },
+    "CHG-066": {
+      "id": "CHG-066",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-24T09:37:31+00:00",
+      "updated_at": "2026-08-24T09:37:31+00:00",
+      "touched_round": 6,
+      "commit": "926407e",
+      "desc": "TTY-aware colored human output: report::render_* take a Style; green/red/yellow/cyan status+severity verdicts gated on TTY with --no-color + NO_COLOR; non-TTY/JSON/CSV byte-identical; style::Style::auto pure-gate truth-tabled; api-baseline regenerated; coverage 93.4%."
     }
   },
   "edges": [
@@ -6286,6 +6330,36 @@
       "to": "TASK-072",
       "type": "implements",
       "created_at": "2026-08-24T05:52:28+00:00"
+    },
+    {
+      "from": "TASK-073",
+      "to": "ISS-065",
+      "type": "addresses",
+      "created_at": "2026-08-24T08:19:57+00:00"
+    },
+    {
+      "from": "ISS-065",
+      "to": "COMP-report",
+      "type": "located_in",
+      "created_at": "2026-08-24T08:19:57+00:00"
+    },
+    {
+      "from": "DEC-072",
+      "to": "TASK-073",
+      "type": "governs",
+      "created_at": "2026-08-24T08:19:58+00:00"
+    },
+    {
+      "from": "CHG-066",
+      "to": "TASK-073",
+      "type": "implements",
+      "created_at": "2026-08-24T09:37:31+00:00"
+    },
+    {
+      "from": "CHG-066",
+      "to": "ISS-065",
+      "type": "resolves",
+      "created_at": "2026-08-24T09:37:31+00:00"
     }
   ]
 }
