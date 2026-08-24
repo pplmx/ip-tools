@@ -185,7 +185,8 @@ fn parser() -> ArgMatches {
                 )
                 .arg(strict_arg())
                 .arg(timeout_arg())
-                .arg(csv_arg()),
+                .arg(csv_arg())
+                .arg(route_count_arg()),
         )
         .subcommand(probe_command(
             "diagnose",
@@ -343,6 +344,18 @@ fn diagnose_count_arg() -> Arg {
         .value_parser(clap::value_parser!(usize))
         .default_value("3")
         .help("number of repeated attempts per address in the stability phase")
+}
+
+/// `--count` for the `route` subcommand: repeat the traceroute that many
+/// times and aggregate per-hop latency + router addresses (default 1 = the
+/// single current trace, unchanged).
+fn route_count_arg() -> Arg {
+    Arg::new("count")
+        .long("count")
+        .value_name("N")
+        .value_parser(clap::value_parser!(usize))
+        .default_value("1")
+        .help("number of traceroute runs to aggregate (1 = single trace)")
 }
 
 /// `--protocol` argument selecting which transport/protocol to repeat-probe.

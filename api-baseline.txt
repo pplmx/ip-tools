@@ -440,6 +440,7 @@ pub fn ip_tools::report::render_dns_repeat(&str, &[ip_tools::model::dns::DnsRepe
 pub fn ip_tools::report::render_http(&[ip_tools::model::http::HttpObservation]) -> alloc::string::String
 pub fn ip_tools::report::render_probe(&[ip_tools::model::probe::ProbeResult]) -> alloc::string::String
 pub fn ip_tools::report::render_route(&[ip_tools::route::RouteHop]) -> alloc::string::String
+pub fn ip_tools::report::render_route_repeat(&ip_tools::route::RouteRepeat) -> alloc::string::String
 pub fn ip_tools::report::render_tcp(&[ip_tools::model::tcp::TcpObservation]) -> alloc::string::String
 pub fn ip_tools::report::render_tls(&[ip_tools::model::tls::TlsObservation]) -> alloc::string::String
 pub fn ip_tools::report::to_json<T: serde_core::ser::Serialize>(&T) -> alloc::string::String
@@ -450,13 +451,25 @@ pub ip_tools::route::RouteHop::hostname: core::option::Option<alloc::string::Str
 pub ip_tools::route::RouteHop::lost: bool
 pub ip_tools::route::RouteHop::rtt_ms: core::option::Option<u64>
 pub ip_tools::route::RouteHop::ttl: u8
+pub struct ip_tools::route::RouteHopStats
+pub ip_tools::route::RouteHopStats::addrs: alloc::vec::Vec<core::net::ip_addr::IpAddr>
+pub ip_tools::route::RouteHopStats::answered: u16
+pub ip_tools::route::RouteHopStats::hostname: core::option::Option<alloc::string::String>
+pub ip_tools::route::RouteHopStats::path_changed: bool
+pub ip_tools::route::RouteHopStats::rtt: ip_tools::model::latency::LatencySummary
+pub ip_tools::route::RouteHopStats::ttl: u8
+pub struct ip_tools::route::RouteRepeat
+pub ip_tools::route::RouteRepeat::hops: alloc::vec::Vec<ip_tools::route::RouteHopStats>
+pub ip_tools::route::RouteRepeat::runs: usize
 pub struct ip_tools::route::TracerouteConfig
 pub ip_tools::route::TracerouteConfig::max_hops: u8
 pub ip_tools::route::TracerouteConfig::probes_per_hop: u8
 pub ip_tools::route::TracerouteConfig::timeout: core::time::Duration
 impl core::default::Default for ip_tools::route::TracerouteConfig
 pub fn ip_tools::route::TracerouteConfig::default() -> Self
+pub fn ip_tools::route::aggregate_runs(&[alloc::vec::Vec<ip_tools::route::RouteHop>]) -> ip_tools::route::RouteRepeat
 pub fn ip_tools::route::traceroute(core::net::ip_addr::IpAddr, &ip_tools::route::TracerouteConfig) -> core::result::Result<alloc::vec::Vec<ip_tools::route::RouteHop>, alloc::string::String>
+pub fn ip_tools::route::traceroute_repeat(core::net::ip_addr::IpAddr, ip_tools::route::TracerouteConfig, usize) -> core::result::Result<ip_tools::route::RouteRepeat, alloc::string::String>
 pub mod ip_tools::target
 pub struct ip_tools::target::Target
 pub ip_tools::target::Target::host: alloc::string::String
@@ -639,6 +652,16 @@ pub ip_tools::RouteHop::hostname: core::option::Option<alloc::string::String>
 pub ip_tools::RouteHop::lost: bool
 pub ip_tools::RouteHop::rtt_ms: core::option::Option<u64>
 pub ip_tools::RouteHop::ttl: u8
+pub struct ip_tools::RouteHopStats
+pub ip_tools::RouteHopStats::addrs: alloc::vec::Vec<core::net::ip_addr::IpAddr>
+pub ip_tools::RouteHopStats::answered: u16
+pub ip_tools::RouteHopStats::hostname: core::option::Option<alloc::string::String>
+pub ip_tools::RouteHopStats::path_changed: bool
+pub ip_tools::RouteHopStats::rtt: ip_tools::model::latency::LatencySummary
+pub ip_tools::RouteHopStats::ttl: u8
+pub struct ip_tools::RouteRepeat
+pub ip_tools::RouteRepeat::hops: alloc::vec::Vec<ip_tools::route::RouteHopStats>
+pub ip_tools::RouteRepeat::runs: usize
 pub struct ip_tools::TcpObservation
 pub ip_tools::TcpObservation::destination: core::net::socket_addr::SocketAddr
 pub ip_tools::TcpObservation::failure: core::option::Option<ip_tools::model::ProbeError>
@@ -660,6 +683,8 @@ pub ip_tools::TracerouteConfig::probes_per_hop: u8
 pub ip_tools::TracerouteConfig::timeout: core::time::Duration
 impl core::default::Default for ip_tools::route::TracerouteConfig
 pub fn ip_tools::route::TracerouteConfig::default() -> Self
+pub fn ip_tools::aggregate_runs(&[alloc::vec::Vec<ip_tools::route::RouteHop>]) -> ip_tools::route::RouteRepeat
 pub fn ip_tools::diagnose(&ip_tools::diagnostics::DiagnosticInput<'_>) -> alloc::vec::Vec<ip_tools::model::diagnosis::Diagnosis>
 pub fn ip_tools::get_local_ip() -> core::result::Result<core::net::ip_addr::IpAddr, ip_tools::IpToolsError>
 pub fn ip_tools::list_net_ifs() -> core::result::Result<alloc::vec::Vec<(alloc::string::String, core::net::ip_addr::IpAddr)>, ip_tools::IpToolsError>
+pub fn ip_tools::traceroute_repeat(core::net::ip_addr::IpAddr, ip_tools::route::TracerouteConfig, usize) -> core::result::Result<ip_tools::route::RouteRepeat, alloc::string::String>

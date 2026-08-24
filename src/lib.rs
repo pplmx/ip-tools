@@ -64,7 +64,7 @@ pub use model::{
     FailureKind, HttpObservation, IpVersion, LatencyStats, ProbeError, ProbeResult, ResolverKind, Severity,
     TcpObservation, TlsObservation,
 };
-pub use route::{RouteHop, TracerouteConfig};
+pub use route::{aggregate_runs, traceroute_repeat, RouteHop, RouteHopStats, RouteRepeat, TracerouteConfig};
 
 // ---------------------------------------------------------------------------
 // Local IP convenience helpers (legacy surface)

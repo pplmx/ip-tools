@@ -12,7 +12,7 @@ use crate::model::{
     CertificateSummary, Diagnosis, DnsObservation, DnsRecordType, DnsRepeatResult, HttpObservation, ProbeResult,
     ResolverKind, TcpObservation, TlsObservation,
 };
-use crate::RouteHop;
+use crate::{RouteHop, RouteRepeat};
 
 /// Whether the presented host/SNI differs from the destination's literal
 /// address host — i.e. the probe connected to an address but presented a
@@ -523,6 +523,48 @@ pub fn render_route(hops: &[RouteHop]) -> String {
         };
         let rtt = hop.rtt_ms.map_or_else(|| "-".to_string(), |ms| format!("{ms} ms"));
         out.push_str(&format!("  {:>2}  {host:40} {rtt}\n", hop.ttl));
+    }
+    out
+}
+
+/// Render a repeated-traceroute aggregation as human text.
+///
+/// Each hop shows how many runs it answered in, a min/p50/max latency bound,
+/// and a `path changed` marker when its router changed between runs.
+#[must_use]
+pub fn render_route_repeat(repeat: &RouteRepeat) -> String {
+    let mut out = format!("Traceroute ({} runs)\n", repeat.runs);
+    for hop in &repeat.hops {
+        if hop.answered == 0 {
+            out.push_str(&format!("  {:>2}  *  {}/{} (lost)\n", hop.ttl, 0, repeat.runs));
+            continue;
+        }
+        let addrs = hop.addrs.iter().map(ToString::to_string).collect::<Vec<_>>().join(", ");
+        let name = hop.hostname.as_deref().filter(|n| !n.is_empty());
+        let host = match name {
+            Some(n) => format!("{n} ({addrs})"),
+            None => addrs,
+        };
+        let mut line = format!("  {:>2}  {host:40} {}/{} answered", hop.ttl, hop.answered, repeat.runs);
+        let mut tail: Vec<String> = Vec::new();
+        if let Some(ms) = hop.rtt.min {
+            tail.push(format!("min {ms} ms"));
+        }
+        if let Some(ms) = hop.rtt.p50 {
+            tail.push(format!("p50 {ms} ms"));
+        }
+        if let Some(ms) = hop.rtt.max {
+            tail.push(format!("max {ms} ms"));
+        }
+        if hop.path_changed {
+            tail.push("path changed".into());
+        }
+        if !tail.is_empty() {
+            line.push_str("  ");
+            line.push_str(&tail.join("  "));
+        }
+        out.push_str(&line);
+        out.push('\n');
     }
     out
 }
@@ -1068,6 +1110,52 @@ mod tests {
         // Lost hop prints `*`; a reachable hop with no RTT prints `-`.
         assert!(out.contains('*'));
         assert!(out.contains("192.0.2.4"));
+    }
+
+    #[test]
+    fn render_route_repeat_covers_answered_rate_and_path_change() {
+        let mut stable = LatencyStats::default();
+        stable.push(2);
+        stable.push(4);
+        let mut changed = LatencyStats::default();
+        changed.push(9);
+        let repeat = RouteRepeat {
+            runs: 2,
+            hops: vec![
+                crate::RouteHopStats {
+                    ttl: 1,
+                    answered: 2,
+                    addrs: vec!["192.0.2.1".parse().unwrap()],
+                    hostname: Some("r1.example.com".into()),
+                    rtt: stable.summarize(),
+                    path_changed: false,
+                },
+                crate::RouteHopStats {
+                    ttl: 2,
+                    answered: 2,
+                    addrs: vec!["192.0.2.2".parse().unwrap(), "192.0.2.9".parse().unwrap()],
+                    hostname: None,
+                    rtt: changed.summarize(),
+                    path_changed: true,
+                },
+                crate::RouteHopStats {
+                    ttl: 3,
+                    answered: 0,
+                    addrs: Vec::new(),
+                    hostname: None,
+                    rtt: LatencyStats::default().summarize(),
+                    path_changed: false,
+                },
+            ],
+        };
+        let out = render_route_repeat(&repeat);
+        assert!(out.contains("Traceroute (2 runs)"), "header missing: {out}");
+        assert!(out.contains("r1.example.com (192.0.2.1)"), "host label missing: {out}");
+        assert!(out.contains("2/2 answered"), "answered rate missing: {out}");
+        assert!(out.contains("min 2 ms"), "min latency missing: {out}");
+        assert!(out.contains("max 4 ms"), "max latency missing: {out}");
+        assert!(out.contains("path changed"), "divergent hop must be flagged: {out}");
+        assert!(out.contains("0/2 (lost)"), "fully-lost hop must render as lost: {out}");
     }
 
     #[test]

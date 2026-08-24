@@ -9,6 +9,8 @@
 //! or filter TTL-expired responses, so the report records `lost` hops without
 //! over-interpreting them.
 
+use crate::model::{LatencyStats, LatencySummary};
+use std::collections::BTreeMap;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
 use std::time::Duration;
 
@@ -46,6 +48,100 @@ impl Default for TracerouteConfig {
             probes_per_hop: 3,
         }
     }
+}
+
+/// Aggregated observations for one TTL across a [`traceroute_repeat`] run.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RouteHopStats {
+    /// Time-to-live of this hop (1-based).
+    pub ttl: u8,
+    /// How many of the repeated runs this hop answered in (0 = every run lost).
+    pub answered: u16,
+    /// Distinct router addresses observed across the runs (empty if never answered).
+    pub addrs: Vec<IpAddr>,
+    /// Best-effort reverse hostname of the reported address, when resolvable.
+    pub hostname: Option<String>,
+    /// Round-trip latency distribution across the answered runs.
+    pub rtt: LatencySummary,
+    /// Whether more than one distinct router address was observed at this hop
+    /// — the path (or a load-balanced next-hop) changed between runs.
+    pub path_changed: bool,
+}
+
+/// The result of repeating a traceroute: per-hop aggregates over `runs` traces.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RouteRepeat {
+    /// Number of traces aggregated.
+    pub runs: usize,
+    /// Per-hop aggregates in TTL order (the union of hops seen across runs).
+    pub hops: Vec<RouteHopStats>,
+}
+
+/// Fold per-run hop lists into per-hop aggregates.
+///
+/// Pure, so unit-testable without a raw ICMP socket. A hop that answered in
+/// some runs and was lost in others counts toward `answered` with the
+/// latencies it produced; a hop never seen in a run is simply absent.
+#[must_use]
+pub fn aggregate_runs(hops_by_run: &[Vec<RouteHop>]) -> RouteRepeat {
+    let mut by_ttl: BTreeMap<u8, (u16, Vec<IpAddr>, Option<String>, LatencyStats)> = BTreeMap::new();
+    for run in hops_by_run {
+        for hop in run {
+            let entry = by_ttl
+                .entry(hop.ttl)
+                .or_insert_with(|| (0, Vec::new(), None, LatencyStats::default()));
+            if hop.lost {
+                continue;
+            }
+            entry.0 += 1;
+            if let Some(addr) = hop.addr {
+                if !entry.1.contains(&addr) {
+                    entry.1.push(addr);
+                }
+            }
+            if let Some(ms) = hop.rtt_ms {
+                entry.3.push(ms);
+            }
+            if let Some(name) = &hop.hostname {
+                if entry.2.is_none() && !name.is_empty() {
+                    entry.2 = Some(name.clone());
+                }
+            }
+        }
+    }
+    let runs = hops_by_run.len();
+    let hops = by_ttl
+        .into_iter()
+        .map(|(ttl, (answered, addrs, hostname, latency))| RouteHopStats {
+            ttl,
+            answered,
+            path_changed: addrs.len() > 1,
+            addrs,
+            hostname,
+            rtt: latency.summarize(),
+        })
+        .collect();
+    RouteRepeat { runs, hops }
+}
+
+/// Repeat a traceroute `count` times and aggregate the per-hop observations.
+///
+/// A single unstable hop (a flapping next-hop, a load-balanced router, BGP /
+/// MPLS churn) becomes visible instead of whichever address answered last.
+/// `count` is clamped to at least 1; `count == 1` yields the single-trace
+/// shape (one address per answered hop, no path-change signal).
+///
+/// # Errors
+///
+/// Returns an error string when route diagnostics are unsupported on the
+/// platform or the raw ICMP socket cannot be opened (the same gating as
+/// [`traceroute`]).
+pub fn traceroute_repeat(target: IpAddr, cfg: TracerouteConfig, count: usize) -> Result<RouteRepeat, String> {
+    let mut runs = Vec::with_capacity(count.max(1));
+    for _ in 0..count.max(1) {
+        runs.push(traceroute(target, &cfg)?);
+    }
+    Ok(aggregate_runs(&runs))
 }
 
 /// Perform a UDP/ICMP traceroute to `target`, returning per-hop observations.
@@ -283,5 +379,96 @@ mod tests {
     #[test]
     fn rejects_short_buffers() {
         assert_eq!(parse_icmp_udp_src(&[0u8; 8], 8), None);
+    }
+}
+
+#[cfg(test)]
+mod repeat_tests {
+    use super::aggregate_runs;
+    use crate::RouteHop;
+
+    fn hop(ttl: u8, addr: Option<&str>, rtt_ms: Option<u64>, lost: bool) -> RouteHop {
+        RouteHop {
+            ttl,
+            addr: addr.map(|s| s.parse().unwrap()),
+            hostname: None,
+            rtt_ms,
+            lost,
+        }
+    }
+
+    #[test]
+    fn stable_path_aggregates_a_single_router() {
+        let runs = vec![
+            vec![
+                hop(1, Some("192.0.2.1"), Some(3), false),
+                hop(2, Some("192.0.2.2"), Some(9), false),
+            ],
+            vec![
+                hop(1, Some("192.0.2.1"), Some(5), false),
+                hop(2, Some("192.0.2.2"), Some(11), false),
+            ],
+        ];
+        let rep = aggregate_runs(&runs);
+        assert_eq!(rep.runs, 2);
+        assert_eq!(rep.hops.len(), 2);
+        let h1 = &rep.hops[0];
+        assert_eq!(h1.ttl, 1);
+        assert_eq!(h1.answered, 2);
+        assert_eq!(h1.addrs, vec!["192.0.2.1".parse::<std::net::IpAddr>().unwrap()]);
+        assert!(!h1.path_changed, "a stable router must not flag a path change");
+        assert_eq!(h1.rtt.count, 2);
+        assert_eq!(h1.rtt.min, Some(3));
+        assert_eq!(h1.rtt.max, Some(5));
+    }
+
+    #[test]
+    fn divergent_path_lists_both_routers_and_flags_change() {
+        let runs = vec![
+            vec![hop(1, Some("192.0.2.1"), Some(2), false)],
+            vec![hop(1, Some("192.0.2.9"), Some(4), false)],
+        ];
+        let rep = aggregate_runs(&runs);
+        assert_eq!(rep.hops.len(), 1);
+        let h = &rep.hops[0];
+        assert_eq!(h.answered, 2);
+        assert_eq!(h.addrs.len(), 2);
+        assert!(h.path_changed, "two distinct routers must flag a path change");
+        assert_eq!(h.rtt.min, Some(2));
+        assert_eq!(h.rtt.max, Some(4));
+    }
+
+    #[test]
+    fn lost_hops_count_answered_and_stay_empty() {
+        // Hop 1 answered in run 1 but was lost in run 2; hop 2 was lost in both.
+        let runs = vec![
+            vec![hop(1, Some("192.0.2.1"), Some(3), false), hop(2, None, None, true)],
+            vec![hop(1, None, None, true), hop(2, None, None, true)],
+        ];
+        let rep = aggregate_runs(&runs);
+        assert_eq!(rep.hops.len(), 2);
+        let h1 = &rep.hops[0];
+        assert_eq!(h1.answered, 1, "hop answered in one of two runs");
+        assert_eq!(h1.addrs, vec!["192.0.2.1".parse::<std::net::IpAddr>().unwrap()]);
+        assert_eq!(h1.rtt.count, 1);
+        let h2 = &rep.hops[1];
+        assert_eq!(h2.answered, 0, "a fully-lost hop never answers");
+        assert!(h2.addrs.is_empty());
+    }
+
+    #[test]
+    fn runs_with_different_hop_sets_union_by_ttl() {
+        // Run 1 terminated at hop 2 (destination answered); run 2 saw hop 1 only.
+        let runs = vec![
+            vec![
+                hop(1, Some("192.0.2.1"), Some(2), false),
+                hop(2, Some("192.0.2.2"), Some(3), false),
+            ],
+            vec![hop(1, Some("192.0.2.1"), Some(1), false)],
+        ];
+        let rep = aggregate_runs(&runs);
+        assert_eq!(rep.hops.len(), 2, "both hops are in the union");
+        assert_eq!(rep.hops[0].answered, 2);
+        assert_eq!(rep.hops[1].answered, 1, "hop 2 only answered in the first run");
     }
 }

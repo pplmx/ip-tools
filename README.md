@@ -604,6 +604,7 @@ Trace the network path (Linux, requires root/`CAP_NET_RAW`):
 ip-tools route example.com
 ip-tools route 8.8.8.8 --max-hops 20 --probes-per-hop 3 --timeout 700
 ip-tools route example.com --csv      # hop-by-hop rows for a path spreadsheet
+ip-tools route example.com --count 5  # repeat the trace to see path stability
 ```
 
 Example output:
@@ -623,6 +624,16 @@ frequently deprioritize or filter TTL-expired responses.
 empty hostname/address/RTT and `lost=1`), so a traceroute path loads into a
 spreadsheet for path analysis; `--csv`/`--json`/human output are mutually
 exclusive.
+
+`--count N` repeats the whole trace N times and aggregates per hop — how many
+runs the hop answered in, a min/p50/max latency bound, the distinct router
+addresses observed, and a `path changed` marker when a hop's router differed
+between runs. A single trace cannot show a flapping next-hop, a load-balanced
+router or BGP/MPLS churn; the repeat view makes the path stability (or
+instability) explicit. The repeat `--csv` emits
+`ttl,hostname,addr,rtt_min_ms,rtt_med_ms,rtt_max_ms,answered,runs,path_changed`
+rows (addresses joined with `;` when the path changed); `--strict` counts a
+hop as lost when it never answered across any run.
 
 ### Repeated probes
 

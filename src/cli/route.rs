@@ -2,19 +2,24 @@
 
 use super::{resolve_for_tcp, DEFAULT_PORT};
 use clap::ArgMatches;
-use ip_tools::report::{render_route, to_json};
+use ip_tools::report::{render_route, render_route_repeat, to_json};
 use ip_tools::route as ip_route;
 use ip_tools::target::Target;
 use ip_tools::RouteHop;
+use ip_tools::RouteRepeat;
 use ip_tools::TracerouteConfig;
+use std::net::IpAddr;
 use std::process::ExitCode;
 use std::time::Duration;
 
 /// Trace the network path to a host (Linux, needs root). Runs the blocking
 /// traceroute off the async runtime, then reverse-resolves router names.
+/// With `--count N` (>1) the trace is repeated and the per-hop observations
+/// are aggregated across runs (see [`run_route_repeat`]).
 pub(super) async fn run_route(sub_m: &ArgMatches) -> ExitCode {
     let json = sub_m.get_flag("json");
     let csv = sub_m.get_flag("csv");
+    let count = *sub_m.get_one::<usize>("count").expect("count has default");
     let target_str = sub_m.get_one::<String>("target").expect("required target");
     let max_hops = *sub_m.get_one::<u8>("max-hops").expect("max-hops has default");
     let probes_per_hop = *sub_m
@@ -47,6 +52,10 @@ pub(super) async fn run_route(sub_m: &ArgMatches) -> ExitCode {
         timeout: Duration::from_millis(timeout_ms),
         probes_per_hop: probes_per_hop.max(1),
     };
+
+    if count > 1 {
+        return run_route_repeat(sub_m, dest_ip, cfg, count, json, csv).await;
+    }
 
     let hops = match tokio::task::spawn_blocking(move || ip_route::traceroute(dest_ip, &cfg)).await {
         Ok(Ok(h)) => h,
@@ -102,6 +111,110 @@ pub(super) async fn run_route(sub_m: &ArgMatches) -> ExitCode {
     }
 }
 
+/// `route --count N` (N > 1): repeat the traceroute and aggregate per-hop
+/// latency and router addresses across runs, so a path change (flapping
+/// next-hop, load-balanced router, BGP/MPLS churn) that a single trace cannot
+/// show becomes visible.
+async fn run_route_repeat(
+    sub_m: &ArgMatches,
+    dest_ip: IpAddr,
+    cfg: TracerouteConfig,
+    count: usize,
+    json: bool,
+    csv: bool,
+) -> ExitCode {
+    let mut repeat = match tokio::task::spawn_blocking(move || ip_route::traceroute_repeat(dest_ip, cfg, count)).await {
+        Ok(Ok(r)) => r,
+        Ok(Err(e)) => {
+            eprintln!("Error: {e}");
+            return ExitCode::FAILURE;
+        }
+        Err(e) => {
+            eprintln!("Error: traceroute task failed: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    // Best-effort reverse hostname for hops answered by one stable router. A
+    // hop whose router changed between runs is the divergence itself — naming
+    // one of the addresses would be misleading — so those stay unlabelled.
+    resolve_repeat_hostnames(&mut repeat).await;
+
+    // `--strict`: a hop that never answered across any run is a fully-lost
+    // hop (the repeat analogue of a lost single-trace hop).
+    let lost = if sub_m.get_flag("strict") {
+        repeat.hops.iter().filter(|h| h.answered == 0).count()
+    } else {
+        0
+    };
+
+    if csv {
+        print!("{}", render_route_repeat_csv(&repeat));
+    } else if json {
+        println!("{}", to_json(&repeat));
+    } else {
+        print!("{}", render_route_repeat(&repeat));
+    }
+    if lost > 0 {
+        eprintln!("Error: {lost} route hop(s) entirely lost across {count} runs (--strict)");
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    }
+}
+
+/// Reverse-resolve each repeat hop's single router address (best effort).
+async fn resolve_repeat_hostnames(repeat: &mut RouteRepeat) {
+    if let Ok(builder) = hickory_resolver::TokioResolver::builder_tokio() {
+        if let Ok(resolver) = builder.build() {
+            for hop in &mut repeat.hops {
+                if hop.addrs.len() != 1 {
+                    continue;
+                }
+                let addr = hop.addrs[0];
+                if let Ok(lookup) = resolver.reverse_lookup(addr).await {
+                    if let Some(rec) = lookup.answers().first() {
+                        if let hickory_resolver::proto::rr::RData::PTR(name) = &rec.data {
+                            hop.hostname = Some(name.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Render a repeated-traceroute aggregation as CSV: a header then one row per
+/// hop, with the aggregated router address(es), min/p50/max latency, answer
+/// rate and path-change verdict (RFC 4180 quoting).
+fn render_route_repeat_csv(repeat: &RouteRepeat) -> String {
+    let mut out = String::from("ttl,hostname,addr,rtt_min_ms,rtt_med_ms,rtt_max_ms,answered,runs,path_changed\n");
+    for h in &repeat.hops {
+        out.push_str(&h.ttl.to_string());
+        out.push(',');
+        out.push_str(&csv_field(h.hostname.as_deref().unwrap_or("")));
+        out.push(',');
+        out.push_str(&csv_field(&hop_addrs(h)));
+        out.push(',');
+        for rtt in [h.rtt.min, h.rtt.p50, h.rtt.max] {
+            out.push_str(&csv_field(&rtt.map_or_else(String::new, |ms| ms.to_string())));
+            out.push(',');
+        }
+        out.push_str(&h.answered.to_string());
+        out.push(',');
+        out.push_str(&repeat.runs.to_string());
+        out.push(',');
+        out.push_str(if h.path_changed { "1" } else { "0" });
+        out.push('\n');
+    }
+    out
+}
+
+/// The distinct router addresses of a repeat hop, `;`-joined.
+fn hop_addrs(h: &ip_tools::RouteHopStats) -> String {
+    h.addrs.iter().map(ToString::to_string).collect::<Vec<_>>().join(";")
+}
+
 /// Render a traceroute path as CSV: a header then one row per hop, with
 /// empty fields for lost hops or missing hostnames (RFC 4180 quoting).
 fn render_route_csv(hops: &[RouteHop]) -> String {
@@ -135,6 +248,58 @@ fn csv_field(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ip_tools::LatencyStats;
+
+    #[test]
+    fn render_route_repeat_csv_aggregates_answered_and_path_change() {
+        let mut stable = LatencyStats::default();
+        stable.push(2);
+        stable.push(4);
+        let repeat = RouteRepeat {
+            runs: 2,
+            hops: vec![
+                ip_tools::RouteHopStats {
+                    ttl: 1,
+                    answered: 2,
+                    addrs: vec!["192.0.2.1".parse().unwrap()],
+                    hostname: Some("r1.example.com".into()),
+                    rtt: stable.summarize(),
+                    path_changed: false,
+                },
+                ip_tools::RouteHopStats {
+                    ttl: 2,
+                    answered: 2,
+                    // No latency samples: a divergent hop with unknown RTT must
+                    // still render its `;`-joined addrs + path_changed verdict.
+                    addrs: vec!["192.0.2.2".parse().unwrap(), "192.0.2.9".parse().unwrap()],
+                    hostname: None,
+                    rtt: LatencyStats::default().summarize(),
+                    path_changed: true,
+                },
+                ip_tools::RouteHopStats {
+                    ttl: 3,
+                    answered: 0,
+                    addrs: Vec::new(),
+                    hostname: None,
+                    rtt: ip_tools::LatencyStats::default().summarize(),
+                    path_changed: false,
+                },
+            ],
+        };
+        let out = render_route_repeat_csv(&repeat);
+        let mut lines = out.lines();
+        assert_eq!(
+            lines.next(),
+            Some("ttl,hostname,addr,rtt_min_ms,rtt_med_ms,rtt_max_ms,answered,runs,path_changed")
+        );
+        // Stable hop: sole addr, min/med/max latency, 2/2 answered.
+        assert_eq!(lines.next(), Some("1,r1.example.com,192.0.2.1,2,2,4,2,2,0"));
+        // Divergent hop: `;`-joined addrs and path_changed=1 (empty latency).
+        assert_eq!(lines.next(), Some("2,,192.0.2.2;192.0.2.9,,,,2,2,1"));
+        // Fully-lost hop: everything empty, answered=0.
+        assert_eq!(lines.next(), Some("3,,,,,,0,2,0"));
+        assert!(lines.next().is_none());
+    }
 
     #[test]
     fn render_route_csv_emits_one_row_per_hop() {
