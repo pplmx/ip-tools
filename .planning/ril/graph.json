@@ -1,8 +1,8 @@
 {
   "ril_version": 1,
-  "round": 8,
+  "round": 9,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-24T12:33:13+00:00",
+  "updated_at": "2026-08-24T13:51:50+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -11,7 +11,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:45+00:00",
       "updated_at": "2026-08-21T17:36:45+00:00",
-      "touched_round": 0,
+      "touched_round": 8,
       "desc": "DNS probes: system resolver, --server custom, --doh RFC8484 (hand-rolled wire), literal short-circuit, RCODE surfacing"
     },
     "COMP-tcp": {
@@ -3875,6 +3875,39 @@
       "touched_round": 7,
       "commit": "cc29e9a",
       "desc": "--expect-status SPEC (exact or 2xx-class) and --expect-contains NEEDLE on the http/http2/http3 single-shot probes: shared StatusSpec/Expectation/parse + ExpectCheck threaded through run_probe_flow, per-address violation verdict on stderr + non-zero exit independent of --strict; unit + fixture-gated CLI tests across all three HTTP stacks; README + CHANGELOG; CLI-only, no public API change."
+    },
+    "ISS-069": {
+      "id": "ISS-069",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-24T13:48:34+00:00",
+      "updated_at": "2026-08-24T13:50:39+00:00",
+      "touched_round": 8,
+      "desc": "A real user run of 'dns baidu.com' surfaced hickory's internal Debug formatting in the human report: the AAAA row rendered 'DNS error: no records found for Query { name: Name(\"baidu.com.\"), query_type: AAAA, query_class: IN }' - a library-internal struct dump rather than a plain 'no AAAA records found' reason. Both NoRecordsFound (empty NOERROR answer) and NXDOMAIN leak this through the raw NetError Display."
+    },
+    "TASK-077": {
+      "id": "TASK-077",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-24T13:49:36+00:00",
+      "updated_at": "2026-08-24T13:50:39+00:00",
+      "touched_round": 8,
+      "category": "correctness",
+      "priority_score": 3.6,
+      "desc": "Replace the raw hickory NetError Display in the system/--server resolver error message with a human-readable reason: detect NoRecordsFound / NXDOMAIN via NetError::{is_no_records_found,is_nx_domain} and render 'no <TYPE> records found for <host>' / '<host> does not exist (NXDOMAIN)'; keep the raw message as fallback. Pin with a deterministic CLI test (A-only responder, AAAA query)."
+    },
+    "CHG-070": {
+      "id": "CHG-070",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-24T13:49:36+00:00",
+      "updated_at": "2026-08-24T13:49:36+00:00",
+      "touched_round": 8,
+      "commit": "bc1db0f",
+      "desc": "lookup_error_message() in dns.rs maps NoRecordsFound/NXDOMAIN to clean text; the AAAA row now reads 'no AAAA records found for host.example' instead of the Query Debug dump; pinned by a local-responder CLI test asserting the clean message and the absence of leaked 'Query {' / 'Name(' text."
     }
   },
   "edges": [
@@ -6559,6 +6592,30 @@
       "to": "ISS-068",
       "type": "resolves",
       "created_at": "2026-08-24T12:30:03+00:00"
+    },
+    {
+      "from": "TASK-077",
+      "to": "ISS-069",
+      "type": "addresses",
+      "created_at": "2026-08-24T13:50:39+00:00"
+    },
+    {
+      "from": "ISS-069",
+      "to": "COMP-dns",
+      "type": "located_in",
+      "created_at": "2026-08-24T13:50:39+00:00"
+    },
+    {
+      "from": "CHG-070",
+      "to": "TASK-077",
+      "type": "implements",
+      "created_at": "2026-08-24T13:50:39+00:00"
+    },
+    {
+      "from": "CHG-070",
+      "to": "ISS-069",
+      "type": "resolves",
+      "created_at": "2026-08-24T13:50:39+00:00"
     }
   ]
 }
