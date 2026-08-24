@@ -1,8 +1,8 @@
 {
   "ril_version": 1,
-  "round": 3,
+  "round": 4,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-23T18:14:23+00:00",
+  "updated_at": "2026-08-24T05:03:06+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -91,7 +91,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 0,
+      "touched_round": 4,
       "desc": "Deterministic evidence-based diagnostic engine (layer.rs/connectivity.rs/filtering.rs/dns.rs), no network I/O"
     },
     "COMP-cli": {
@@ -3614,6 +3614,54 @@
       "touched_round": 2,
       "commit": "bdf987717cdbb8d3bd9d6322b2900f464ea6d1ee",
       "summary": "ProbeResult.ttfb LatencySummary aggregated from each completed HTTP repeat response; human ttfb block, --json field, probe --csv ttfb_* columns; api-baseline regenerated (also records the cert_covers_hostname visibility)"
+    },
+    "DEC-070": {
+      "id": "DEC-070",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-24T04:44:04+00:00",
+      "updated_at": "2026-08-24T04:44:04+00:00",
+      "touched_round": 4,
+      "rationale": "New milestone (2026-08-24): address-family scope for diagnose (--ipv4/--ipv6). Every per-address probe command (tcp/tls/http/http2/http3/probe) can scope a run to one address family, but diagnose cannot: on a dual-stack host where one family is known-broken the pipeline probes both and emits AddressFamily/interference noise, and an operator testing one family cannot focus the diagnosis. Completing parity (cf. DEC-066, DEC-050, DEC-048) lets --ipv4/--ipv6 scope the whole pipeline (DNS evidence still both-families, probed addresses filtered), and the engine's cross-family rules naturally stay silent because only one family's observations are present.",
+      "alternatives_rejected": "deferred: an engine-level family-scope field on DiagnosticInput (unneeded — scoping the observations already silences the cross-family rules, verified by a new engine unit test); route --probes-per-hop repeat stats (route has --count-like knobs already); --output-body on repeat probes (rejected by DEC-032); redirect following (rejected by DEC-003)"
+    },
+    "ISS-063": {
+      "id": "ISS-063",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-24T04:47:15+00:00",
+      "updated_at": "2026-08-24T05:03:06+00:00",
+      "touched_round": 4,
+      "severity": "low",
+      "summary": "The diagnose command (the full probe pipeline) is the only probe-family command without --ipv4/--ipv6 address-family scope: tcp/tls/http/http2/http3/probe all restrict a run to one family, so a dual-stack diagnosis on a host where one family is known-broken probes both families and emits the AddressFamily asymmetry verdict plus per-family noise, and an operator testing one family in isolation cannot focus the diagnosis on it."
+    },
+    "TASK-071": {
+      "id": "TASK-071",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-24T04:47:15+00:00",
+      "updated_at": "2026-08-24T05:03:06+00:00",
+      "touched_round": 4,
+      "category": "core-feature",
+      "severity": 0.5,
+      "confidence": 1,
+      "effort": 0.15,
+      "unlock_factor": 1,
+      "summary": "Scope the diagnose pipeline to one address family via --ipv4/--ipv6 (parity with every other probe command): add the flags to the diagnose subcommand, thread the family through run_diagnose into diagnose_one, and filter the resolved address pool to the chosen family before the reverse-DNS and destination stages. DNS observations keep both families so resolver evidence is unchanged; an IP-literal of the wrong family resolves to no probeable address (diagnose fails cleanly, matching the no-address path). The engine needs no new input field: with only one family observations present, family_rules and the cross-family HTTP-divergence rule naturally stay silent -- pin that with an engine unit test. Fixture-gated CLI: diagnose <v4-literal> --plain --ipv4 probes the fixture and reports 200 with no AddressFamily verdict; --ipv6 fails cleanly."
+    },
+    "CHG-064": {
+      "id": "CHG-064",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-24T05:03:05+00:00",
+      "updated_at": "2026-08-24T05:03:05+00:00",
+      "touched_round": 4,
+      "commit": "2516c24",
+      "summary": "Add --ipv4/--ipv6 to diagnose: FamilyScope enum threaded through run_diagnose into diagnose_one filters the resolved address pool (DNS evidence unscoped), an IP-literal of the wrong family fails cleanly, and the engine's cross-family rules stay silent on single-family input. CLI-only, no public API change. Pinned by an engine unit test (single-family input never raises AddressFamily; within-family partial connectivity still fires) and a fixture-gated CLI test (--ipv4 probes the fixture's cleartext 200 with no AddressFamily verdict; --ipv6 fails as no address; --ipv4 --ipv6 is a parse error)."
     }
   },
   "edges": [
@@ -6130,6 +6178,36 @@
       "to": "ISS-062",
       "type": "resolves",
       "created_at": "2026-08-23T18:10:55+00:00"
+    },
+    {
+      "from": "TASK-071",
+      "to": "ISS-063",
+      "type": "addresses",
+      "created_at": "2026-08-24T04:47:33+00:00"
+    },
+    {
+      "from": "ISS-063",
+      "to": "COMP-diagnose",
+      "type": "located_in",
+      "created_at": "2026-08-24T04:47:33+00:00"
+    },
+    {
+      "from": "DEC-070",
+      "to": "TASK-071",
+      "type": "governs",
+      "created_at": "2026-08-24T04:47:33+00:00"
+    },
+    {
+      "from": "CHG-064",
+      "to": "ISS-063",
+      "type": "resolves",
+      "created_at": "2026-08-24T05:03:06+00:00"
+    },
+    {
+      "from": "CHG-064",
+      "to": "TASK-071",
+      "type": "implements",
+      "created_at": "2026-08-24T05:03:06+00:00"
     }
   ]
 }
