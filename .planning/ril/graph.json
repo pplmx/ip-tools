@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 6,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-24T09:37:31+00:00",
+  "updated_at": "2026-08-24T10:03:30+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -3754,6 +3754,39 @@
       "touched_round": 6,
       "commit": "926407e",
       "desc": "TTY-aware colored human output: report::render_* take a Style; green/red/yellow/cyan status+severity verdicts gated on TTY with --no-color + NO_COLOR; non-TTY/JSON/CSV byte-identical; style::Style::auto pure-gate truth-tabled; api-baseline regenerated; coverage 93.4%."
+    },
+    "ISS-066": {
+      "id": "ISS-066",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-24T10:03:29+00:00",
+      "updated_at": "2026-08-24T10:03:30+00:00",
+      "touched_round": 6,
+      "desc": "diagnose human output has no one-line bottom line: a fleet scan must read every evidence row to answer 'did anything turn up?'; a scan should get one colored verdict line when an anomaly exists."
+    },
+    "TASK-074": {
+      "id": "TASK-074",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-24T10:03:29+00:00",
+      "updated_at": "2026-08-24T10:03:30+00:00",
+      "touched_round": 6,
+      "category": "core-feature",
+      "priority_score": 2.6,
+      "desc": "diagnose verdict trailer: render_diagnoses appends 'Anomalies: N (HIGH: a, MEDIUM: b)' colored red/yellow only when a non-Healthy diagnosis exists; healthy runs stay byte-identical."
+    },
+    "CHG-067": {
+      "id": "CHG-067",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-24T10:03:29+00:00",
+      "updated_at": "2026-08-24T10:03:29+00:00",
+      "touched_round": 6,
+      "commit": "af4442f",
+      "desc": "diagnose ends with a one-line anomaly verdict trailer (colored red/yellow, absent on healthy runs); renderer-only, no API change; report unit tests pin aggregation + colors."
     }
   },
   "edges": [
@@ -6360,6 +6393,30 @@
       "to": "ISS-065",
       "type": "resolves",
       "created_at": "2026-08-24T09:37:31+00:00"
+    },
+    {
+      "from": "ISS-066",
+      "to": "COMP-report",
+      "type": "located_in",
+      "created_at": "2026-08-24T10:03:29+00:00"
+    },
+    {
+      "from": "TASK-074",
+      "to": "ISS-066",
+      "type": "addresses",
+      "created_at": "2026-08-24T10:03:29+00:00"
+    },
+    {
+      "from": "CHG-067",
+      "to": "TASK-074",
+      "type": "implements",
+      "created_at": "2026-08-24T10:03:30+00:00"
+    },
+    {
+      "from": "CHG-067",
+      "to": "ISS-066",
+      "type": "resolves",
+      "created_at": "2026-08-24T10:03:30+00:00"
     }
   ]
 }
