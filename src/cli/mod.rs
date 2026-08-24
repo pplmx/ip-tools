@@ -200,6 +200,8 @@ fn parser() -> ArgMatches {
                 body_arg(),
                 diagnose_count_arg(),
                 csv_arg(),
+                ipv4_arg(),
+                ipv6_arg(),
                 tls_version_arg(),
                 max_body_bytes_arg(),
                 reverse_arg(),

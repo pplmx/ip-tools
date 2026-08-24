@@ -238,10 +238,15 @@ server-response latency — while transport-repeat rows leave those empty), and
 On a dual-stack host, `--ipv4` probes only the IPv4 addresses and `--ipv6` only
 the IPv6 addresses of each target (mutually exclusive). This avoids
 broken-family timeouts and lets you test one family in isolation — for example
-confirming whether IPv6 is actually up:
+confirming whether IPv6 is actually up. The same flags are available on
+`diagnose`, where they scope the **entire** pipeline to one family — so a
+diagnosis on a host whose other family is known-broken doesn't trip over it,
+and no `AddressFamily` asymmetry verdict is raised for the family you
+deliberately excluded:
 
 ```shell
 ip-tools probe example.com --count 20 --ipv6 --strict
+ip-tools diagnose example.com --ipv4
 ```
 
 Example output:
@@ -509,6 +514,7 @@ ip-tools diagnose example.com --json
 ip-tools diagnose 192.0.2.77 --reverse   # add reverse-DNS (PTR) evidence for an IP target
 ip-tools diagnose example.com --count 30 # longer stability window (default 3)
 ip-tools diagnose 10.0.0.5:8080 --plain  # cleartext HTTP endpoint (no TLS)
+ip-tools diagnose example.com --ipv4     # scope the whole pipeline to one family
 ```
 
 `--count N` sizes the stability phase — the repeated TCP and HTTP attempts per
@@ -521,6 +527,15 @@ larger count gives a longer observation window for subtler instability.
 (so the endpoint is not falsely diagnosed as "TLS handshake fails where TCP
 connects") and the HTTP phase + stability repeat probe the endpoint over plain
 HTTP/1.1 — for internal services, captive portals and HTTP-only health checks.
+
+`--ipv4`/`--ipv6` scope the whole diagnosis to one address family (the same
+family selection the probe commands have): the probed address pool — TCP, TLS,
+HTTP, QUIC and the stability repeat — is filtered to that family, so a
+diagnosis on a dual-stack host whose other family is known-broken doesn't trip
+over it. Resolution evidence is unscoped (both families' DNS answers are still
+shown), but with one family's observations the cross-family `AddressFamily`
+asymmetry verdict is not raised for the family you deliberately excluded; an
+IP-literal of the wrong family fails cleanly as "no address".
 
 `diagnose` accepts **multiple targets** — a fleet/health sweep. Hosts are
 probed concurrently (bounded by `--concurrency`, which also bounds the

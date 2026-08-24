@@ -21,6 +21,37 @@ use std::net::{IpAddr, SocketAddr};
 use std::process::ExitCode;
 use std::time::Duration;
 
+/// Which address family the pipeline probes, from `--ipv4`/`--ipv6`. The two
+/// flags are mutually exclusive at parse (`conflicts_with`), so an enum is
+/// exact — and keeps `diagnose_one` free of a second bool parameter.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum FamilyScope {
+    /// Neither flag: probe every resolved address (the default).
+    Both,
+    /// `--ipv4`: probe only IPv4 addresses.
+    V4,
+    /// `--ipv6`: probe only IPv6 addresses.
+    V6,
+}
+
+impl FamilyScope {
+    const fn from_flags(ipv4_only: bool, ipv6_only: bool) -> Self {
+        match (ipv4_only, ipv6_only) {
+            (true, _) => Self::V4,
+            (_, true) => Self::V6,
+            _ => Self::Both,
+        }
+    }
+
+    const fn keeps(self, addr: &IpAddr) -> bool {
+        match self {
+            Self::Both => true,
+            Self::V4 => addr.is_ipv4(),
+            Self::V6 => addr.is_ipv6(),
+        }
+    }
+}
+
 /// Full diagnostic run: collect observations across layers for one or more
 /// targets, then run the deterministic engine (which performs no network I/O).
 ///
@@ -41,6 +72,9 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
     let timeout_ms = *sub_m.get_one::<u64>("timeout").expect("timeout has default");
     let concurrency = *sub_m.get_one::<usize>("concurrency").expect("concurrency has default");
     let timeout = Duration::from_millis(timeout_ms);
+    // `--ipv4`/`--ipv6` scope the whole pipeline to one address family (parity
+    // with the per-address probe commands); the two flags conflict at parse.
+    let family = FamilyScope::from_flags(sub_m.get_flag("ipv4"), sub_m.get_flag("ipv6"));
     let count = *sub_m.get_one::<usize>("count").expect("count has default");
     if count == 0 {
         eprintln!("Error: --count must be at least 1");
@@ -130,6 +164,7 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
                     max_body_bytes,
                     reverse,
                     count,
+                    family,
                 )
                 .await;
                 (idx, report)
@@ -205,6 +240,7 @@ async fn diagnose_one(
     max_body_bytes: u64,
     reverse: bool,
     count: usize,
+    family: FamilyScope,
 ) -> Option<DiagnoseReport> {
     // Resolve once: the DNS observations and the probed addresses come from
     // the same lookups. Custom `--server`/`--doh`/`--dot` resolvers are
@@ -244,6 +280,13 @@ async fn diagnose_one(
         let mut seen = std::collections::HashSet::new();
         addresses.retain(|a| seen.insert(*a));
     }
+    // `--ipv4`/`--ipv6` scope the pipeline to one address family: filter the
+    // resolved pool before the reverse-DNS and destination stages so only the
+    // chosen family's addresses are probed. The DNS evidence above still
+    // records both families (resolution is unscoped, exactly like the probe
+    // commands), and an IP-literal of the wrong family leaves the pool empty
+    // so the usual no-address failure fires.
+    addresses.retain(|a| family.keeps(a));
     if addresses.is_empty() {
         eprintln!(
             "Error: hostname {} did not resolve to any address via the system resolver, --server, --doh, or --dot resolvers",

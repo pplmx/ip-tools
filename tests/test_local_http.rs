@@ -2192,6 +2192,71 @@ fn diagnose_cli_plain_probes_cleartext_http_end_to_end() {
 }
 
 #[test]
+fn diagnose_cli_ipv4_and_ipv6_scope_the_pipeline_to_one_family() {
+    // `--ipv4`/`--ipv6` scope the whole diagnosis (all phases) to one address
+    // family — parity with tcp/tls/http/http2/http3/probe. The fixture's
+    // plain listener binds the IPv4 loopback, so `--ipv4` probes it (cleartext
+    // 200, and no AddressFamily verdict: only one family's observations are
+    // present, so the cross-family asymmetry rule stays silent), while
+    // `--ipv6` filters the literal's address pool to nothing and the usual
+    // no-address failure fires. Passing both flags is a parse error.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let addr = fixture.plain_addr().to_string();
+
+    let run = |extra: &[&str]| {
+        Command::cargo_bin("ip-tools")
+            .expect("ip-tools binary")
+            .args(["diagnose", &addr, "--plain", "--timeout", "2000"])
+            .args(extra)
+            .output()
+            .expect("run diagnose family scope")
+    };
+
+    let out = run(&["--ipv4", "--count", "2"]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "diagnose --ipv4 should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.contains("200"),
+        "diagnose --ipv4 must probe the v4 loopback's cleartext 200: {stdout}"
+    );
+    assert!(
+        !stdout.contains("AddressFamily"),
+        "a family-scoped diagnosis must not raise the cross-family AddressFamily verdict: {stdout}"
+    );
+
+    let out = run(&["--ipv6"]);
+    assert!(
+        !out.status.success(),
+        "diagnose --ipv6 on an IPv4 literal must fail (no address of that family)"
+    );
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("did not resolve"),
+        "--ipv6 must report the empty family pool: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    // clap enforces the mutual exclusion (`--ipv4 --ipv6` is a parse error).
+    let failed = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args(["diagnose", &addr, "--ipv4", "--ipv6"])
+        .assert()
+        .failure();
+    let err = String::from_utf8_lossy(&failed.get_output().stderr).to_string();
+    assert!(
+        err.contains("cannot be used with") || err.contains("conflicts"),
+        "--ipv4 and --ipv6 must conflict at parse: {err}"
+    );
+}
+
+#[test]
 fn http_cli_report_shows_certificate_and_covers_verdict() {
     // The HTTPS human report must surface the serving certificate and the
     // SAN-coverage verdict (parity with `tls`), not just TLS/ALPN. Against the

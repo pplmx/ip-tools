@@ -216,6 +216,24 @@ mod tests {
     }
 
     #[test]
+    fn single_family_input_never_raises_address_family() {
+        // `diagnose --ipv4/--ipv6` scopes the pipeline to one address family,
+        // so the engine only ever sees that family's observations. The
+        // address-family rule compares v4 vs v6 groups; with a single family
+        // present it must stay silent — an operator who explicitly chose one
+        // family is not asking for an asymmetry verdict. Within-family rules
+        // (partial connectivity between addresses of the same family) still
+        // fire, because scoping the family does not excuse a real failure.
+        let tcp = [tp("1.1.1.1:443", true), tp("2.2.2.2:443", false)];
+        let out = diagnose(&input(&[], &tcp, &[], &[], &[]));
+        assert!(
+            !categories(&out).contains(&DiagnosticCategory::AddressFamily),
+            "a single-family input must not raise an AddressFamily verdict: {out:?}"
+        );
+        assert!(categories(&out).contains(&DiagnosticCategory::PartialConnectivity));
+    }
+
+    #[test]
     fn ipv4_locally_unreachable_reports_family_asymmetry_only() {
         // Reverse of `partial_connectivity_not_raised_*`: an IPv6-only host
         // whose IPv4 fails with NetworkUnreachable (a local no-route verdict,
