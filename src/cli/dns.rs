@@ -5,6 +5,7 @@ use clap::ArgMatches;
 use ip_tools::dns::{aggregate_repeat, DnsClient};
 use ip_tools::model::{DnsObservation, DnsRecord, DnsRecordType, DnsRepeatResult, ResolverKind};
 use ip_tools::report::{render_dns, render_dns_repeat, to_json};
+use ip_tools::style::Style;
 use ip_tools::target::Target;
 use std::net::{IpAddr, SocketAddr};
 use std::process::ExitCode;
@@ -15,7 +16,7 @@ use std::time::Duration;
 /// output is unchanged, `--json` with >1 target emits an array keyed by target,
 /// and `--strict` aggregates failed lookups across every target.
 #[allow(clippy::too_many_lines)] // orchestration: parse, loop hosts, render
-pub(super) async fn run_dns(sub_m: &ArgMatches) -> ExitCode {
+pub(super) async fn run_dns(sub_m: &ArgMatches, style: Style) -> ExitCode {
     let json = sub_m.get_flag("json");
     let csv = sub_m.get_flag("csv");
     let strict = sub_m.get_flag("strict");
@@ -123,9 +124,9 @@ pub(super) async fn run_dns(sub_m: &ArgMatches) -> ExitCode {
         let mut text = String::new();
         for o in &outputs {
             if o.repeat {
-                text.push_str(&render_dns_repeat(&o.host, &o.results));
+                text.push_str(&render_dns_repeat(&style, &o.host, &o.results));
             } else {
-                text.push_str(&render_dns(&o.host, &o.observations));
+                text.push_str(&render_dns(&style, &o.host, &o.observations));
             }
         }
         print!("{text}");

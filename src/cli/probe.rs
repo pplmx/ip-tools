@@ -5,6 +5,7 @@ use clap::ArgMatches;
 use ip_tools::model::ProbeResult;
 use ip_tools::probe as ip_probe;
 use ip_tools::report::render_probe;
+use ip_tools::style::Style;
 use std::process::ExitCode;
 
 /// Resolve a target's addresses and repeatedly probe connectivity to each,
@@ -12,7 +13,7 @@ use std::process::ExitCode;
 /// HTTP/2, HTTP/3 via `--protocol`). Per-address attempts run sequentially;
 /// addresses are probed in parallel.
 #[allow(clippy::too_many_lines)] // one match arm per protocol is clearest inline
-pub(super) async fn run_probe(sub_m: &ArgMatches) -> ExitCode {
+pub(super) async fn run_probe(sub_m: &ArgMatches, style: Style) -> ExitCode {
     let count = *sub_m.get_one::<usize>("count").expect("count has default");
     if count == 0 {
         // Zero attempts would render a vacuous "0 attempts, 0.0% success"
@@ -50,6 +51,7 @@ pub(super) async fn run_probe(sub_m: &ArgMatches) -> ExitCode {
     };
     run_probe_flow(
         sub_m,
+        style,
         render_probe,
         |result: &ProbeResult| result.destination,
         |result: &ProbeResult| result.failures > 0,

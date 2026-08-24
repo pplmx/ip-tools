@@ -5,11 +5,12 @@ use clap::ArgMatches;
 use ip_tools::http as ip_http;
 use ip_tools::model::HttpObservation;
 use ip_tools::report::{cert_covers_hostname, render_http};
+use ip_tools::style::Style;
 use std::process::ExitCode;
 
 /// Resolve a target's addresses and perform an HTTPS/HTTP1.1 request to each
 /// in parallel (bounded by `--concurrency`).
-pub(super) async fn run_http(sub_m: &ArgMatches) -> ExitCode {
+pub(super) async fn run_http(sub_m: &ArgMatches, style: Style) -> ExitCode {
     let method = sub_m.get_one::<String>("method").expect("method has default").clone();
     let path = sub_m.get_one::<String>("path").expect("path has default").clone();
     let plain = sub_m.get_flag("plain");
@@ -35,6 +36,7 @@ pub(super) async fn run_http(sub_m: &ArgMatches) -> ExitCode {
         .expect("max-body-bytes has default");
     run_probe_flow(
         sub_m,
+        style,
         render_http,
         |obs: &HttpObservation| obs.destination,
         |obs: &HttpObservation| obs.failure.is_some(),

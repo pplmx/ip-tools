@@ -52,6 +52,7 @@ pub mod model;
 pub mod probe;
 pub mod report;
 pub mod route;
+pub mod style;
 pub mod target;
 pub mod tcp;
 #[cfg(feature = "test-server")]

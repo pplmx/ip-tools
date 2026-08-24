@@ -1,8 +1,12 @@
 //! Human and JSON rendering of observations.
 //!
-//! Human output is tuned for terminal investigation. JSON output carries the
-//! complete raw observation data (via serde `Serialize` on the model types)
-//! so external systems can build their own analysis.
+//! Human output is tuned for terminal investigation. Every human renderer
+//! takes a [`Style`], whose `auto()` form colors status/severity verdicts
+//! only for a TTY (with `--no-color`/`NO_COLOR` escapes); with a plain style
+//! the output is byte-identical to the historical monochrome text, so piping,
+//! golden tests and CSV/JSON formats are never disturbed. JSON output carries
+//! the complete raw observation data (via serde `Serialize` on the model
+//! types) so external systems can build their own analysis.
 
 // String-building helpers prefer `push_str(&format!(..))` for readability; the
 // `format_push_string` lint (pedantic) flags this deliberately-chosen style.
@@ -10,8 +14,9 @@
 
 use crate::model::{
     CertificateSummary, Diagnosis, DnsObservation, DnsRecordType, DnsRepeatResult, HttpObservation, ProbeResult,
-    ResolverKind, TcpObservation, TlsObservation,
+    ResolverKind, Severity, TcpObservation, TlsObservation,
 };
+use crate::style::Style;
 use crate::{RouteHop, RouteRepeat};
 
 /// Whether the presented host/SNI differs from the destination's literal
@@ -29,7 +34,7 @@ fn presented_name_differs(presented: &str, destination: std::net::SocketAddr) ->
 
 /// Render DNS observations for `host` as human text.
 #[must_use]
-pub fn render_dns(host: &str, observations: &[DnsObservation]) -> String {
+pub fn render_dns(style: &Style, host: &str, observations: &[DnsObservation]) -> String {
     let mut out = String::new();
     out.push_str(&format!("DNS {host}\n"));
 
@@ -51,16 +56,17 @@ pub fn render_dns(host: &str, observations: &[DnsObservation]) -> String {
                 continue;
             };
             out.push_str(&format!("    {:4}: ", rt_label(rt)));
-            out.push_str(&render_dns_one(obs));
+            out.push_str(&render_dns_one(*style, obs));
             out.push('\n');
         }
     }
     out
 }
 
-fn render_dns_one(obs: &DnsObservation) -> String {
+fn render_dns_one(style: Style, obs: &DnsObservation) -> String {
     match (&obs.error, obs.latency_ms) {
-        (Some(err), _) => format!("{} ({})", err.kind, err.message),
+        // A failed lookup is the row that matters in a terminal scan: red.
+        (Some(err), _) => style.fail(format!("{} ({})", err.kind, err.message)),
         (None, Some(ms)) => {
             if obs.records.is_empty() {
                 format!("no records ({ms} ms)")
@@ -114,17 +120,19 @@ const ALL_DNS_RECORD_TYPES: [DnsRecordType; 10] = [
 
 /// Render TCP observations as human text.
 #[must_use]
-pub fn render_tcp(observations: &[TcpObservation]) -> String {
+pub fn render_tcp(style: &Style, observations: &[TcpObservation]) -> String {
     let mut out = String::from("TCP connect\n");
     for obs in observations {
+        // The padded status token is painted as a whole so the fixed 10-wide
+        // column survives coloring; a plain style is byte-identical.
         let status = if obs.success {
-            format!("PASS      {} ms", obs.latency_ms.unwrap_or(0))
+            style.pass(format!("PASS      {} ms", obs.latency_ms.unwrap_or(0)))
         } else {
             let err = obs
                 .failure
                 .as_ref()
                 .map_or_else(|| "failed".to_string(), |e| e.kind.to_string());
-            format!("{err:10}")
+            style.fail(format!("{err:10}"))
         };
         out.push_str(&format!("  {:24} {status}\n", obs.destination));
     }
@@ -133,7 +141,7 @@ pub fn render_tcp(observations: &[TcpObservation]) -> String {
 
 /// Render TLS observations as human text.
 #[must_use]
-pub fn render_tls(observations: &[TlsObservation]) -> String {
+pub fn render_tls(style: &Style, observations: &[TlsObservation]) -> String {
     let mut out = String::from("TLS handshake\n");
     for obs in observations {
         out.push_str(&format!("  {}\n", obs.destination));
@@ -149,7 +157,7 @@ pub fn render_tls(observations: &[TlsObservation]) -> String {
                 .failure
                 .as_ref()
                 .map_or_else(|| "failed".to_string(), |e| format!("{} ({})", e.kind, e.message));
-            out.push_str(&format!("    {err}\n"));
+            out.push_str(&format!("    {}\n", style.fail(err)));
             continue;
         }
         out.push_str(&format!("    TLS: {}\n", obs.version.as_deref().unwrap_or("unknown")));
@@ -160,11 +168,11 @@ pub fn render_tls(observations: &[TlsObservation]) -> String {
             out.push_str(&format!("    ALPN: {alpn}\n"));
         }
         if let Some(cert) = &obs.certificate {
-            out.push_str(&format!("    cert : {}\n", render_cert(cert)));
+            out.push_str(&format!("    cert : {}\n", render_cert(*style, cert)));
             let covers = if cert_covers_hostname(&obs.sni, &cert.sans) {
-                "yes"
+                style.pass("yes")
             } else {
-                "no"
+                style.fail("no")
             };
             out.push_str(&format!("    covers {}: {covers}\n", obs.sni));
         }
@@ -198,8 +206,9 @@ pub fn cert_covers_hostname(sni: &str, sans: &[String]) -> bool {
 /// Render a certificate summary compactly for the terminal, annotated with
 /// the remaining lifetime when it is actionable: `expired`, `expires in N
 /// day(s)` within [`RENDER_CERT_EXPIRY_WINDOW_DAYS`], or nothing for a
-/// comfortably-far expiry.
-fn render_cert(cert: &CertificateSummary) -> String {
+/// comfortably-far expiry. The actionable lifetime annotation is painted —
+/// red when expired, yellow when expiring — so a terminal scan finds it.
+fn render_cert(style: Style, cert: &CertificateSummary) -> String {
     let valid = match (&cert.not_after_utc, &cert.not_before_utc) {
         (Some(a), Some(b)) => format!("valid {}..{}", b.trim_end_matches('Z'), a.trim_end_matches('Z')),
         _ => String::new(),
@@ -213,11 +222,11 @@ fn render_cert(cert: &CertificateSummary) -> String {
         .not_after_utc
         .as_deref()
         .and_then(days_until_from_rfc3339)
-        .map_or_else(String::new, |days| {
+        .map_or_else(String::new, move |days| {
             if days < 0 {
-                " (expired)".to_string()
+                style.fail(" (expired)")
             } else if days <= RENDER_CERT_EXPIRY_WINDOW_DAYS {
-                format!(" (expires in {days} day{})", if days == 1 { "" } else { "s" })
+                style.warn(format!(" (expires in {days} day{})", if days == 1 { "" } else { "s" }))
             } else {
                 String::new()
             }
@@ -284,9 +293,22 @@ pub(crate) const fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     era * 146_097 + doe - 719_468
 }
 
+/// Render an HTTP status code, colored by class: 2xx green, 3xx yellow,
+/// 4xx/5xx red, everything else plain (`0`/unknown stays plain).
+#[must_use]
+fn render_status(style: Style, status: u16) -> String {
+    let text = status.to_string();
+    match status {
+        200..=299 => style.pass(text),
+        300..=399 => style.warn(text),
+        400..=599 => style.fail(text),
+        _ => text,
+    }
+}
+
 /// Render HTTPS/HTTP observations as human text.
 #[must_use]
-pub fn render_http(observations: &[HttpObservation]) -> String {
+pub fn render_http(style: &Style, observations: &[HttpObservation]) -> String {
     let mut out = String::from("HTTPS\n");
     for obs in observations {
         out.push_str(&format!("  {}\n", obs.destination));
@@ -304,17 +326,21 @@ pub fn render_http(observations: &[HttpObservation]) -> String {
             // failing host are distinguishable (a success row already shows
             // its protocol).
             out.push_str(&format!(
-                "    {} {} ({})\n",
-                obs.protocol.as_deref().unwrap_or("HTTP/1.1"),
-                failure.kind,
-                failure.message
+                "    {}\n",
+                style.fail(format!(
+                    "{} {} ({})",
+                    obs.protocol.as_deref().unwrap_or("HTTP/1.1"),
+                    failure.kind,
+                    failure.message
+                ))
             ));
             continue;
         }
         out.push_str(&format!(
             "    {} {}\n",
             obs.protocol.as_deref().unwrap_or("HTTP/1.1"),
-            obs.status.map_or_else(|| "no status".to_string(), |s| s.to_string())
+            obs.status
+                .map_or_else(|| "no status".to_string(), |s| render_status(*style, s))
         ));
         if let Some(location) = &obs.location {
             out.push_str(&format!("    redirect: {location}\n"));
@@ -332,11 +358,11 @@ pub fn render_http(observations: &[HttpObservation]) -> String {
             // inspection — especially under `--insecure`, where chain
             // validation is skipped and coverage is the only mismatch signal.
             if let Some(cert) = &tls.certificate {
-                out.push_str(&format!("    cert : {}\n", render_cert(cert)));
+                out.push_str(&format!("    cert : {}\n", render_cert(*style, cert)));
                 let covers = if cert_covers_hostname(&tls.sni, &cert.sans) {
-                    "yes"
+                    style.pass("yes")
                 } else {
-                    "no"
+                    style.fail("no")
                 };
                 out.push_str(&format!("    covers {}: {covers}\n", tls.sni));
             }
@@ -372,7 +398,7 @@ pub fn render_http(observations: &[HttpObservation]) -> String {
         } else if obs.status.is_some() {
             // Headers were received but the body never completed within the
             // probe bound: the response is visibly truncated/stalled.
-            out.push_str("    body: incomplete (timed out)\n");
+            out.push_str(&format!("    {}\n", style.warn("body: incomplete (timed out)")));
         }
         if let Some(snippet) = &obs.body_snippet {
             out.push_str("    body content: ");
@@ -389,7 +415,7 @@ pub fn render_http(observations: &[HttpObservation]) -> String {
 
 /// Render repeated DNS resolution results (`dns --count N`) as human text.
 #[must_use]
-pub fn render_dns_repeat(host: &str, results: &[DnsRepeatResult]) -> String {
+pub fn render_dns_repeat(style: &Style, host: &str, results: &[DnsRepeatResult]) -> String {
     let mut out = String::from("Repeated DNS ");
     out.push_str(host);
     out.push('\n');
@@ -409,9 +435,19 @@ pub fn render_dns_repeat(host: &str, results: &[DnsRepeatResult]) -> String {
             r.successes,
             r.success_rate() * 100.0
         ));
-        out.push_str(&format!("    failure:  {}\n", r.failures));
+        out.push_str(&format!(
+            "    failure:  {}\n",
+            if r.failures > 0 {
+                style.fail(r.failures.to_string())
+            } else {
+                r.failures.to_string()
+            }
+        ));
         for fc in &r.failure_counts {
-            out.push_str(&format!("      - {}: {}\n", fc.kind, fc.count));
+            out.push_str(&format!(
+                "      - {}\n",
+                style.fail(format!("{}: {}", fc.kind, fc.count))
+            ));
         }
         if let Some(ttl) = r.ttl {
             out.push_str(&format!("    ttl: {ttl} s\n"));
@@ -441,7 +477,7 @@ pub fn to_json<T: serde::Serialize>(value: &T) -> String {
 
 /// Render repeated probe results as human text.
 #[must_use]
-pub fn render_probe(results: &[ProbeResult]) -> String {
+pub fn render_probe(style: &Style, results: &[ProbeResult]) -> String {
     let mut out = String::from("Repeated probes\n");
     for r in results {
         out.push_str(&format!("  {}\n", r.destination));
@@ -450,7 +486,11 @@ pub fn render_probe(results: &[ProbeResult]) -> String {
             r.attempts,
             r.successes,
             format_rate(r.success_rate),
-            r.failures
+            if r.failures > 0 {
+                style.fail(r.failures.to_string())
+            } else {
+                r.failures.to_string()
+            }
         ));
         let lat = &r.latency;
         if lat.count > 0 {
@@ -483,15 +523,26 @@ pub fn render_probe(results: &[ProbeResult]) -> String {
             let dist: Vec<String> = r
                 .failure_counts
                 .iter()
-                .map(|f| format!("{}: {}", f.kind, f.count))
+                .map(|f| style.fail(format!("{}: {}", f.kind, f.count)))
                 .collect();
             out.push_str(&format!("    failures: {}\n", dist.join(", ")));
         }
         if !r.status_counts.is_empty() {
+            // Each observed status is colored by its class like `render_http`
+            // (2xx green, 3xx yellow, 4xx/5xx red); the whole `200x5` token is
+            // painted so the count shares the status's color.
             let dist: Vec<String> = r
                 .status_counts
                 .iter()
-                .map(|s| format!("{}x{}", s.status, s.count))
+                .map(|s| {
+                    let token = format!("{}x{}", s.status, s.count);
+                    match s.status {
+                        200..=299 => (*style).pass(token),
+                        300..=399 => (*style).warn(token),
+                        400..=599 => (*style).fail(token),
+                        _ => token,
+                    }
+                })
                 .collect();
             out.push_str(&format!("    status:   {}\n", dist.join(", ")));
         }
@@ -508,11 +559,11 @@ fn fmt(v: Option<u64>) -> String {
 }
 
 /// Render traceroute hops as human text.
-pub fn render_route(hops: &[RouteHop]) -> String {
+pub fn render_route(style: &Style, hops: &[RouteHop]) -> String {
     let mut out = String::from("Traceroute\n");
     for hop in hops {
         if hop.lost || hop.addr.is_none() {
-            out.push_str(&format!("  {:>2}  *\n", hop.ttl));
+            out.push_str(&format!("  {:>2}  {}\n", hop.ttl, style.fail("*")));
             continue;
         }
         let addr = hop.addr.map_or_else(String::new, |a| a.to_string());
@@ -532,11 +583,17 @@ pub fn render_route(hops: &[RouteHop]) -> String {
 /// Each hop shows how many runs it answered in, a min/p50/max latency bound,
 /// and a `path changed` marker when its router changed between runs.
 #[must_use]
-pub fn render_route_repeat(repeat: &RouteRepeat) -> String {
+pub fn render_route_repeat(style: &Style, repeat: &RouteRepeat) -> String {
     let mut out = format!("Traceroute ({} runs)\n", repeat.runs);
     for hop in &repeat.hops {
         if hop.answered == 0 {
-            out.push_str(&format!("  {:>2}  *  {}/{} (lost)\n", hop.ttl, 0, repeat.runs));
+            out.push_str(&format!(
+                "  {:>2}  {}  {}/{}\n",
+                hop.ttl,
+                style.fail("*"),
+                0,
+                style.fail(format!("{} (lost)", repeat.runs))
+            ));
             continue;
         }
         let addrs = hop.addrs.iter().map(ToString::to_string).collect::<Vec<_>>().join(", ");
@@ -557,7 +614,7 @@ pub fn render_route_repeat(repeat: &RouteRepeat) -> String {
             tail.push(format!("max {ms} ms"));
         }
         if hop.path_changed {
-            tail.push("path changed".into());
+            tail.push(style.warn("path changed"));
         }
         if !tail.is_empty() {
             line.push_str("  ");
@@ -569,15 +626,29 @@ pub fn render_route_repeat(repeat: &RouteRepeat) -> String {
     out
 }
 
+/// Render the severity badge colored by how bad the diagnosis is: `HIGH` red,
+/// `MEDIUM` yellow, `INFO` cyan; `LOW` stays plain.
+#[must_use]
+fn render_severity_badge(style: Style, severity: Severity) -> String {
+    let text = format!("{severity:?}").to_uppercase();
+    match severity {
+        Severity::High => style.fail(text),
+        Severity::Medium => style.warn(text),
+        Severity::Info => style.info(text),
+        Severity::Low => text,
+    }
+}
+
 /// Render diagnoses as human text.
 #[must_use]
-pub fn render_diagnoses(diagnoses: &[Diagnosis]) -> String {
+pub fn render_diagnoses(style: &Style, diagnoses: &[Diagnosis]) -> String {
     let mut out = String::from("Diagnosis\n");
     for d in diagnoses {
-        let severity = format!("{:?}", d.severity).to_uppercase();
         out.push_str(&format!(
             "[{}] {:?} ({:?} confidence)\n",
-            severity, d.category, d.confidence
+            render_severity_badge(*style, d.severity),
+            d.category,
+            d.confidence
         ));
         out.push_str(&format!("    {}\n", d.summary));
         if !d.evidence.is_empty() {
@@ -621,6 +692,7 @@ mod tests {
         Confidence, DiagnosticCategory, DnsRecord, DnsRecordType, Evidence, FailureCount, FailureKind, LatencyStats,
         ProbeError, ResolverKind, Severity,
     };
+    use crate::style::Style;
 
     fn dns_obs(
         resolver: ResolverKind,
@@ -693,7 +765,7 @@ mod tests {
             ),
             dns_obs(ResolverKind::System, DnsRecordType::Aaaa, &[], None, Some("no answer")),
         ];
-        let out = render_dns("example.com", &obs);
+        let out = render_dns(&Style::plain(), "example.com", &obs);
         assert!(out.contains("DNS example.com"));
         assert!(out.contains("system"));
         assert!(out.contains("1.1.1.1"));
@@ -708,8 +780,8 @@ mod tests {
     fn render_dns_handles_empty_and_no_records() {
         // A success with no records and no latency -> "no records".
         let obs = [dns_obs(ResolverKind::System, DnsRecordType::A, &[], None, None)];
-        assert!(render_dns("example.com", &obs).contains("no records"));
-        assert!(render_dns("example.com", &[]).contains("DNS example.com"));
+        assert!(render_dns(&Style::plain(), "example.com", &obs).contains("no records"));
+        assert!(render_dns(&Style::plain(), "example.com", &[]).contains("DNS example.com"));
     }
 
     #[test]
@@ -735,7 +807,7 @@ mod tests {
             latency_ms: Some(4),
             error: None,
         };
-        let out = render_dns("example.com", &[mx, txt]);
+        let out = render_dns(&Style::plain(), "example.com", &[mx, txt]);
         assert!(out.contains("MX"), "MX row missing: {out}");
         assert!(out.contains("10 mail.example.com"), "MX record missing: {out}");
         assert!(out.contains("TXT"), "TXT row missing: {out}");
@@ -774,7 +846,7 @@ mod tests {
             latency_ms: Some(4),
             error: None,
         };
-        let out = render_dns("example.com", &[caa, srv]);
+        let out = render_dns(&Style::plain(), "example.com", &[caa, srv]);
         assert!(out.contains("CAA"), "CAA row missing: {out}");
         assert!(out.contains("0 issue letsencrypt.org"), "CAA record missing: {out}");
         assert!(out.contains("SRV"), "SRV row missing: {out}");
@@ -809,7 +881,7 @@ mod tests {
                 }),
             },
         ];
-        let out = render_tcp(&obs);
+        let out = render_tcp(&Style::plain(), &obs);
         assert!(out.contains("TCP connect"));
         assert!(out.contains("PASS"));
         assert!(out.contains("12 ms"));
@@ -822,12 +894,12 @@ mod tests {
             latency_ms: None,
             failure: None,
         }];
-        assert!(render_tcp(&bare).contains("failed"));
+        assert!(render_tcp(&Style::plain(), &bare).contains("failed"));
     }
 
     #[test]
     fn render_tls_covers_success_and_failure() {
-        let out = render_tls(&[tls(true), tls(false)]);
+        let out = render_tls(&Style::plain(), &[tls(true), tls(false)]);
         assert!(out.contains("TLS handshake"));
         assert!(out.contains("TLSv1.3"));
         assert!(out.contains("cipher: TLS_AES_128_GCM_SHA256"));
@@ -837,13 +909,16 @@ mod tests {
         assert!(out.contains("issued by"));
         assert!(out.contains("handshake failed"));
         // Certificate without validity range degrades to no parenthetical.
-        let no_validity = render_cert(&CertificateSummary {
-            subject: "CN=x".into(),
-            issuer: "CN=y".into(),
-            not_before_utc: None,
-            not_after_utc: None,
-            sans: Vec::new(),
-        });
+        let no_validity = render_cert(
+            Style::plain(),
+            &CertificateSummary {
+                subject: "CN=x".into(),
+                issuer: "CN=y".into(),
+                not_before_utc: None,
+                not_after_utc: None,
+                sans: Vec::new(),
+            },
+        );
         assert_eq!(no_validity, "CN=x issued by CN=y");
         // Success without latency reports 0 ms but does not panic.
         assert!(out.contains("latency: 42 ms"));
@@ -920,7 +995,7 @@ mod tests {
             latency_ms: None,
             failure: None,
         };
-        let out = render_http(&[ok, err, no_status, truncated]);
+        let out = render_http(&Style::plain(), &[ok, err, no_status, truncated]);
         assert!(out.contains("example.com"));
         assert!(out.contains("HTTP/2"));
         assert!(out.contains("200"));
@@ -968,7 +1043,7 @@ mod tests {
             latency_ms: Some(10),
             failure: None,
         };
-        let out = render_http(&[ok]);
+        let out = render_http(&Style::plain(), &[ok]);
         assert!(
             out.contains("body content: ok"),
             "small body snippet must be visible: {out}"
@@ -990,7 +1065,7 @@ mod tests {
             latency_ms: Some(10),
             failure: None,
         };
-        let out = render_http(&[truncated]);
+        let out = render_http(&Style::plain(), &[truncated]);
         assert!(
             out.contains("body content: xxxx…"),
             "truncated snippet with … must be visible: {out}"
@@ -1028,7 +1103,7 @@ mod tests {
             failure_counts: vec![],
             status_counts: Vec::new(),
         };
-        let out = render_probe(&[result, no_latency]);
+        let out = render_probe(&Style::plain(), &[result, no_latency]);
         assert!(out.contains("Repeated probes"));
         assert!(out.contains("attempts: 6"));
         assert!(out.contains("66.7%"));
@@ -1059,7 +1134,7 @@ mod tests {
             }],
             ttl: Some(300),
         };
-        let out = render_dns_repeat("host.example", &[ok]);
+        let out = render_dns_repeat(&Style::plain(), "host.example", &[ok]);
         assert!(out.contains("Repeated DNS host.example"));
         assert!(out.contains("9.9.9.9:53 A"));
         assert!(out.contains("attempts: 4"));
@@ -1103,7 +1178,7 @@ mod tests {
                 lost: false,
             },
         ];
-        let out = render_route(&hops);
+        let out = render_route(&Style::plain(), &hops);
         assert!(out.contains("Traceroute"));
         assert!(out.contains("r1.example.com (192.0.2.1)"));
         assert!(out.contains("3 ms"));
@@ -1148,7 +1223,7 @@ mod tests {
                 },
             ],
         };
-        let out = render_route_repeat(&repeat);
+        let out = render_route_repeat(&Style::plain(), &repeat);
         assert!(out.contains("Traceroute (2 runs)"), "header missing: {out}");
         assert!(out.contains("r1.example.com (192.0.2.1)"), "host label missing: {out}");
         assert!(out.contains("2/2 answered"), "answered rate missing: {out}");
@@ -1180,7 +1255,7 @@ mod tests {
             }],
             possible_causes: vec!["server down".into(), "firewall".into()],
         };
-        let out = render_diagnoses(&[healthy, anomaly]);
+        let out = render_diagnoses(&Style::plain(), &[healthy, anomaly]);
         assert!(out.contains("Diagnosis"));
         assert!(out.contains("[INFO] Healthy (High confidence)"));
         assert!(out.contains("[HIGH] TotalConnectivityLoss (Medium confidence)"));
@@ -1255,14 +1330,14 @@ mod tests {
             sans: Vec::new(),
         };
         // Far future: no lifetime annotation.
-        let far = render_cert(&cert(400));
+        let far = render_cert(Style::plain(), &cert(400));
         assert!(!far.contains("expires in"), "far expiry has no annotation: {far}");
         assert!(!far.contains("expired"), "far expiry has no annotation: {far}");
         // Near expiry: annotated.
-        let near = render_cert(&cert(5));
+        let near = render_cert(Style::plain(), &cert(5));
         assert!(near.contains("expires in 5 days"), "near expiry annotated: {near}");
         // Already expired: annotated.
-        let past = render_cert(&cert(-3));
+        let past = render_cert(Style::plain(), &cert(-3));
         assert!(past.contains("expired"), "expired annotated: {past}");
     }
 
@@ -1275,7 +1350,7 @@ mod tests {
             not_after_utc: None,
             sans: vec!["example.com".into(), "127.0.0.1".into()],
         };
-        let out = render_cert(&with_sans);
+        let out = render_cert(Style::plain(), &with_sans);
         assert!(
             out.contains("; sans: example.com, 127.0.0.1"),
             "SANs should be rendered: {out}"
@@ -1289,7 +1364,7 @@ mod tests {
             not_after_utc: None,
             sans: Vec::new(),
         };
-        assert_eq!(render_cert(&none), "CN=x issued by CN=y");
+        assert_eq!(render_cert(Style::plain(), &none), "CN=x issued by CN=y");
     }
 
     #[test]
@@ -1333,11 +1408,11 @@ mod tests {
             latency_ms: Some(7),
             failure: None,
         };
-        assert!(render_tls(std::slice::from_ref(&covered)).contains("covers example.com: yes"));
+        assert!(render_tls(&Style::plain(), std::slice::from_ref(&covered)).contains("covers example.com: yes"));
 
         let mut mismatch = covered;
         mismatch.sni = "attacker.example".into();
-        assert!(render_tls(std::slice::from_ref(&mismatch)).contains("covers attacker.example: no"));
+        assert!(render_tls(&Style::plain(), std::slice::from_ref(&mismatch)).contains("covers attacker.example: no"));
     }
 
     /// RFC 3339 UTC string for the civil date `now + offset` days from today,
@@ -1350,5 +1425,142 @@ mod tests {
             / 86_400;
         let (y, m, d) = civil_from_days(i64::try_from(now_days).expect("days fit i64") + offset);
         format!("{y:04}-{m:02}-{d:02}T00:00:00Z")
+    }
+
+    /// A colored [`Style`] for tests (bypasses the TTY/env gate).
+    fn colored() -> Style {
+        Style::colored_for_tests()
+    }
+
+    #[test]
+    fn colored_renderers_inject_ansi_for_verdicts_and_status_classes() {
+        let colored = colored();
+        let plain = Style::plain();
+
+        // TCP: PASS green, refused/timeout red; plain stays byte-identical.
+        let tcp = [TcpObservation {
+            destination: "1.1.1.1:443".parse().unwrap(),
+            success: true,
+            latency_ms: Some(12),
+            failure: None,
+        }];
+        let out = render_tcp(&colored, &tcp);
+        assert!(out.contains("\x1b[32mPASS"), "PASS should be green: {out:?}");
+        // The plain style is byte-identical to the historical text: no escape
+        // codes anywhere, and the PASS line keeps its exact historical shape.
+        let plain_out = render_tcp(&plain, &tcp);
+        assert!(
+            !plain_out.contains('\u{1b}'),
+            "plain must have no escapes: {plain_out:?}"
+        );
+        assert!(plain_out.contains("PASS      12 ms"), "PASS line shape: {plain_out:?}");
+        let fails = [TcpObservation {
+            destination: "2.2.2.2:443".parse().unwrap(),
+            success: false,
+            latency_ms: None,
+            failure: Some(ProbeError {
+                kind: FailureKind::ConnectionRefused,
+                message: "refused".into(),
+            }),
+        }];
+        assert!(render_tcp(&colored, &fails).contains("\x1b[31m"));
+
+        // HTTP: 2xx green, 3xx yellow, 5xx red.
+        assert_eq!(render_status(colored, 200), "\x1b[32m200\x1b[0m");
+        assert_eq!(render_status(colored, 302), "\x1b[33m302\x1b[0m");
+        assert_eq!(render_status(colored, 503), "\x1b[31m503\x1b[0m");
+        assert_eq!(render_status(plain, 200), "200");
+
+        // Diagnosis badges: HIGH red, MEDIUM yellow, INFO cyan, LOW plain.
+        assert_eq!(render_severity_badge(colored, Severity::High), "\x1b[31mHIGH\x1b[0m");
+        assert_eq!(
+            render_severity_badge(colored, Severity::Medium),
+            "\x1b[33mMEDIUM\x1b[0m"
+        );
+        assert_eq!(render_severity_badge(colored, Severity::Info), "\x1b[36mINFO\x1b[0m");
+        assert_eq!(render_severity_badge(colored, Severity::Low), "LOW");
+    }
+
+    #[test]
+    fn colored_marks_route_losses_expiry_and_cert_coverage() {
+        let colored = colored();
+
+        // A lost route hop's `*` is red.
+        let hops = [RouteHop {
+            ttl: 2,
+            addr: None,
+            hostname: None,
+            rtt_ms: None,
+            lost: true,
+        }];
+        assert!(render_route(&colored, &hops).contains("\x1b[31m*\x1b[0m"));
+
+        // Repeat aggregation: `(lost)` red, `path changed` yellow.
+        let repeat = RouteRepeat {
+            runs: 2,
+            hops: vec![
+                crate::RouteHopStats {
+                    ttl: 1,
+                    answered: 0,
+                    addrs: Vec::new(),
+                    hostname: None,
+                    rtt: LatencyStats::default().summarize(),
+                    path_changed: false,
+                },
+                crate::RouteHopStats {
+                    ttl: 2,
+                    answered: 2,
+                    addrs: vec!["192.0.2.2".parse().unwrap()],
+                    hostname: None,
+                    rtt: LatencyStats::default().summarize(),
+                    path_changed: true,
+                },
+            ],
+        };
+        let out = render_route_repeat(&colored, &repeat);
+        assert!(out.contains("\x1b[31m*\x1b[0m"), "lost-hop star red: {out:?}");
+        assert!(out.contains("\x1b[31m2 (lost)\x1b[0m"), "lost marker red: {out:?}");
+        assert!(
+            out.contains("\x1b[33mpath changed\x1b[0m"),
+            "path change yellow: {out:?}"
+        );
+
+        // Certificate lifetime: expired red, expiring yellow.
+        let expired = CertificateSummary {
+            subject: "CN=x".into(),
+            issuer: "CN=y".into(),
+            not_before_utc: None,
+            not_after_utc: Some(days_out_rfc3339(-3)),
+            sans: Vec::new(),
+        };
+        assert!(render_cert(colored, &expired).contains("\x1b[31m (expired)\x1b[0m"));
+        let near = CertificateSummary {
+            not_after_utc: Some(days_out_rfc3339(5)),
+            ..expired
+        };
+        assert!(render_cert(colored, &near).contains("\x1b[33m (expires in 5 days)\x1b[0m"));
+
+        // `covers <host>: no` is red in TLS and HTTPS reports.
+        let tls_no = TlsObservation {
+            destination: "1.1.1.1:443".parse().unwrap(),
+            sni: "attacker.example".into(),
+            success: true,
+            version: Some("TLSv1.3".into()),
+            cipher: Some("x".into()),
+            alpn: None,
+            certificate: Some(CertificateSummary {
+                subject: "CN=example.com".into(),
+                issuer: "CN=y".into(),
+                not_before_utc: None,
+                not_after_utc: None,
+                sans: vec!["example.com".into()],
+            }),
+            latency_ms: Some(1),
+            failure: None,
+        };
+        assert!(render_tls(&colored, std::slice::from_ref(&tls_no)).contains("\x1b[31mno\x1b[0m"));
+        assert!(
+            render_tls(&colored, std::slice::from_ref(&tls_no)).contains("covers attacker.example: \x1b[31mno\x1b[0m")
+        );
     }
 }

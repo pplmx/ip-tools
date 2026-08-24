@@ -4,6 +4,7 @@ use super::{resolve_for_tcp, DEFAULT_PORT};
 use clap::ArgMatches;
 use ip_tools::report::{render_route, render_route_repeat, to_json};
 use ip_tools::route as ip_route;
+use ip_tools::style::Style;
 use ip_tools::target::Target;
 use ip_tools::RouteHop;
 use ip_tools::RouteRepeat;
@@ -16,7 +17,7 @@ use std::time::Duration;
 /// traceroute off the async runtime, then reverse-resolves router names.
 /// With `--count N` (>1) the trace is repeated and the per-hop observations
 /// are aggregated across runs (see [`run_route_repeat`]).
-pub(super) async fn run_route(sub_m: &ArgMatches) -> ExitCode {
+pub(super) async fn run_route(sub_m: &ArgMatches, style: Style) -> ExitCode {
     let json = sub_m.get_flag("json");
     let csv = sub_m.get_flag("csv");
     let count = *sub_m.get_one::<usize>("count").expect("count has default");
@@ -54,7 +55,7 @@ pub(super) async fn run_route(sub_m: &ArgMatches) -> ExitCode {
     };
 
     if count > 1 {
-        return run_route_repeat(sub_m, dest_ip, cfg, count, json, csv).await;
+        return run_route_repeat(sub_m, dest_ip, cfg, count, json, csv, style).await;
     }
 
     let hops = match tokio::task::spawn_blocking(move || ip_route::traceroute(dest_ip, &cfg)).await {
@@ -101,7 +102,7 @@ pub(super) async fn run_route(sub_m: &ArgMatches) -> ExitCode {
     } else if json {
         println!("{}", to_json(&hops));
     } else {
-        print!("{}", render_route(&hops));
+        print!("{}", render_route(&style, &hops));
     }
     if lost > 0 {
         eprintln!("Error: {lost} route hop(s) lost (--strict)");
@@ -122,6 +123,7 @@ async fn run_route_repeat(
     count: usize,
     json: bool,
     csv: bool,
+    style: Style,
 ) -> ExitCode {
     let mut repeat = match tokio::task::spawn_blocking(move || ip_route::traceroute_repeat(dest_ip, cfg, count)).await {
         Ok(Ok(r)) => r,
@@ -153,7 +155,7 @@ async fn run_route_repeat(
     } else if json {
         println!("{}", to_json(&repeat));
     } else {
-        print!("{}", render_route_repeat(&repeat));
+        print!("{}", render_route_repeat(&style, &repeat));
     }
     if lost > 0 {
         eprintln!("Error: {lost} route hop(s) entirely lost across {count} runs (--strict)");

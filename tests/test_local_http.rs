@@ -47,7 +47,8 @@ async fn tls_probe_handshakes_local_fixture() {
     );
     // A probe presented as `localhost` gets an end-to-end coverage verdict.
     assert!(
-        ip_tools::report::render_tls(std::slice::from_ref(&obs)).contains("covers localhost: yes"),
+        ip_tools::report::render_tls(&ip_tools::style::Style::plain(), std::slice::from_ref(&obs))
+            .contains("covers localhost: yes"),
         "fixture cert should be reported as covering the presented SNI"
     );
 }

@@ -61,6 +61,29 @@ Running the whole suite is what CI does (`cargo test --all-features`).
 
 ## Usage
 
+### Human output and color
+
+Every command renders a human-readable report by default. When stdout is a
+terminal, the report is colored so a quick scan can pick out the verdicts —
+green `PASS`/2xx/`covers: yes`, red failures and 4xx/5xx/`HIGH` diagnoses,
+yellow warnings (3xx, near-expiry certs, `path changed`), cyan `INFO` hints.
+
+Color is **strictly gated on the terminal**, so piping or redirecting never
+carries escape codes and other formats stay clean:
+
+```shell
+ip-tools tcp example.com                  # colored on a TTY
+ip-tools tcp example.com | grep PASS      # piping: plain text, no escapes
+ip-tools tcp example.com --json           # JSON: never colored
+ip-tools tcp --csv example.com            # CSV: never colored
+ip-tools --no-color tcp example.com       # force plain even on a TTY
+NO_COLOR=1 ip-tools tcp example.com       # standard env-var escape (no-color.org)
+```
+
+`--no-color` is a global flag and `NO_COLOR` honours the
+[no-color.org](https://no-color.org) convention; either one disables color,
+which also makes the bytes identical to what older versions printed.
+
 ### DNS diagnostics
 
 Resolve a hostname via the system resolver and any custom servers:

@@ -13,6 +13,7 @@ use ip_tools::model::{
 };
 use ip_tools::probe as ip_probe;
 use ip_tools::report::{render_diagnoses, render_dns, render_http, render_probe, render_tcp, render_tls, to_json};
+use ip_tools::style::Style;
 use ip_tools::target::Target;
 use ip_tools::tcp as ip_tcp;
 use ip_tools::tls as ip_tls;
@@ -59,7 +60,7 @@ impl FamilyScope {
 /// pipeline per host sequentially. Single-target JSON stays the existing
 /// object; >1 target emits a JSON array; `--strict` aggregates across hosts.
 #[allow(clippy::too_many_lines)] // orchestration: parse, loop hosts, render
-pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
+pub(super) async fn run_diagnose(sub_m: &ArgMatches, style: Style) -> ExitCode {
     let json = sub_m.get_flag("json");
     let csv = sub_m.get_flag("csv");
     let insecure = sub_m.get_flag("insecure");
@@ -201,7 +202,7 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches) -> ExitCode {
         }
     } else {
         for report in &reports {
-            print!("{}", report.render_human());
+            print!("{}", report.render_human(style));
         }
     }
 
@@ -466,13 +467,13 @@ impl DiagnoseReport {
     /// Render the full evidence stack (DNS, TCP, TLS, HTTP/1.1+2+3, repeated
     /// probes) and the verdicts as human text, so multi-target output is the
     /// concatenation of each host's report.
-    fn render_human(&self) -> String {
-        let mut out = render_dns(&self.target, &self.dns);
-        out.push_str(&render_tcp(&self.tcp));
-        out.push_str(&render_tls(&self.tls));
-        out.push_str(&render_http(&self.http));
-        out.push_str(&render_probe(&self.probes));
-        out.push_str(&render_diagnoses(&self.diagnoses));
+    fn render_human(&self, style: Style) -> String {
+        let mut out = render_dns(&style, &self.target, &self.dns);
+        out.push_str(&render_tcp(&style, &self.tcp));
+        out.push_str(&render_tls(&style, &self.tls));
+        out.push_str(&render_http(&style, &self.http));
+        out.push_str(&render_probe(&style, &self.probes));
+        out.push_str(&render_diagnoses(&style, &self.diagnoses));
         out
     }
 }

@@ -143,3 +143,39 @@ fn test_dns_bracketed_ipv6_literal_reports_the_address_itself() {
         .success()
         .stdout(contains("::1 (0 ms)"));
 }
+
+#[test]
+fn test_piped_human_output_has_no_ansi_escapes() {
+    // assert_cmd pipes stdout, so this exercises the non-TTY gate: the human
+    // renderer must color only for a terminal and never leak escapes into a
+    // pipe (a failure token like "connection refused" would be red on a TTY).
+    let mut cmd = Command::cargo_bin("ip-tools").unwrap();
+    let output = cmd.args(["tcp", "127.0.0.1:1"]).assert().success();
+    let stdout = String::from_utf8_lossy(&output.get_output().stdout);
+    assert!(
+        !stdout.contains('\u{1b}'),
+        "piped human output must be plain (no ANSI escapes): {stdout:?}"
+    );
+    assert!(
+        stdout.contains("connection refused"),
+        "refused row expected: {stdout:?}"
+    );
+}
+
+#[test]
+fn test_json_and_csv_output_never_carry_ansi_escapes() {
+    // JSON and CSV go through their own serializers, which must never be
+    // touched by the color gate even when a failure is being reported.
+    for (format, args) in [
+        ("--json", vec!["tcp", "--json", "127.0.0.1:1"]),
+        ("--csv", vec!["probe", "--csv", "--count", "1", "127.0.0.1:1"]),
+    ] {
+        let mut cmd = Command::cargo_bin("ip-tools").unwrap();
+        let output = cmd.args(&args).assert().success();
+        let stdout = String::from_utf8_lossy(&output.get_output().stdout);
+        assert!(
+            !stdout.contains('\u{1b}'),
+            "{format} output must never carry ANSI escapes: {stdout:?}"
+        );
+    }
+}

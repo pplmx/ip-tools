@@ -4,16 +4,18 @@ use super::run_probe_flow;
 use clap::ArgMatches;
 use ip_tools::model::TlsObservation;
 use ip_tools::report::{cert_covers_hostname, render_tls};
+use ip_tools::style::Style;
 use ip_tools::tls as ip_tls;
 use std::process::ExitCode;
 
 /// Resolve a target's addresses and perform a TLS handshake (with the target
 /// hostname as SNI) to each in parallel.
-pub(super) async fn run_tls(sub_m: &ArgMatches) -> ExitCode {
+pub(super) async fn run_tls(sub_m: &ArgMatches, style: Style) -> ExitCode {
     let insecure = sub_m.get_flag("insecure");
     let protocol = super::parse_tls_protocol(sub_m);
     run_probe_flow(
         sub_m,
+        style,
         render_tls,
         |obs: &TlsObservation| obs.destination,
         |obs: &TlsObservation| !obs.success,

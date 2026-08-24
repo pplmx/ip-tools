@@ -18,6 +18,7 @@ use clap::{command, crate_authors, Arg, ArgAction, ArgMatches, Command};
 use ip_tools::dns::DnsClient;
 use ip_tools::model::{DnsRecord, DnsRecordType};
 use ip_tools::report::to_json;
+use ip_tools::style::Style;
 use ip_tools::target::Target;
 use ip_tools::{get_local_ip, list_net_ifs};
 use serde::Serialize;
@@ -49,6 +50,13 @@ fn parser() -> ArgMatches {
                 .global(true)
                 .action(ArgAction::SetTrue)
                 .help("output in JSON format"),
+        )
+        .arg(
+            Arg::new("no-color")
+                .long("no-color")
+                .global(true)
+                .action(ArgAction::SetTrue)
+                .help("disable colored human output (color is on only for a TTY unless NO_COLOR is set)"),
         )
         .subcommand(Command::new("get").about("get the local IP address"))
         .subcommand(Command::new("list").about("list all network interfaces"))
@@ -533,11 +541,15 @@ fn positional_target(help: &'static str) -> Arg {
 }
 
 fn handler(app_m: &ArgMatches) -> ExitCode {
+    // Decide once whether the human output is colored: only when stdout is a
+    // terminal, with `NO_COLOR` unset and without the `--no-color` flag (see
+    // [`Style::auto`]). `get`/`list` print bare values and stay uncolored.
+    let style = Style::auto(app_m.get_flag("no-color"));
     match app_m.subcommand() {
         Some(("get", sub_m)) => handle_get(sub_m),
         Some(("list", sub_m)) => handle_list(sub_m),
         Some((name @ ("dns" | "tcp" | "tls" | "http" | "http2" | "http3" | "probe" | "route" | "diagnose"), sub_m)) => {
-            run_tokio(name, sub_m)
+            run_tokio(name, sub_m, style)
         }
         _ => {
             eprintln!("Error: unknown subcommand");
@@ -547,7 +559,7 @@ fn handler(app_m: &ArgMatches) -> ExitCode {
 }
 
 /// Build a Tokio runtime and run the given async subcommand handler.
-fn run_tokio(name: &str, sub_m: &ArgMatches) -> ExitCode {
+fn run_tokio(name: &str, sub_m: &ArgMatches, style: Style) -> ExitCode {
     let rt = match tokio::runtime::Builder::new_multi_thread().enable_all().build() {
         Ok(rt) => rt,
         Err(e) => {
@@ -556,15 +568,15 @@ fn run_tokio(name: &str, sub_m: &ArgMatches) -> ExitCode {
         }
     };
     match name {
-        "dns" => rt.block_on(dns::run_dns(sub_m)),
-        "tcp" => rt.block_on(tcp::run_tcp(sub_m)),
-        "tls" => rt.block_on(tls::run_tls(sub_m)),
-        "http" => rt.block_on(http::run_http(sub_m)),
-        "http2" => rt.block_on(http2::run_http2(sub_m)),
-        "http3" => rt.block_on(http3::run_http3(sub_m)),
-        "probe" => rt.block_on(probe::run_probe(sub_m)),
-        "route" => rt.block_on(route::run_route(sub_m)),
-        "diagnose" => rt.block_on(diagnose::run_diagnose(sub_m)),
+        "dns" => rt.block_on(dns::run_dns(sub_m, style)),
+        "tcp" => rt.block_on(tcp::run_tcp(sub_m, style)),
+        "tls" => rt.block_on(tls::run_tls(sub_m, style)),
+        "http" => rt.block_on(http::run_http(sub_m, style)),
+        "http2" => rt.block_on(http2::run_http2(sub_m, style)),
+        "http3" => rt.block_on(http3::run_http3(sub_m, style)),
+        "probe" => rt.block_on(probe::run_probe(sub_m, style)),
+        "route" => rt.block_on(route::run_route(sub_m, style)),
+        "diagnose" => rt.block_on(diagnose::run_diagnose(sub_m, style)),
         _ => unreachable!(),
     }
 }
@@ -584,7 +596,8 @@ type CsvRenderer<O> = fn(&[(String, Vec<O>)]) -> String;
 #[allow(clippy::too_many_lines)] // orchestration: resolve, probe, render (json/csv/human)
 pub async fn run_probe_flow<O, Fut>(
     sub_m: &ArgMatches,
-    render: fn(&[O]) -> String,
+    style: Style,
+    render: fn(&Style, &[O]) -> String,
     sort_key: fn(&O) -> SocketAddr,
     failed: fn(&O) -> bool,
     csv_render: Option<CsvRenderer<O>>,
@@ -736,7 +749,7 @@ where
                 use std::fmt::Write as _;
                 let _ = writeln!(text, "{host}:");
             }
-            text.push_str(&render(results));
+            text.push_str(&render(&style, results));
         }
         print!("{text}");
     }

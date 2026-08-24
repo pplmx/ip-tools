@@ -434,15 +434,15 @@ pub async fn ip_tools::probe::tls_repeat(core::net::socket_addr::SocketAddr, &st
 pub async fn ip_tools::probe::tls_repeat_with_version(core::net::socket_addr::SocketAddr, &str, usize, core::time::Duration, bool, ip_tools::tls::TlsProtocol) -> ip_tools::model::probe::ProbeResult
 pub mod ip_tools::report
 pub fn ip_tools::report::cert_covers_hostname(&str, &[alloc::string::String]) -> bool
-pub fn ip_tools::report::render_diagnoses(&[ip_tools::model::diagnosis::Diagnosis]) -> alloc::string::String
-pub fn ip_tools::report::render_dns(&str, &[ip_tools::model::dns::DnsObservation]) -> alloc::string::String
-pub fn ip_tools::report::render_dns_repeat(&str, &[ip_tools::model::dns::DnsRepeatResult]) -> alloc::string::String
-pub fn ip_tools::report::render_http(&[ip_tools::model::http::HttpObservation]) -> alloc::string::String
-pub fn ip_tools::report::render_probe(&[ip_tools::model::probe::ProbeResult]) -> alloc::string::String
-pub fn ip_tools::report::render_route(&[ip_tools::route::RouteHop]) -> alloc::string::String
-pub fn ip_tools::report::render_route_repeat(&ip_tools::route::RouteRepeat) -> alloc::string::String
-pub fn ip_tools::report::render_tcp(&[ip_tools::model::tcp::TcpObservation]) -> alloc::string::String
-pub fn ip_tools::report::render_tls(&[ip_tools::model::tls::TlsObservation]) -> alloc::string::String
+pub fn ip_tools::report::render_diagnoses(&ip_tools::style::Style, &[ip_tools::model::diagnosis::Diagnosis]) -> alloc::string::String
+pub fn ip_tools::report::render_dns(&ip_tools::style::Style, &str, &[ip_tools::model::dns::DnsObservation]) -> alloc::string::String
+pub fn ip_tools::report::render_dns_repeat(&ip_tools::style::Style, &str, &[ip_tools::model::dns::DnsRepeatResult]) -> alloc::string::String
+pub fn ip_tools::report::render_http(&ip_tools::style::Style, &[ip_tools::model::http::HttpObservation]) -> alloc::string::String
+pub fn ip_tools::report::render_probe(&ip_tools::style::Style, &[ip_tools::model::probe::ProbeResult]) -> alloc::string::String
+pub fn ip_tools::report::render_route(&ip_tools::style::Style, &[ip_tools::route::RouteHop]) -> alloc::string::String
+pub fn ip_tools::report::render_route_repeat(&ip_tools::style::Style, &ip_tools::route::RouteRepeat) -> alloc::string::String
+pub fn ip_tools::report::render_tcp(&ip_tools::style::Style, &[ip_tools::model::tcp::TcpObservation]) -> alloc::string::String
+pub fn ip_tools::report::render_tls(&ip_tools::style::Style, &[ip_tools::model::tls::TlsObservation]) -> alloc::string::String
 pub fn ip_tools::report::to_json<T: serde_core::ser::Serialize>(&T) -> alloc::string::String
 pub mod ip_tools::route
 pub struct ip_tools::route::RouteHop
@@ -470,6 +470,16 @@ pub fn ip_tools::route::TracerouteConfig::default() -> Self
 pub fn ip_tools::route::aggregate_runs(&[alloc::vec::Vec<ip_tools::route::RouteHop>]) -> ip_tools::route::RouteRepeat
 pub fn ip_tools::route::traceroute(core::net::ip_addr::IpAddr, &ip_tools::route::TracerouteConfig) -> core::result::Result<alloc::vec::Vec<ip_tools::route::RouteHop>, alloc::string::String>
 pub fn ip_tools::route::traceroute_repeat(core::net::ip_addr::IpAddr, ip_tools::route::TracerouteConfig, usize) -> core::result::Result<ip_tools::route::RouteRepeat, alloc::string::String>
+pub mod ip_tools::style
+pub struct ip_tools::style::Style
+impl ip_tools::style::Style
+pub fn ip_tools::style::Style::auto(bool) -> Self
+pub const fn ip_tools::style::Style::colored(self) -> bool
+pub fn ip_tools::style::Style::fail(self, impl core::convert::AsRef<str>) -> alloc::string::String
+pub fn ip_tools::style::Style::info(self, impl core::convert::AsRef<str>) -> alloc::string::String
+pub fn ip_tools::style::Style::pass(self, impl core::convert::AsRef<str>) -> alloc::string::String
+pub const fn ip_tools::style::Style::plain() -> Self
+pub fn ip_tools::style::Style::warn(self, impl core::convert::AsRef<str>) -> alloc::string::String
 pub mod ip_tools::target
 pub struct ip_tools::target::Target
 pub ip_tools::target::Target::host: alloc::string::String
