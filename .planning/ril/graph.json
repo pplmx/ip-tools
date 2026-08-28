@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 11,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-28T03:49:20+00:00",
+  "updated_at": "2026-08-28T05:28:47+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -41,7 +41,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 1,
+      "touched_round": 11,
       "desc": "HTTPS/HTTP1.1 single request per address over TLS, status/redirect/body-size"
     },
     "COMP-http2": {
@@ -81,7 +81,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 5,
+      "touched_round": 11,
       "desc": "Linux UDP/ICMP traceroute, root/CAP_NET_RAW gated, IPv4-only"
     },
     "COMP-diagnose": {
@@ -91,7 +91,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 4,
+      "touched_round": 11,
       "desc": "Deterministic evidence-based diagnostic engine (layer.rs/connectivity.rs/filtering.rs/dns.rs), no network I/O"
     },
     "COMP-cli": {
@@ -101,7 +101,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 7,
+      "touched_round": 11,
       "desc": "clap arg tree + dispatch; --strict/--json/--timeout/--concurrency/--server/--insecure/--method/--count flags"
     },
     "COMP-model": {
@@ -131,7 +131,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 0,
+      "touched_round": 11,
       "desc": "public library API: async probe functions with explicit timeouts, bounded concurrency (parallel_map)"
     },
     "DEC-001": {
@@ -3998,6 +3998,169 @@
       "touched_round": 11,
       "commit": "c9c221b",
       "desc": "Probe expectation-gate polish: empty-distribution violation wording now reads '(every attempt failed)' matching the report, and README documents probe --expect-status/--expect-rate plus the corrected probe --csv columns"
+    },
+    "CHG-073": {
+      "id": "CHG-073",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-28T05:24:30+00:00",
+      "updated_at": "2026-08-28T05:24:30+00:00",
+      "touched_round": 11,
+      "commit": "0171b74",
+      "desc": "Diagnosis-engine verdict correctness: filtering no longer double-counts one flaky address as two signals; 304 Not Modified is no longer a 'redirect'; intermittent verdicts dedup per destination; family verdicts mean whole-family (any(), not all()) in both the TCP engine and HTTP cross-family consistency"
+    },
+    "CHG-074": {
+      "id": "CHG-074",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-28T05:24:31+00:00",
+      "updated_at": "2026-08-28T05:24:31+00:00",
+      "touched_round": 11,
+      "commit": "e9bf41a",
+      "desc": "HTTP-family probe path: --max-body-bytes is a strict bound (frame truncated to remaining budget; 0-byte cap reads nothing) and HTTP/3 TTFB now times request-sent to response-headers instead of request enqueue"
+    },
+    "CHG-075": {
+      "id": "CHG-075",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-28T05:24:31+00:00",
+      "updated_at": "2026-08-28T05:24:31+00:00",
+      "touched_round": 11,
+      "commit": "03ec5ff",
+      "desc": "route/CLI: traces stop probing a hop once it answers; route --timeout defaults to 1s (library default) instead of the shared 5s; route --count 0 fails fast; sweep progress completion line pads past the longest label"
+    },
+    "CHG-076": {
+      "id": "CHG-076",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-28T05:24:31+00:00",
+      "updated_at": "2026-08-28T05:24:31+00:00",
+      "touched_round": 11,
+      "commit": "f1525a2",
+      "desc": "Human report sanitizes server-controlled body control chars (ANSI spoofing/row-splitting); DoH/DoT wire parser reports TTL of the wanted record type, not a leading CNAME's"
+    },
+    "CHG-077": {
+      "id": "CHG-077",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-28T05:24:31+00:00",
+      "updated_at": "2026-08-28T05:24:31+00:00",
+      "touched_round": 11,
+      "commit": "81eae3d",
+      "desc": "CLI fail-fast input validation: --header name must be a valid HTTP token and value control-char-free (inline/file/stdin); unbracketed IPv6-with-port targets get a bracket hint"
+    },
+    "ISS-073": {
+      "id": "ISS-073",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-28T05:25:17+00:00",
+      "updated_at": "2026-08-28T05:28:47+00:00",
+      "touched_round": 11,
+      "desc": "Diagnosis engine verdicts inflated/misattributed: one flaky address fed both the address-specific and repeat-flapping filtering signals; 304/305/306 counted as redirects; a family with any success could be reported as the whole family failing (all() semantics in connectivity.rs and http_consistency_rules); tcp_repeat + http_repeat produced duplicate Intermittent verdicts per destination"
+    },
+    "ISS-074": {
+      "id": "ISS-074",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-28T05:25:17+00:00",
+      "updated_at": "2026-08-28T05:28:47+00:00",
+      "touched_round": 11,
+      "desc": "HTTP probe path: --max-body-bytes overshot by up to one full data frame (and a 0 cap still read a frame); HTTP/3 ttfb_ms measured request-enqueue time and always read ~0 instead of time-to-response-headers"
+    },
+    "ISS-075": {
+      "id": "ISS-075",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-28T05:25:17+00:00",
+      "updated_at": "2026-08-28T05:28:47+00:00",
+      "touched_round": 11,
+      "desc": "route/CLI usability: a hop that answered once kept sending remaining probes (each spinning the full timeout); route inherited the 5s connect-probe --timeout default so a lost hop cost 15s vs the library's 1s; route --count 0 silently ran a single trace; progress finish() left longer label tails glued to 'complete'"
+    },
+    "ISS-076": {
+      "id": "ISS-076",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-28T05:25:17+00:00",
+      "updated_at": "2026-08-28T05:28:47+00:00",
+      "touched_round": 11,
+      "desc": "Robustness in human output and DNS wire parse: the human HTTP report wrote the raw server body snippet to the terminal (ANSI escape injection could spoof verdict color, newlines split rows); the DoH/DoT wire parser captured TTL from the first answer-section record even when a leading CNAME made it the wrong record's TTL"
+    },
+    "ISS-077": {
+      "id": "ISS-077",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-28T05:25:17+00:00",
+      "updated_at": "2026-08-28T05:28:47+00:00",
+      "touched_round": 11,
+      "desc": "CLI input validation: a malformed --header (name with space / control-char value) surfaced per-address as a fake 'HTTP protocol' transport failure instead of a fail-fast caller error; an unbracketed 'IPv6:port' target silently parsed as a bare IPv6 on the default port with no hint"
+    },
+    "EV-001": {
+      "id": "EV-001",
+      "type": "evidence",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-28T05:25:17+00:00",
+      "updated_at": "2026-08-28T05:25:17+00:00",
+      "touched_round": 11,
+      "source": "manual reproduction 2026-08-28 (http example.com --header 'foo bar: baz' / NUL / CR values)",
+      "confidence": 1.0,
+      "desc": "Empirically refuted the claim that an invalid header panics the spawned probe task and silently drops the destination row: hyper's Request::builder records the header error and builder.body() returns it, so each address renders a clean per-address 'protocol (could not build http request: ...)' observation, all rows survive, exit code behaves normally. The residual issue (caller mistake surfacing as a transport-looking failure) was fixed separately via CLI fail-fast validation."
+    },
+    "TASK-080": {
+      "id": "TASK-080",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-28T05:25:51+00:00",
+      "updated_at": "2026-08-28T05:28:47+00:00",
+      "touched_round": 11,
+      "category": "correctness",
+      "severity": 4,
+      "confidence": 1.0,
+      "desc": "Deliver the verified bug-fix/polish batch for the detail-optimization directive: 13 of 15 hunter findings fixed across the diagnostics engine, HTTP probe path, route/CLI, report robustness and CLI validation (see CHG-072..077); remaining 2 (sub-ms display, JSON shape) deferred with decisions"
+    },
+    "HYP-001": {
+      "id": "HYP-001",
+      "type": "hypothesis",
+      "status": "abandoned",
+      "version": 2,
+      "created_at": "2026-08-28T05:28:13+00:00",
+      "updated_at": "2026-08-28T05:28:47+00:00",
+      "touched_round": 11,
+      "confidence": 0.5,
+      "desc": "Claim surfaced by bug-hunt: an invalid --header name/value panics the spawned probe task (http::Request::builder().header) and silently drops that destination's row from the report, so --strict cannot catch it"
+    },
+    "DEC-076": {
+      "id": "DEC-076",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-28T05:28:13+00:00",
+      "updated_at": "2026-08-28T05:28:13+00:00",
+      "touched_round": 11,
+      "rationale": "Sub-millisecond latency display (H1-4): latency_ms is an integer-millisecond field across the public model/JSON/CSV and api-baseline; showing '<1 ms' or sub-ms would require a model change to retain the untruncated duration. At the tool's documented ms granularity, '0 ms' for a sub-ms path is honest, and the latency stats already convey the distribution. Deferred like DEC-073's below-gate units polish.",
+      "alternatives_rejected": "Converting latency_ms to f64 / adding a sub-ms field (public API + api-baseline churn for a marginal display gain); rounding up 0->1 ms (lies upward on genuinely instant paths)"
+    },
+    "DEC-077": {
+      "id": "DEC-077",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-28T05:28:13+00:00",
+      "updated_at": "2026-08-28T05:28:13+00:00",
+      "touched_round": 11,
+      "rationale": "Uniform --json shape across target counts (H3-5): single-target emits a bare observation array (dropping the host key) while sweeps emit [{target, results}]. Making single-target wrapped too would be a JSON-contract break for existing single-target scripts; keeping it and documenting the difference is the non-breaking choice pre-1.0. The sweep form already carries the target; the residual gap (single-target JSON lacks the host string) is accepted and documented.",
+      "alternatives_rejected": "Always wrapping single-target output in {target, results} (breaks current single-target JSON consumers); adding a host field to every observation (model change across all observation types)"
     }
   },
   "edges": [
@@ -6778,6 +6941,102 @@
       "to": "TASK-079",
       "type": "implements",
       "created_at": "2026-08-28T03:49:20+00:00"
+    },
+    {
+      "from": "CHG-073",
+      "to": "ISS-073",
+      "type": "resolves",
+      "created_at": "2026-08-28T05:25:51+00:00"
+    },
+    {
+      "from": "CHG-074",
+      "to": "ISS-074",
+      "type": "resolves",
+      "created_at": "2026-08-28T05:25:52+00:00"
+    },
+    {
+      "from": "CHG-075",
+      "to": "ISS-075",
+      "type": "resolves",
+      "created_at": "2026-08-28T05:25:52+00:00"
+    },
+    {
+      "from": "CHG-076",
+      "to": "ISS-076",
+      "type": "resolves",
+      "created_at": "2026-08-28T05:25:52+00:00"
+    },
+    {
+      "from": "CHG-077",
+      "to": "ISS-077",
+      "type": "resolves",
+      "created_at": "2026-08-28T05:27:21+00:00"
+    },
+    {
+      "from": "CHG-073",
+      "to": "TASK-080",
+      "type": "implements",
+      "created_at": "2026-08-28T05:27:21+00:00"
+    },
+    {
+      "from": "CHG-074",
+      "to": "TASK-080",
+      "type": "implements",
+      "created_at": "2026-08-28T05:27:21+00:00"
+    },
+    {
+      "from": "CHG-075",
+      "to": "TASK-080",
+      "type": "implements",
+      "created_at": "2026-08-28T05:27:21+00:00"
+    },
+    {
+      "from": "CHG-076",
+      "to": "TASK-080",
+      "type": "implements",
+      "created_at": "2026-08-28T05:27:21+00:00"
+    },
+    {
+      "from": "CHG-077",
+      "to": "TASK-080",
+      "type": "implements",
+      "created_at": "2026-08-28T05:27:21+00:00"
+    },
+    {
+      "from": "ISS-073",
+      "to": "COMP-diagnose",
+      "type": "located_in",
+      "created_at": "2026-08-28T05:27:21+00:00"
+    },
+    {
+      "from": "ISS-074",
+      "to": "COMP-http",
+      "type": "located_in",
+      "created_at": "2026-08-28T05:27:21+00:00"
+    },
+    {
+      "from": "ISS-075",
+      "to": "COMP-route",
+      "type": "located_in",
+      "created_at": "2026-08-28T05:27:21+00:00"
+    },
+    {
+      "from": "ISS-076",
+      "to": "COMP-lib",
+      "type": "located_in",
+      "created_at": "2026-08-28T05:27:21+00:00"
+    },
+    {
+      "from": "ISS-077",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-28T05:27:21+00:00"
+    },
+    {
+      "from": "EV-001",
+      "to": "HYP-001",
+      "type": "refutes",
+      "created_at": "2026-08-28T05:28:47+00:00"
     }
   ]
 }
