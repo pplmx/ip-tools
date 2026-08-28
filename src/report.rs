@@ -13,8 +13,8 @@
 #![allow(clippy::format_push_string)]
 
 use crate::model::{
-    CertificateSummary, Diagnosis, DiagnosticCategory, DnsObservation, DnsRecordType, DnsRepeatResult, HttpObservation,
-    ProbeResult, ResolverKind, Severity, TcpObservation, TlsObservation,
+    CertificateSummary, Diagnosis, DiagnosticCategory, DnsObservation, DnsRecordType, DnsRepeatResult, FailureKind,
+    HttpObservation, ProbeResult, ResolverKind, Severity, TcpObservation, TlsObservation,
 };
 use crate::style::Style;
 use crate::{RouteHop, RouteRepeat};
@@ -65,8 +65,19 @@ pub fn render_dns(style: &Style, host: &str, observations: &[DnsObservation]) ->
 
 fn render_dns_one(style: Style, obs: &DnsObservation) -> String {
     match (&obs.error, obs.latency_ms) {
-        // A failed lookup is the row that matters in a terminal scan: red.
-        (Some(err), _) => style.fail(format!("{} ({})", err.kind, err.message)),
+        // A failed lookup is the row that matters in a terminal scan: red. The
+        // `Dns` kind would just reprint the resolver context the row already
+        // sits under (the message itself says what happened, e.g. 'does not
+        // exist (NXDOMAIN)'); other kinds (timeout, resets) carry information
+        // and stay.
+        (Some(err), _) => {
+            let detail = if matches!(err.kind, FailureKind::Dns) {
+                err.message.clone()
+            } else {
+                format!("{} ({})", err.kind, err.message)
+            };
+            style.fail(detail)
+        }
         (None, Some(ms)) => {
             if obs.records.is_empty() {
                 format!("no records ({ms} ms)")
