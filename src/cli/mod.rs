@@ -1141,7 +1141,38 @@ pub fn parse_custom_servers(sub_m: &ArgMatches) -> Result<Vec<SocketAddr>, Strin
     Ok(servers)
 }
 
+/// Whether `name` is a valid HTTP header name (RFC 7230 `token`).
+fn valid_header_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.bytes().all(|b| {
+            b.is_ascii_alphanumeric()
+                || matches!(
+                    b,
+                    b'!' | b'#'
+                        | b'$'
+                        | b'%'
+                        | b'&'
+                        | b'\''
+                        | b'*'
+                        | b'+'
+                        | b'-'
+                        | b'.'
+                        | b'^'
+                        | b'_'
+                        | b'`'
+                        | b'|'
+                        | b'~'
+                )
+        })
+}
+
 /// Parse one `NAME:VALUE` header line into a (name, value) pair.
+///
+/// A malformed header is a caller mistake and fails fast here — before any
+/// probe spins up — rather than surfacing per-address as an HTTP-protocol
+/// observation. A name must be a valid HTTP token (a space or a `:` makes it
+/// invalid) and a value must contain no control character (which the wire
+/// would reject anyway).
 fn parse_header_line(line: &str) -> Result<(String, String), String> {
     let Some((name, value)) = line.split_once(':') else {
         return Err(format!(
@@ -1150,8 +1181,17 @@ fn parse_header_line(line: &str) -> Result<(String, String), String> {
     };
     let name = name.trim();
     let value = value.trim();
-    if name.is_empty() {
-        return Err(format!("invalid header {line:?}; the name must not be empty"));
+    if !valid_header_name(name) {
+        return Err(format!(
+            "invalid header {line:?}: the name must be a valid HTTP token (e.g. 'authorization', not 'foo bar')"
+        ));
+    }
+    // Control characters are rejected at the boundary (HTAB is a legal field
+    // vchar); the wire would refuse the same value mid-probe otherwise.
+    if value.bytes().any(|b| (b < 0x20 && b != b'\t') || b == 0x7f) {
+        return Err(format!(
+            "invalid header {line:?}: the value contains a control character"
+        ));
     }
     Ok((name.to_string(), value.to_string()))
 }
@@ -1201,11 +1241,34 @@ pub fn parse_custom_headers(sub_m: &ArgMatches) -> Result<Vec<(String, String)>,
 /// parity with `--header`/`--body`, so a large fleet sweep can come from a
 /// file instead of the shell command line. Blank lines and `#` comments in a
 /// list file are skipped.
+/// A stderr hint for the classic IPv6-with-port mistake: `2001:db8::1:443`
+/// (no brackets) parses as the IP literal `2001:db8::1:443` on the *default*
+/// port, when the user almost certainly meant `[2001:db8::1]:443`. Fires only
+/// when the part before the last colon is itself a complete IPv6 literal and
+/// the trailing part is all decimal digits — a genuine bare IPv6 never trips
+/// it (its prefix up to the last colon is not a complete literal), so the
+/// pattern is unambiguous.
+fn ipv6_port_hint(input: &str) -> Option<String> {
+    let (addr, port) = input.rsplit_once(':')?;
+    if addr.is_empty() || port.is_empty() || !port.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    if addr.parse::<std::net::Ipv6Addr>().is_err() {
+        return None;
+    }
+    Some(format!(
+        "hint: IPv6 literals with a port need brackets — did you mean [{addr}]:{port}? ({input} parsed as the address {input} on the default port)"
+    ))
+}
+
 pub fn parse_targets(sub_m: &ArgMatches) -> Result<Vec<Target>, String> {
     fn parse_line(raw: &str) -> Result<Option<Target>, String> {
         let line = raw.trim();
         if line.is_empty() || line.starts_with('#') {
             return Ok(None);
+        }
+        if let Some(hint) = ipv6_port_hint(line) {
+            eprintln!("{hint}");
         }
         Target::parse(line, DEFAULT_PORT).map(Some).map_err(|e| e.to_string())
     }
@@ -1427,5 +1490,45 @@ mod tests {
         let dest: SocketAddr = "192.0.2.1:443".parse().unwrap();
         let reason = e.violation(&dest, None, None, false).unwrap();
         assert!(reason.contains("no status observed (expected 200)"), "{reason}");
+    }
+
+    #[test]
+    fn header_line_validation_rejects_malformed_names_and_values() {
+        // Well-formed headers parse, including punctuation-heavy tokens and
+        // values with spaces/tabs.
+        assert_eq!(
+            parse_header_line("authorization: Bearer abc").unwrap(),
+            ("authorization".into(), "Bearer abc".into())
+        );
+        assert_eq!(
+            parse_header_line("x-api-key:v").unwrap(),
+            ("x-api-key".into(), "v".into())
+        );
+        // A name with a space/other non-token char is a caller mistake that
+        // must fail here, before any probe runs.
+        assert!(parse_header_line("foo bar: baz").unwrap_err().contains("HTTP token"));
+        assert!(parse_header_line(": v").unwrap_err().contains("HTTP token"));
+        // A control character in the value (CR/LF/NUL, DEL) is rejected.
+        assert!(parse_header_line("x: a\nb").unwrap_err().contains("control character"));
+        assert!(parse_header_line("x: a\x7fb")
+            .unwrap_err()
+            .contains("control character"));
+    }
+
+    #[test]
+    fn ipv6_port_hint_fires_only_on_the_bracket_mistake() {
+        // `2001:db8::1:443` (no brackets) is the classic host:port typo for an
+        // IPv6 literal — the hint names the corrected bracketed form.
+        let h = ipv6_port_hint("2001:db8::1:443").expect("typo should get a hint");
+        assert!(h.contains("[2001:db8::1]:443"), "{h}");
+        // Genuine bare IPv6 literals (with or without a trailing digit group)
+        // never trip it.
+        assert!(ipv6_port_hint("2001:db8::1").is_none());
+        assert!(ipv6_port_hint("::1").is_none());
+        assert!(ipv6_port_hint("2001:db8::443").is_none());
+        // Bracketed-with-port and IPv4-with-port are untouched.
+        assert!(ipv6_port_hint("[2001:db8::1]:443").is_none());
+        assert!(ipv6_port_hint("1.2.3.4:443").is_none());
+        assert!(ipv6_port_hint("example.com:443").is_none());
     }
 }
