@@ -246,6 +246,12 @@ pub(super) fn http_status_flapping_rules(input: &DiagnosticInput, out: &mut Vec<
 /// or flapping path). Uses the jitter/p95 data the repeat probes already
 /// populate, so it is a pure signal on existing observations.
 pub(super) fn latency_instability_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosis>) {
+    // `diagnose` feeds one repeat per transport AND per HTTP protocol into
+    // `input.probes` on the same destination; a congested/flapping path slows
+    // both the TCP connect and the HTTP transfer, so both can independently
+    // trip this rule. One unstable destination yields one verdict (the same
+    // dedup `intermittent_rules` applies), not a stacked pair of rows.
+    let mut reported: Vec<std::net::SocketAddr> = Vec::new();
     for p in input.probes {
         if p.attempts < 3 || p.failures > 0 || p.latency.count < 3 {
             continue;
@@ -261,9 +267,10 @@ pub(super) fn latency_instability_rules(input: &DiagnosticInput, out: &mut Vec<D
             continue;
         };
         let base = p50.max(1);
-        if p95 < 3 * base {
+        if p95 < 3 * base || reported.contains(&p.destination) {
             continue;
         }
+        reported.push(p.destination);
         out.push(Diagnosis {
             severity: Severity::Low,
             category: DiagnosticCategory::Intermittent,
@@ -299,8 +306,21 @@ pub(super) fn latency_instability_rules(input: &DiagnosticInput, out: &mut Vec<D
 /// row. Uses the shared day-diff helper from the report layer so the engine
 /// and the report agree on "expired" vs "expires in N day(s)".
 pub(super) fn certificate_lifetime_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosis>) {
+    // `diagnose` runs one TLS probe per resolved address with the same SNI, so
+    // on a dual-stack host the same certificate is observed once per address.
+    // Each observed cause yields one verdict (the cert's expiry facts are
+    // identical across those observations), not a stacked row per address.
+    // Keying on the rendered summary keeps genuinely different certificates
+    // (a distinct subject on one address) reported separately.
+    let mut reported: Vec<(String, String)> = Vec::new();
     for t in input.tls {
         let Some(cert) = t.certificate.as_ref() else { continue };
+        let mut push = |summary: String, diagnosis: Diagnosis| {
+            if !reported.contains(&(t.sni.clone(), summary)) {
+                reported.push((t.sni.clone(), diagnosis.summary.clone()));
+                out.push(diagnosis);
+            }
+        };
         // A certificate whose `notBefore` is in the future is NOT YET valid:
         // real clients (and any chain-validation path) will refuse it even
         // though an `--insecure` handshake completes, so this must not be
@@ -311,23 +331,29 @@ pub(super) fn certificate_lifetime_rules(input: &DiagnosticInput, out: &mut Vec<
         if let Some(not_before) = cert.not_before_utc.as_deref() {
             if let Some(days) = crate::report::days_until_from_rfc3339(not_before) {
                 if days > 0 {
-                    out.push(Diagnosis {
-                        severity: Severity::Medium,
-                        category: DiagnosticCategory::Certificate,
-                        confidence: Confidence::Medium,
-                        summary: format!(
+                    push(
+                        format!(
                             "Certificate for {} is not yet valid (starts in {days} day(s), subject {})",
                             t.sni, cert.subject
                         ),
-                        evidence: vec![Evidence {
-                            detail: format!("peer certificate notBefore is in the future: {not_before}"),
-                        }],
-                        possible_causes: vec![
-                            "certificate issued with a future notBefore (misissuance)".into(),
-                            "server or client clock skew".into(),
-                            "certificate deployed before its validity window began".into(),
-                        ],
-                    });
+                        Diagnosis {
+                            severity: Severity::Medium,
+                            category: DiagnosticCategory::Certificate,
+                            confidence: Confidence::Medium,
+                            summary: format!(
+                                "Certificate for {} is not yet valid (starts in {days} day(s), subject {})",
+                                t.sni, cert.subject
+                            ),
+                            evidence: vec![Evidence {
+                                detail: format!("peer certificate notBefore is in the future: {not_before}"),
+                            }],
+                            possible_causes: vec![
+                                "certificate issued with a future notBefore (misissuance)".into(),
+                                "server or client clock skew".into(),
+                                "certificate deployed before its validity window began".into(),
+                            ],
+                        },
+                    );
                 }
             }
         }
@@ -338,36 +364,48 @@ pub(super) fn certificate_lifetime_rules(input: &DiagnosticInput, out: &mut Vec<
             continue;
         };
         if days < 0 {
-            out.push(Diagnosis {
-                severity: Severity::Medium,
-                category: DiagnosticCategory::Certificate,
-                confidence: Confidence::High,
-                summary: format!(
+            push(
+                format!(
                     "Certificate for {} expired {} day(s) ago (subject {})",
                     t.sni, -days, cert.subject
                 ),
-                evidence: vec![Evidence {
-                    detail: format!("peer certificate notAfter is in the past: {not_after}"),
-                }],
-                possible_causes: vec![
-                    "certificate not renewed before its notAfter".into(),
-                    "operator is serving a stale/revoked deployment".into(),
-                ],
-            });
+                Diagnosis {
+                    severity: Severity::Medium,
+                    category: DiagnosticCategory::Certificate,
+                    confidence: Confidence::High,
+                    summary: format!(
+                        "Certificate for {} expired {} day(s) ago (subject {})",
+                        t.sni, -days, cert.subject
+                    ),
+                    evidence: vec![Evidence {
+                        detail: format!("peer certificate notAfter is in the past: {not_after}"),
+                    }],
+                    possible_causes: vec![
+                        "certificate not renewed before its notAfter".into(),
+                        "operator is serving a stale/revoked deployment".into(),
+                    ],
+                },
+            );
         } else if days <= crate::report::RENDER_CERT_EXPIRY_WINDOW_DAYS {
-            out.push(Diagnosis {
-                severity: Severity::Low,
-                category: DiagnosticCategory::Certificate,
-                confidence: Confidence::Medium,
-                summary: format!(
+            push(
+                format!(
                     "Certificate for {} expires in {days} day(s) (subject {})",
                     t.sni, cert.subject
                 ),
-                evidence: vec![Evidence {
-                    detail: format!("peer certificate notAfter is in {days} day(s): {not_after}"),
-                }],
-                possible_causes: vec!["certificate approaching its renewal date".into()],
-            });
+                Diagnosis {
+                    severity: Severity::Low,
+                    category: DiagnosticCategory::Certificate,
+                    confidence: Confidence::Medium,
+                    summary: format!(
+                        "Certificate for {} expires in {days} day(s) (subject {})",
+                        t.sni, cert.subject
+                    ),
+                    evidence: vec![Evidence {
+                        detail: format!("peer certificate notAfter is in {days} day(s): {not_after}"),
+                    }],
+                    possible_causes: vec!["certificate approaching its renewal date".into()],
+                },
+            );
         }
     }
 }
@@ -379,47 +417,59 @@ pub(super) fn certificate_lifetime_rules(input: &DiagnosticInput, out: &mut Vec<
 /// otherwise be silent. Reuses the report's matcher so `diagnose` and the
 /// human `covers <sni>: yes/no` row always agree.
 pub(super) fn certificate_coverage_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosis>) {
+    // Same per-address TLS observation dedup as the lifetime rules: a dual-stack
+    // host presents the same wrong-host certificate on each address, and each
+    // observed cause yields one verdict, not one per resolved address.
+    let mut reported: Vec<String> = Vec::new();
     for t in input.tls {
         let Some(cert) = t.certificate.as_ref() else { continue };
         // A certificate with no SAN data cannot be matched; treat as not
         // covered (it would not validate for the host anyway).
         if cert.sans.is_empty() {
-            out.push(Diagnosis {
-                severity: Severity::Medium,
-                category: DiagnosticCategory::Certificate,
-                confidence: Confidence::Medium,
-                summary: format!(
-                    "Certificate for {} has no Subject Alternative Names (subject {})",
-                    t.sni, cert.subject
-                ),
-                evidence: vec![Evidence {
-                    detail: "the served certificate lists no SANs to match the presented hostname".into(),
-                }],
-                possible_causes: vec![
-                    "mis-issued certificate without SANs (needs SANs for modern validation)".into(),
-                    "server is presenting the wrong leaf certificate".into(),
-                ],
-            });
+            let summary = format!(
+                "Certificate for {} has no Subject Alternative Names (subject {})",
+                t.sni, cert.subject
+            );
+            if !reported.contains(&summary) {
+                reported.push(summary.clone());
+                out.push(Diagnosis {
+                    severity: Severity::Medium,
+                    category: DiagnosticCategory::Certificate,
+                    confidence: Confidence::Medium,
+                    summary,
+                    evidence: vec![Evidence {
+                        detail: "the served certificate lists no SANs to match the presented hostname".into(),
+                    }],
+                    possible_causes: vec![
+                        "mis-issued certificate without SANs (needs SANs for modern validation)".into(),
+                        "server is presenting the wrong leaf certificate".into(),
+                    ],
+                });
+            }
             continue;
         }
         if !crate::report::cert_covers_hostname(&t.sni, &cert.sans) {
-            out.push(Diagnosis {
-                severity: Severity::Medium,
-                category: DiagnosticCategory::Certificate,
-                confidence: Confidence::Medium,
-                summary: format!(
-                    "Certificate for {} does not cover the presented hostname (subject {})",
-                    t.sni, cert.subject
-                ),
-                evidence: vec![Evidence {
-                    detail: format!("SANs {} do not match presented SNI {}", cert.sans.join(", "), t.sni),
-                }],
-                possible_causes: vec![
-                    "wrong-host or shared-host certificate presented".into(),
-                    "wildcard/exact SAN mismatch for the requested hostname".into(),
-                    "connection is to an IP that the certificate does not cover".into(),
-                ],
-            });
+            let summary = format!(
+                "Certificate for {} does not cover the presented hostname (subject {})",
+                t.sni, cert.subject
+            );
+            if !reported.contains(&summary) {
+                reported.push(summary.clone());
+                out.push(Diagnosis {
+                    severity: Severity::Medium,
+                    category: DiagnosticCategory::Certificate,
+                    confidence: Confidence::Medium,
+                    summary,
+                    evidence: vec![Evidence {
+                        detail: format!("SANs {} do not match presented SNI {}", cert.sans.join(", "), t.sni),
+                    }],
+                    possible_causes: vec![
+                        "wrong-host or shared-host certificate presented".into(),
+                        "wildcard/exact SAN mismatch for the requested hostname".into(),
+                        "connection is to an IP that the certificate does not cover".into(),
+                    ],
+                });
+            }
         }
     }
 }
@@ -1360,6 +1410,22 @@ mod tests {
     }
 
     #[test]
+    fn latency_instability_deduped_per_destination() {
+        // `diagnose` feeds one repeat per transport AND per HTTP protocol on
+        // the same destination; a flapping path slows both, so both trip the
+        // rule. One unstable destination yields one verdict, not a stacked
+        // pair of identical rows (matching intermittent_rules).
+        let probes = [probe_latency(&[10, 12, 120]), probe_latency(&[11, 13, 130])];
+        let mut out = Vec::new();
+        latency_instability_rules(&input(&[], &[], &probes), &mut out);
+        let n = out
+            .iter()
+            .filter(|d| d.category == DiagnosticCategory::Intermittent)
+            .count();
+        assert_eq!(n, 1, "one unstable destination must yield one verdict: {out:?}");
+    }
+
+    #[test]
     fn latency_instability_silent_for_tight_and_stable_and_short() {
         // Tight distribution: p95 ~ p50, no fire.
         let tight = [probe_latency(&[10, 11, 12])];
@@ -1434,6 +1500,25 @@ mod tests {
         let mut out = Vec::new();
         certificate_lifetime_rules(&input(&far, &[], &[]), &mut out);
         assert!(out.is_empty(), "far expiry must not raise a verdict: {out:?}");
+    }
+
+    #[test]
+    fn certificate_lifetime_deduped_per_observation() {
+        // `diagnose` runs one TLS probe per resolved address with the same
+        // SNI, so a dual-stack host observes the same expiring certificate
+        // once per address. One expiring cert yields one verdict, not a
+        // stacked row per address.
+        let mut a = tls_with_cert(&crate::report::rfc3339_days_from_now(5));
+        let b = tls_with_cert(&crate::report::rfc3339_days_from_now(5));
+        a.destination = "2.2.2.2:443".parse().unwrap();
+        let obs = [a, b];
+        let mut out = Vec::new();
+        certificate_lifetime_rules(&input(&obs, &[], &[]), &mut out);
+        let n = out
+            .iter()
+            .filter(|d| d.category == DiagnosticCategory::Certificate)
+            .count();
+        assert_eq!(n, 1, "one expiring cert must yield one verdict: {out:?}");
     }
 
     #[test]

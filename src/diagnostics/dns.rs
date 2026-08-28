@@ -1,7 +1,9 @@
 //! DNS-resolution diagnostic rules.
 
 use super::DiagnosticInput;
-use crate::model::{Confidence, Diagnosis, DiagnosticCategory, DnsObservation, DnsRecord, Evidence, Severity};
+use crate::model::{
+    Confidence, Diagnosis, DiagnosticCategory, DnsObservation, DnsRecord, DnsRecordType, Evidence, Severity,
+};
 use std::collections::{BTreeMap, BTreeSet};
 use std::net::IpAddr;
 
@@ -22,6 +24,15 @@ pub(super) fn dns_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosis>) -> bo
     let mut per_resolver: BTreeMap<String, BTreeSet<IpAddr>> = BTreeMap::new();
 
     for obs in input.dns {
+        // Only forward A/AAAA observations speak to whether the hostname
+        // resolved. Reverse (PTR) lookups are optional evidence layered on by
+        // `--reverse`: an absent PTR record is normal for many addresses, so a
+        // failed PTR lookup must not look like "the hostname did not resolve"
+        // (e.g. `diagnose <literal> --reverse` on an address with no reverse
+        // zone would otherwise raise a false HIGH resolution-failure verdict).
+        if !matches!(obs.record_type, DnsRecordType::A | DnsRecordType::Aaaa) {
+            continue;
+        }
         if obs.error.is_some() {
             any_failure = true;
             failed.push(obs);

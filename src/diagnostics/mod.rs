@@ -565,6 +565,37 @@ mod tests {
         assert_eq!(d.confidence, Confidence::High);
     }
     #[test]
+    fn ptr_failure_alone_does_not_raise_resolution_failure() {
+        // `diagnose <ip-literal> --reverse` on an address with no PTR record
+        // reverse-resolves the literal to nothing (NXDOMAIN / no records), so
+        // the DNS evidence stack holds only failed PTR observations with no
+        // forward A/AAAA pair. An absent PTR is normal for many addresses, so
+        // this must not be mistaken for "the hostname did not resolve" — no
+        // HIGH Dns resolution-failure verdict, and `--strict` (keyed on HIGH)
+        // stays unaffected.
+        let dns = [DnsObservation {
+            hostname: "192.0.2.1".into(),
+            resolver: ResolverKind::System,
+            record_type: DnsRecordType::Ptr,
+            records: vec![],
+            ttl: None,
+            latency_ms: None,
+            error: Some(ProbeError {
+                kind: FailureKind::Dns,
+                message: "192.0.2.1.in-addr.arpa does not exist (NXDOMAIN)".into(),
+            }),
+        }];
+        let out = diagnose(&input(&dns, &[], &[], &[], &[]));
+        assert!(
+            !categories(&out).contains(&DiagnosticCategory::Dns),
+            "a failed PTR lookup is normal, not a resolution failure: {out:?}"
+        );
+        // A genuine forward A/AAAA failure still fires (regression guard).
+        let out = diagnose(&input(&[dns_fail("example.com")], &[], &[], &[], &[]));
+        assert!(categories(&out).contains(&DiagnosticCategory::Dns));
+    }
+
+    #[test]
     fn filtering_fires_with_multiple_signals_but_low_confidence() {
         // Resolver disagreement + address-specific reachability together are
         // consistent with possible filtering, but confidence must stay Low
