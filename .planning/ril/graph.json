@@ -1,8 +1,8 @@
 {
   "ril_version": 1,
-  "round": 10,
+  "round": 11,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-24T16:41:13+00:00",
+  "updated_at": "2026-08-28T03:49:20+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -71,7 +71,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 10,
+      "touched_round": 11,
       "desc": "Repeated probing with latency stats (min/p50/p90/p95/p99/max/jitter/failure-dist) for tcp/tls/http/http2/http3"
     },
     "COMP-route": {
@@ -3954,6 +3954,50 @@
       "touched_round": 10,
       "commit": "11dbcf9",
       "desc": "Deliver the DEC-075 milestone (TASK-078 / ISS-070): 'probe --expect-status' and 'probe --expect-rate' gate the repeated probe on its aggregated reliability. --expect-status asserts the observed HTTP status distribution across --count attempts stays in an exact-code/class set (reuses StatusSpec/parse_status_spec; an address with no completed attempt violates); --expect-rate asserts the aggregate success_rate meets a fraction/percent threshold (0 rejected as vacuous). Both are verdicts on the run, independent of --strict, naming each violating destination on stderr; report on stdout untouched. Guard: --expect-status with --protocol tcp|tls errors. CLI-only (ExpectCheck is cli-internal): api-baseline gate passes unchanged. Pinned by 6 unit tests + 6 CLI integration tests; full suite 303 tests green, clippy -D warnings and rustfmt clean."
+    },
+    "ISS-071": {
+      "id": "ISS-071",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-28T03:41:19+00:00",
+      "updated_at": "2026-08-28T03:49:20+00:00",
+      "touched_round": 11,
+      "desc": "probe --expect-status reports 'no response to assert on (no attempt completed)' when the distribution is empty, but the report just printed attempts: N / success: 0 -- in the real world N>=1 attempts always ran and all failed at the transport (an HTTP response always carries a status), so 'no attempt completed' misleads a reader into thinking nothing ran"
+    },
+    "ISS-072": {
+      "id": "ISS-072",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-28T03:41:20+00:00",
+      "updated_at": "2026-08-28T03:49:20+00:00",
+      "touched_round": 11,
+      "desc": "README 'Repeated probes' section and 'Scripting exit codes' do not document probe --expect-status / --expect-rate (the DEC-075 repeat-gate family is the newest CLI surface), and the section's probe --csv contract omits the ttfb_p50_ms/ttfb_p95_ms/ttfb_max_ms and statuses columns the exporter actually emits"
+    },
+    "TASK-079": {
+      "id": "TASK-079",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-28T03:42:48+00:00",
+      "updated_at": "2026-08-28T03:49:20+00:00",
+      "touched_round": 11,
+      "category": "dx",
+      "severity": 3,
+      "confidence": 1.0,
+      "desc": "Polish the probe expectation-gate surface: (1) fix the empty-distribution violation wording in src/cli/probe.rs to match the report ('no response to assert on (every attempt failed)'), and (2) document the probe --expect-status / --expect-rate repeat gates plus the correct probe --csv columns in README 'Repeated probes' / 'Scripting exit codes'. CLI-only: no public API change, output otherwise byte-identical."
+    },
+    "CHG-072": {
+      "id": "CHG-072",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-28T03:48:51+00:00",
+      "updated_at": "2026-08-28T03:48:51+00:00",
+      "touched_round": 11,
+      "commit": "c9c221b",
+      "desc": "Probe expectation-gate polish: empty-distribution violation wording now reads '(every attempt failed)' matching the report, and README documents probe --expect-status/--expect-rate plus the corrected probe --csv columns"
     }
   },
   "edges": [
@@ -6692,6 +6736,48 @@
       "to": "ISS-070",
       "type": "resolves",
       "created_at": "2026-08-24T16:41:13+00:00"
+    },
+    {
+      "from": "ISS-071",
+      "to": "COMP-probe",
+      "type": "located_in",
+      "created_at": "2026-08-28T03:43:47+00:00"
+    },
+    {
+      "from": "ISS-072",
+      "to": "COMP-probe",
+      "type": "located_in",
+      "created_at": "2026-08-28T03:43:47+00:00"
+    },
+    {
+      "from": "TASK-079",
+      "to": "ISS-071",
+      "type": "addresses",
+      "created_at": "2026-08-28T03:43:47+00:00"
+    },
+    {
+      "from": "TASK-079",
+      "to": "ISS-072",
+      "type": "addresses",
+      "created_at": "2026-08-28T03:43:47+00:00"
+    },
+    {
+      "from": "CHG-072",
+      "to": "ISS-071",
+      "type": "resolves",
+      "created_at": "2026-08-28T03:49:20+00:00"
+    },
+    {
+      "from": "CHG-072",
+      "to": "ISS-072",
+      "type": "resolves",
+      "created_at": "2026-08-28T03:49:20+00:00"
+    },
+    {
+      "from": "CHG-072",
+      "to": "TASK-079",
+      "type": "implements",
+      "created_at": "2026-08-28T03:49:20+00:00"
     }
   ]
 }
