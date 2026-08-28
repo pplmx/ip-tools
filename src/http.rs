@@ -434,21 +434,23 @@ where
     // 3. Build and send the request. An explicit `host` header (e.g.
     // `--header 'host: vhost.example'` against a shared-IP virtual host)
     // replaces the default Host instead of stacking a second, RFC 7230 §5.4-
-    // malformed Host on top of it.
+    // malformed Host on top of it. Both the override and the default are
+    // bracket-stripped: a bracketed IPv6-literal target (`tls [::1]`) must
+    // put the unbracketed `::1` on the wire (RFC 7230 §5.4 requires the host
+    // without brackets).
     let mut custom_host: Option<&str> = None;
+    let default_host = match headers.iter().find(|(n, _)| n.eq_ignore_ascii_case("host")) {
+        Some((_, v)) => {
+            let v = crate::http_common::wire_host(v);
+            custom_host = Some(v);
+            v
+        }
+        None => crate::http_common::wire_host(host),
+    };
     let mut builder = hyper::Request::builder()
         .method(method)
         .uri(path)
-        .header(
-            "host",
-            match headers.iter().find(|(n, _)| n.eq_ignore_ascii_case("host")) {
-                Some((_, v)) => {
-                    custom_host = Some(v);
-                    v
-                }
-                None => host,
-            },
-        )
+        .header("host", default_host)
         .header("user-agent", "ip-tools")
         .header("accept", "*/*");
     for (name, value) in headers {

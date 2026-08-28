@@ -364,10 +364,32 @@ fn sanitize_snippet(s: &str) -> String {
     out
 }
 
-/// Render HTTPS/HTTP observations as human text.
+/// Render HTTPS observations as human text.
+///
+/// HTTP/2 and HTTP/3 always run over TLS, and the HTTP/1.1 command defaults to
+/// a TLS run, so the block is headed `HTTPS` — including a run whose handshake
+/// *failed*, which the observations cannot signal on their own (`tls` is only
+/// set on success). Cleartext runs (`http --plain`, `diagnose --plain`) use
+/// [`render_http_plain`] instead.
 #[must_use]
 pub fn render_http(style: &Style, observations: &[HttpObservation]) -> String {
-    let mut out = String::from("HTTPS\n");
+    render_http_impl(*style, false, observations)
+}
+
+/// Render a cleartext (`http --plain` / `diagnose --plain`) run's observations
+/// as human text, headed `HTTP`.
+///
+/// There is no TLS layer at all, so the honest label is the plain protocol
+/// name (see [`render_http`] for the TLS side).
+#[must_use]
+pub fn render_http_plain(style: &Style, observations: &[HttpObservation]) -> String {
+    render_http_impl(*style, true, observations)
+}
+
+/// Shared body for the HTTPS/HTTP human renderers; `plain` selects the header
+/// label only — the rows are identical.
+fn render_http_impl(style: Style, plain: bool, observations: &[HttpObservation]) -> String {
+    let mut out = String::from(if plain { "HTTP\n" } else { "HTTPS\n" });
     for obs in observations {
         out.push_str(&format!("  {}\n", obs.destination));
         // Show the hostname presented as SNI/Host when it is not the literal
@@ -398,7 +420,7 @@ pub fn render_http(style: &Style, observations: &[HttpObservation]) -> String {
             "    {} {}\n",
             obs.protocol.as_deref().unwrap_or("HTTP/1.1"),
             obs.status
-                .map_or_else(|| "no status".to_string(), |s| render_status(*style, s))
+                .map_or_else(|| "no status".to_string(), |s| render_status(style, s))
         ));
         if let Some(location) = &obs.location {
             out.push_str(&format!("    redirect: {location}\n"));
@@ -416,7 +438,7 @@ pub fn render_http(style: &Style, observations: &[HttpObservation]) -> String {
             // inspection — especially under `--insecure`, where chain
             // validation is skipped and coverage is the only mismatch signal.
             if let Some(cert) = &tls.certificate {
-                out.push_str(&format!("    cert : {}\n", render_cert(*style, cert)));
+                out.push_str(&format!("    cert : {}\n", render_cert(style, cert)));
                 let covers = if cert_covers_hostname(&tls.sni, &cert.sans) {
                     style.pass("yes")
                 } else {
@@ -1136,6 +1158,69 @@ mod tests {
         assert!(out.contains("HTTP/1.1"));
         assert!(out.contains("301"));
         assert!(out.contains("body: incomplete"), "stalled body must be visible: {out}");
+    }
+
+    #[test]
+    fn render_http_labels_a_cleartext_block_http() {
+        // `http --plain` / `diagnose --plain` carry no TLS observation:
+        // heading the block `HTTPS` would present a plaintext endpoint as
+        // encrypted, against the `HTTP/1.1` rows underneath.
+        let plain = HttpObservation {
+            destination: "192.0.2.1:80".parse().unwrap(),
+            host: "example.com".into(),
+            method: "GET".into(),
+            path: "/".into(),
+            tls: None,
+            protocol: Some("HTTP/1.1".into()),
+            status: Some(200),
+            location: None,
+            headers: Vec::new(),
+            body_bytes: Some(2),
+            body_snippet: Some("ok".into()),
+            ttfb_ms: None,
+            latency_ms: Some(10),
+            failure: None,
+        };
+        let out = render_http_plain(&Style::plain(), std::slice::from_ref(&plain));
+        assert!(
+            out.starts_with("HTTP\n"),
+            "a cleartext block must be labelled HTTP, not HTTPS: {out}"
+        );
+        // Any TLS observation flips the block back to HTTPS.
+        let with_tls = HttpObservation {
+            tls: Some(crate::model::TlsObservation {
+                destination: "192.0.2.1:443".parse().unwrap(),
+                sni: "example.com".into(),
+                success: true,
+                version: Some("TLSv1.3".into()),
+                cipher: Some("AES_256_GCM".into()),
+                alpn: Some("h2".into()),
+                certificate: None,
+                latency_ms: Some(5),
+                failure: None,
+            }),
+            ..plain
+        };
+        assert!(
+            render_http(&Style::plain(), std::slice::from_ref(&with_tls)).starts_with("HTTPS\n"),
+            "a TLS block keeps the HTTPS label"
+        );
+        // A TLS run whose handshake *failed* must stay `HTTPS` too: the
+        // observation cannot signal the intended protocol on its own (`tls` is
+        // only recorded on success), and mislabelling it `HTTP` would present
+        // a failed-encryption endpoint as a plaintext one.
+        let failed_tls = HttpObservation {
+            tls: None,
+            failure: Some(crate::model::ProbeError {
+                kind: crate::model::FailureKind::TlsHandshake,
+                message: "tls handshake eof".into(),
+            }),
+            ..with_tls
+        };
+        assert!(
+            render_http(&Style::plain(), std::slice::from_ref(&failed_tls)).starts_with("HTTPS\n"),
+            "a TLS run with a failed handshake must keep the HTTPS label"
+        );
     }
 
     #[test]

@@ -440,6 +440,7 @@ pub fn ip_tools::report::render_diagnoses(&ip_tools::style::Style, &[ip_tools::m
 pub fn ip_tools::report::render_dns(&ip_tools::style::Style, &str, &[ip_tools::model::dns::DnsObservation]) -> alloc::string::String
 pub fn ip_tools::report::render_dns_repeat(&ip_tools::style::Style, &str, &[ip_tools::model::dns::DnsRepeatResult]) -> alloc::string::String
 pub fn ip_tools::report::render_http(&ip_tools::style::Style, &[ip_tools::model::http::HttpObservation]) -> alloc::string::String
+pub fn ip_tools::report::render_http_plain(&ip_tools::style::Style, &[ip_tools::model::http::HttpObservation]) -> alloc::string::String
 pub fn ip_tools::report::render_probe(&ip_tools::style::Style, &[ip_tools::model::probe::ProbeResult]) -> alloc::string::String
 pub fn ip_tools::report::render_route(&ip_tools::style::Style, &[ip_tools::route::RouteHop]) -> alloc::string::String
 pub fn ip_tools::report::render_route_repeat(&ip_tools::style::Style, &ip_tools::route::RouteRepeat) -> alloc::string::String

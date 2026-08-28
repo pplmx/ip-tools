@@ -300,6 +300,68 @@ mod tests {
     }
 
     #[test]
+    fn total_connectivity_loss_not_raised_when_all_failures_are_local_unreachability() {
+        // The total-loss branch previously ignored the local-unreachability
+        // exclusion the partial branch honors: an IPv6-only hostname probed
+        // from a v4-only-routed host (every address failing with ENETUNREACH
+        // *before any packet is sent*) raised a false HIGH
+        // `TotalConnectivityLoss` — "destination server down / wrong port /
+        // firewall" — plus a `--strict` failure, when the correct verdict is
+        // the local address-family one.
+        let tcp = [
+            TcpObservation {
+                destination: "[2001:db8::1]:443".parse().unwrap(),
+                success: false,
+                latency_ms: None,
+                failure: Some(ProbeError {
+                    kind: FailureKind::NetworkUnreachable,
+                    message: "network unreachable".into(),
+                }),
+            },
+            TcpObservation {
+                destination: "[2001:db8::2]:443".parse().unwrap(),
+                success: false,
+                latency_ms: None,
+                failure: Some(ProbeError {
+                    kind: FailureKind::NetworkUnreachable,
+                    message: "network unreachable".into(),
+                }),
+            },
+        ];
+        let out = diagnose(&input(&[], &tcp, &[], &[], &[]));
+        assert!(
+            !categories(&out).contains(&DiagnosticCategory::TotalConnectivityLoss),
+            "a locally-unroutable family must not be read as total destination loss: {out:?}"
+        );
+        // But genuine path failures (packets sent, no answer) still raise it.
+        let path_failures = [
+            TcpObservation {
+                destination: "1.1.1.1:443".parse().unwrap(),
+                success: false,
+                latency_ms: None,
+                failure: Some(ProbeError {
+                    kind: FailureKind::Timeout,
+                    message: "timed out".into(),
+                }),
+            },
+            TcpObservation {
+                destination: "1.1.1.2:443".parse().unwrap(),
+                success: false,
+                latency_ms: None,
+                failure: Some(ProbeError {
+                    kind: FailureKind::Timeout,
+                    message: "timed out".into(),
+                }),
+            },
+        ];
+        let path_out = diagnose(&input(&[], &path_failures, &[], &[], &[]));
+        assert!(
+            categories(&path_out).contains(&DiagnosticCategory::TotalConnectivityLoss),
+            "real total loss must still fire: {path_out:?}"
+        );
+    }
+
+    #[test]
     fn partial_connectivity_fires_when_any_failure_is_path_evidence() {
         // As soon as one failing address shows a genuine path failure (a
         // timeout — a packet was sent and no answer came back), partial
@@ -413,6 +475,59 @@ mod tests {
         assert!(
             categories(&out).contains(&DiagnosticCategory::Quic),
             "the QUIC path failure is quic_rules' verdict: {out:?}"
+        );
+    }
+
+    #[test]
+    fn http1_tls_handshake_stall_is_not_an_http_layer_error() {
+        // An HTTP/1.1 row whose TLS handshake stalled past the bound is now
+        // classified `TlsHandshake` by `connect_to` (previously a bare
+        // `Timeout` that `http_layer_rules` counted as an HTTP-layer error,
+        // double-counting the single TLS cause alongside the `Tls` verdict).
+        // The TLS-layer rule owns the stall; the Http rule must stay quiet.
+        let dns = [dns_ok("example.com", DnsRecordType::A, "1.1.1.1")];
+        let tcp = [tp("1.1.1.1:443", true)];
+        let tls = [TlsObservation {
+            destination: "1.1.1.1:443".parse().unwrap(),
+            sni: "example.com".into(),
+            success: false,
+            version: None,
+            cipher: None,
+            alpn: None,
+            certificate: None,
+            latency_ms: None,
+            failure: Some(ProbeError {
+                kind: FailureKind::TlsHandshake,
+                message: "tls handshake to 1.1.1.1:443 with SNI example.com timed out after 2s".into(),
+            }),
+        }];
+        let http = [HttpObservation {
+            destination: "1.1.1.1:443".parse().unwrap(),
+            host: "example.com".into(),
+            method: "GET".into(),
+            path: "/".into(),
+            tls: None,
+            protocol: Some("HTTP/1.1".into()),
+            status: None,
+            location: None,
+            headers: Vec::new(),
+            body_bytes: None,
+            body_snippet: None,
+            ttfb_ms: None,
+            latency_ms: None,
+            failure: Some(ProbeError {
+                kind: FailureKind::TlsHandshake,
+                message: "tls handshake to 1.1.1.1:443 with SNI example.com timed out after 2s".into(),
+            }),
+        }];
+        let out = diagnose(&input(&dns, &tcp, &tls, &http, &[]));
+        assert!(
+            !categories(&out).contains(&DiagnosticCategory::Http),
+            "a TLS-handshake stall must not be re-read as an HTTP-layer error: {out:?}"
+        );
+        assert!(
+            categories(&out).contains(&DiagnosticCategory::Tls),
+            "the TLS-layer rule still owns the stall: {out:?}"
         );
     }
 

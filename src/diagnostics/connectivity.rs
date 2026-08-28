@@ -13,7 +13,19 @@ pub(super) fn connectivity_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosi
     let bad: Vec<&TcpObservation> = input.tcp.iter().filter(|o| !o.success).collect();
 
     if ok.is_empty() && !bad.is_empty() {
-        // All addresses fail.
+        // All addresses fail. A failure the host's own stack reports as
+        // `network unreachable` / `host unreachable` (ENETUNREACH /
+        // EHOSTUNREACH) is emitted *before any packet is sent* for an
+        // address, e.g. an address family with no global route. When every
+        // failing address is such a verdict, no probe ever reached the path:
+        // there is no evidence that the destination is down, and a HIGH
+        // "no address accepts TCP" verdict (plus its `--strict` failure)
+        // would blame the destination for the host's own missing route. The
+        // address-family rule reports that local condition instead; the
+        // per-address failures stay visible in the evidence stack.
+        if all_local_unreachability(&bad) {
+            return;
+        }
         let kinds = failure_summary(&bad);
         out.push(Diagnosis {
             severity: Severity::High,
@@ -38,20 +50,11 @@ pub(super) fn connectivity_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosi
     }
 
     if !ok.is_empty() && !bad.is_empty() {
-        // A failure the host's own stack reports as `network unreachable` /
-        // `host unreachable` (ENETUNREACH / EHOSTUNREACH) is emitted *before
-        // any packet is sent* for that address — e.g. an address family with
-        // no global route. It is a local routing verdict, not evidence about
-        // the destination, so when *every* failing address is such a verdict
-        // there is no path evidence of a partially reachable destination: the
-        // address-family rule reports that local condition instead. The
-        // per-address failures remain visible in the evidence stack.
-        let all_local_unreachability = bad.iter().all(|o| {
-            o.failure
-                .as_ref()
-                .is_some_and(|f| matches!(f.kind, FailureKind::NetworkUnreachable | FailureKind::HostUnreachable))
-        });
-        if all_local_unreachability {
+        // (Same local-unreachability consideration as the total-loss branch:
+        // if every failing address failed with the host's own no-route
+        // verdict, there is no path evidence of a partially reachable
+        // destination — the address-family rule reports the local condition.)
+        if all_local_unreachability(&bad) {
             return;
         }
         // Partial reachability.
@@ -140,6 +143,20 @@ pub(super) fn family_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosis>) {
             });
         }
     }
+}
+
+/// Whether every failing observation failed with the host's own
+/// no-route verdict (`network unreachable` / `host unreachable`,
+/// ENETUNREACH / EHOSTUNREACH) — a local routing condition reported by the
+/// stack before any packet is sent, not evidence about the destination. Both
+/// the total-loss and the partial-reachability branches stay quiet then, and
+/// the address-family rule reports the local condition instead.
+fn all_local_unreachability(bad: &[&TcpObservation]) -> bool {
+    bad.iter().all(|o| {
+        o.failure
+            .as_ref()
+            .is_some_and(|f| matches!(f.kind, FailureKind::NetworkUnreachable | FailureKind::HostUnreachable))
+    })
 }
 
 /// Summarize the distinct failure kinds across the given observations.

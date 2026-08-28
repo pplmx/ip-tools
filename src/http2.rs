@@ -269,7 +269,11 @@ async fn probe_impl(
         .find(|(n, _)| n.eq_ignore_ascii_case("host"))
         .map(|(_, v)| *v);
     let effective_host = custom_host.unwrap_or(host);
-    let uri = format!("https://{effective_host}{path}");
+    // The URI authority drives hyper's `:authority`. A bracketed IPv6-literal
+    // host stays bracketed (`https://[::1]/` is a valid authority); a bare
+    // IPv6 override (e.g. a user `host` header written without brackets) is
+    // re-bracketed so the URI stays valid (RFC 3986 §3.2.2).
+    let uri = format!("https://{}{path}", crate::http_common::uri_authority(effective_host));
     let mut builder = hyper::Request::builder()
         .method(method)
         .uri(uri)

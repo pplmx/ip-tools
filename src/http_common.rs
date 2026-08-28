@@ -59,6 +59,29 @@ pub fn http_error(step: &str, e: impl std::fmt::Display) -> ProbeError {
     }
 }
 
+/// The wire-presented host: a bracketed IPv6-literal target keeps its
+/// brackets on the `host` string (`Target::parse("[::1]", _)` → `"[::1]"`),
+/// but the wire forms must not carry them — the `Host` header / `:authority`
+/// value is unbracketed (RFC 7230 §5.4 / RFC 9113 §8.3.1), and a TLS/QUIC
+/// server name cannot include them at all (quinn's `ServerName::try_from`
+/// rejects `"[::1]"`). Idempotent.
+#[must_use]
+pub fn wire_host(host: &str) -> &str {
+    host.trim_start_matches('[').trim_end_matches(']')
+}
+
+/// The URI-authority form of a wire host: an IPv6 literal must be bracketed
+/// (`https://[::1]/` is a valid authority; `https://::1/` is not, RFC 3986
+/// §3.2.2), while hostnames and IPv4 pass through unaltered.
+#[must_use]
+pub fn uri_authority(host: &str) -> std::borrow::Cow<'_, str> {
+    let bare = wire_host(host);
+    match bare.parse::<std::net::IpAddr>() {
+        Ok(std::net::IpAddr::V6(_)) => std::borrow::Cow::Owned(format!("[{bare}]")),
+        _ => std::borrow::Cow::Borrowed(bare),
+    }
+}
+
 /// Append up to [`BODY_SNIPPET_BYTES`] of `data` to the running snippet,
 /// stopping once the cap is reached.
 pub fn push_body_snippet(snippet: &mut Vec<u8>, data: &[u8]) {
@@ -120,7 +143,28 @@ pub fn write_body_to_file(path: &std::path::Path, body: &[u8]) -> std::io::Resul
 
 #[cfg(test)]
 mod tests {
-    use super::push_bounded_body;
+    use super::{push_bounded_body, uri_authority, wire_host};
+
+    #[test]
+    fn wire_host_strips_brackets_only() {
+        // A bracketed IPv6-literal target keeps its brackets on the host
+        // string; the wire Host/SNI must not carry them.
+        assert_eq!(wire_host("[::1]"), "::1");
+        assert_eq!(wire_host("[2001:db8::1]"), "2001:db8::1");
+        assert_eq!(wire_host("::1"), "::1");
+        assert_eq!(wire_host("vhost.example"), "vhost.example");
+        assert_eq!(wire_host("1.2.3.4"), "1.2.3.4");
+    }
+
+    #[test]
+    fn uri_authority_rebrackets_a_bare_ipv6_literal() {
+        // `https://[::1]/` is the only valid URI authority for an IPv6
+        // literal (RFC 3986 §3.2.2); a bare `::1` override is re-bracketed.
+        assert_eq!(uri_authority("[::1]"), "[::1]");
+        assert_eq!(uri_authority("::1"), "[::1]");
+        assert_eq!(uri_authority("vhost.example"), "vhost.example");
+        assert_eq!(uri_authority("1.2.3.4"), "1.2.3.4");
+    }
 
     #[test]
     fn cap_truncates_a_oversized_chunk_to_the_remaining_budget() {

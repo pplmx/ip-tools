@@ -210,8 +210,15 @@ pub(crate) async fn connect_to(
             });
         }
         Err(_elapsed) => {
+            // A handshake that stalls past the bound is a TLS-layer timeout,
+            // not a generic one: the TCP connect succeeded and the peer never
+            // completed the handshake. Classifying it as `TlsHandshake` (with
+            // the stall spelled out in the message) keeps it attributable to
+            // the TLS layer — the diagnostics engine must not double-count it
+            // as an HTTP-layer error on the h1/h2 rows that ran their TLS
+            // step through `connect_to`.
             return Err(ProbeError {
-                kind: FailureKind::Timeout,
+                kind: FailureKind::TlsHandshake,
                 message: format!("tls handshake to {destination} with SNI {sni} timed out after {timeout:?}"),
             });
         }

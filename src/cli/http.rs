@@ -4,7 +4,7 @@ use super::run_probe_flow;
 use clap::ArgMatches;
 use ip_tools::http as ip_http;
 use ip_tools::model::HttpObservation;
-use ip_tools::report::{cert_covers_hostname, render_http};
+use ip_tools::report::{cert_covers_hostname, render_http, render_http_plain};
 use ip_tools::style::Style;
 use std::process::ExitCode;
 
@@ -41,10 +41,15 @@ pub(super) async fn run_http(sub_m: &ArgMatches, style: Style) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    // A cleartext run has no TLS layer at all, so its block is headed `HTTP`
+    // rather than `HTTPS` — the observations alone cannot signal this (a
+    // failed TLS handshake also leaves `tls: None`), so the renderer is
+    // selected here from the flag.
+    let render_human: fn(&Style, &[HttpObservation]) -> String = if plain { render_http_plain } else { render_http };
     run_probe_flow(
         sub_m,
         style,
-        render_http,
+        render_human,
         |obs: &HttpObservation| obs.destination,
         |obs: &HttpObservation| obs.failure.is_some(),
         Some(render_http_csv),

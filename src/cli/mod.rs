@@ -1112,8 +1112,18 @@ where
     F: Fn(I) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = T> + Send + 'static,
 {
-    let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(concurrency.clamp(1, MAX_CONCURRENCY)));
-    parallel_map_with_limit(items, semaphore, f).await
+    parallel_map_with_limit(items, shared_semaphore(concurrency), f).await
+}
+
+/// A [`Semaphore`] permitting `concurrency` concurrent jobs, clamped to
+/// `1..=MAX_CONCURRENCY` like [`parallel_map`]. Callers that run probe work
+/// from several `parallel_map` sites over the same sweep share **one** such
+/// semaphore through [`parallel_map_with_limit`], so `--concurrency N` is a
+/// true bound on concurrent probes rather than a per-site level (which would
+/// let a fleet sweep fan out to `N × sites` simultaneous sockets).
+#[must_use]
+pub fn shared_semaphore(concurrency: usize) -> std::sync::Arc<tokio::sync::Semaphore> {
+    std::sync::Arc::new(tokio::sync::Semaphore::new(concurrency.clamp(1, MAX_CONCURRENCY)))
 }
 
 /// Apply `f` to `items` concurrently, bounded by a caller-provided [`Semaphore`]

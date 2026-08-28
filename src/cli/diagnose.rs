@@ -1,6 +1,6 @@
 //! `diagnose` subcommand handler.
 
-use super::parallel_map;
+use super::{parallel_map, parallel_map_with_limit};
 use clap::ArgMatches;
 use ip_tools::diagnostics::{diagnose, DiagnosticInput};
 use ip_tools::dns::DnsClient;
@@ -12,7 +12,9 @@ use ip_tools::model::{
     TcpObservation, TlsObservation,
 };
 use ip_tools::probe as ip_probe;
-use ip_tools::report::{render_diagnoses, render_dns, render_http, render_probe, render_tcp, render_tls, to_json};
+use ip_tools::report::{
+    render_diagnoses, render_dns, render_http, render_http_plain, render_probe, render_tcp, render_tls, to_json,
+};
 use ip_tools::style::Style;
 use ip_tools::target::Target;
 use ip_tools::tcp as ip_tcp;
@@ -137,6 +139,15 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches, style: Style) -> ExitCode {
     // fleet sweep watchable on stderr (silent when piped or a single host).
     let progress = std::sync::Arc::new(super::Progress::new(targets.len(), sub_m.get_flag("no-color")));
     let progress_for_tasks = progress.clone();
+    // One shared permit pool for every probe phase across every target, so
+    // `--concurrency N` bounds concurrent probes globally — not per-target
+    // (`diagnose --concurrency N host1..hostT` must not fan out to N × the
+    // addresses-per-target sockets). The outer per-target map keeps its own
+    // parallel_map limit (targets being processed), and each inner probe
+    // phase across all targets draws from this shared pool; a target task
+    // never holds an inner permit across its own inner phases, so there is no
+    // nested-permit deadlock.
+    let probe_limit = super::shared_semaphore(concurrency);
     let targets_with_index: Vec<(usize, Target)> = targets.into_iter().enumerate().collect();
     let mut indexed: Vec<(usize, Option<DiagnoseReport>)> =
         parallel_map(targets_with_index, concurrency, move |(idx, target)| {
@@ -150,6 +161,7 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches, style: Style) -> ExitCode {
             let dot_eps = dot_eps.clone();
             let reverse = reverse;
             let progress = progress_for_tasks.clone();
+            let probe_limit = probe_limit.clone();
             async move {
                 let report = diagnose_one(
                     &target,
@@ -162,7 +174,7 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches, style: Style) -> ExitCode {
                     &doh_endpoints,
                     &dot_eps,
                     timeout,
-                    concurrency,
+                    probe_limit,
                     insecure,
                     plain,
                     tls_protocol,
@@ -208,7 +220,7 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches, style: Style) -> ExitCode {
         }
     } else {
         for report in &reports {
-            print!("{}", report.render_human(style));
+            print!("{}", report.render_human(style, plain));
         }
     }
 
@@ -240,7 +252,7 @@ async fn diagnose_one(
     doh_endpoints: &[String],
     dot_eps: &[String],
     timeout: Duration,
-    concurrency: usize,
+    probe_limit: std::sync::Arc<tokio::sync::Semaphore>,
     insecure: bool,
     plain: bool,
     tls_protocol: ip_tools::tls::TlsProtocol,
@@ -355,10 +367,11 @@ async fn diagnose_one(
         .map(|ip| SocketAddr::new(ip, target.port))
         .collect();
 
-    let tcp_obs: Vec<TcpObservation> = parallel_map(destinations.clone(), concurrency, move |d| async move {
-        ip_tcp::probe(d, timeout).await
-    })
-    .await;
+    let tcp_obs: Vec<TcpObservation> =
+        parallel_map_with_limit(destinations.clone(), probe_limit.clone(), move |d| async move {
+            ip_tcp::probe(d, timeout).await
+        })
+        .await;
 
     let sni = presented.to_string();
     // `--plain`: the endpoint is cleartext HTTP, so there is no TLS handshake
@@ -368,7 +381,7 @@ async fn diagnose_one(
     let tls_obs: Vec<TlsObservation> = if plain {
         Vec::new()
     } else {
-        parallel_map(destinations.clone(), concurrency, move |d| {
+        parallel_map_with_limit(destinations.clone(), probe_limit.clone(), move |d| {
             let sni = sni.clone();
             let tls_protocol = tls_protocol;
             async move {
@@ -389,7 +402,7 @@ async fn diagnose_one(
         path,
         headers,
         body,
-        concurrency,
+        probe_limit.clone(),
         timeout,
         insecure,
         plain,
@@ -414,7 +427,7 @@ async fn diagnose_one(
     );
     // Each `parallel_map` closure is `Fn` (re-invoked per destination), so it
     // must clone the captured request shape before the `async move`.
-    let probe_obs: Vec<ProbeResult> = parallel_map(destinations.clone(), concurrency, move |d| {
+    let probe_obs: Vec<ProbeResult> = parallel_map_with_limit(destinations.clone(), probe_limit.clone(), move |d| {
         let (host, method, path, headers, body) = (
             header_host.clone(),
             header_method.clone(),
@@ -490,11 +503,18 @@ impl DiagnoseReport {
     /// Render the full evidence stack (DNS, TCP, TLS, HTTP/1.1+2+3, repeated
     /// probes) and the verdicts as human text, so multi-target output is the
     /// concatenation of each host's report.
-    fn render_human(&self, style: Style) -> String {
+    fn render_human(&self, style: Style, plain: bool) -> String {
         let mut out = render_dns(&style, &self.target, &self.dns);
         out.push_str(&render_tcp(&style, &self.tcp));
         out.push_str(&render_tls(&style, &self.tls));
-        out.push_str(&render_http(&style, &self.http));
+        // A `--plain` run has no TLS layer and so is headed `HTTP`, not
+        // `HTTPS` (see `render_http_plain`).
+        let http_section = if plain {
+            render_http_plain(&style, &self.http)
+        } else {
+            render_http(&style, &self.http)
+        };
+        out.push_str(&http_section);
         out.push_str(&render_probe(&style, &self.probes));
         out.push_str(&render_diagnoses(&style, &self.diagnoses));
         out
@@ -568,7 +588,7 @@ async fn collect_http_probes(
     path: &str,
     headers: &[(String, String)],
     body: Option<&[u8]>,
-    concurrency: usize,
+    probe_limit: std::sync::Arc<tokio::sync::Semaphore>,
     timeout: Duration,
     insecure: bool,
     plain: bool,
@@ -588,7 +608,7 @@ async fn collect_http_probes(
         body.map(<[u8]>::to_vec),
     );
 
-    let http1: Vec<HttpObservation> = parallel_map(destinations.clone(), concurrency, move |d| {
+    let http1: Vec<HttpObservation> = parallel_map_with_limit(destinations.clone(), probe_limit.clone(), move |d| {
         let (host, method, path, headers, body) = (
             host_1.clone(),
             method_1.clone(),
@@ -647,7 +667,7 @@ async fn collect_http_probes(
     })
     .await;
 
-    let http2: Vec<HttpObservation> = parallel_map(destinations.clone(), concurrency, move |d| {
+    let http2: Vec<HttpObservation> = parallel_map_with_limit(destinations.clone(), probe_limit.clone(), move |d| {
         let (host, method, path, headers, body) = (
             host_2.clone(),
             method_2.clone(),
@@ -690,7 +710,7 @@ async fn collect_http_probes(
     })
     .await;
 
-    let http3: Vec<HttpObservation> = parallel_map(destinations.clone(), concurrency, move |d| {
+    let http3: Vec<HttpObservation> = parallel_map_with_limit(destinations.clone(), probe_limit.clone(), move |d| {
         let (host, method, path, headers, body) = (
             host_3.clone(),
             method_3.clone(),

@@ -1053,17 +1053,24 @@ async fn tls_and_http_probe_time_out_when_server_never_responds() {
 
     let obs = tls::probe(addr, "localhost", Duration::from_millis(500)).await;
     assert!(!obs.success, "black-holed TLS must not succeed: {obs:?}");
+    // A handshake that stalls past the bound is a TLS-layer timeout, exposed
+    // as `TlsHandshake` (message says "timed out") so the diagnostics engine
+    // does not double-count it as an HTTP-layer error on h1/h2 rows.
     assert_eq!(
         obs.failure.as_ref().map(|f| f.kind),
-        Some(ip_tools::FailureKind::Timeout),
+        Some(ip_tools::FailureKind::TlsHandshake),
         "expected a TLS handshake timeout: {obs:?}"
+    );
+    assert!(
+        obs.failure.as_ref().expect("failure").message.contains("timed out"),
+        "the stall must be spelled out in the message: {obs:?}"
     );
 
     let obs = http::probe(addr, "localhost", "GET", "/", &[], None, Duration::from_millis(500)).await;
     assert_eq!(
         obs.failure.as_ref().map(|f| f.kind),
-        Some(ip_tools::FailureKind::Timeout),
-        "expected an HTTP handshake timeout: {obs:?}"
+        Some(ip_tools::FailureKind::TlsHandshake),
+        "an h1-over-TLS handshake stall must not read as an HTTP-layer timeout: {obs:?}"
     );
 
     held.abort();

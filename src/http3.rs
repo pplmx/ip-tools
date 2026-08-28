@@ -219,8 +219,11 @@ async fn probe_impl(
     };
     endpoint.set_default_client_config(config);
 
-    // QUIC handshake (UDP), bounded.
-    let connecting = match endpoint.connect(destination, host) {
+    // QUIC handshake (UDP), bounded. The server name is bracket-stripped: a
+    // bracketed IPv6-literal target (`Target::parse("[::1]", _)`) would
+    // otherwise reach quinn's crypto layer as `ServerName::try_from("[::1]")`
+    // → `InvalidServerName`, breaking HTTP/3 before any packet is sent.
+    let connecting = match endpoint.connect(destination, crate::http_common::wire_host(host)) {
         Ok(c) => c,
         Err(e) => return base.with_failure(failure(FailureKind::Quic, format!("quic connect failed: {e}"))),
     };
@@ -260,11 +263,15 @@ async fn probe_impl(
         .find(|(n, _)| n.eq_ignore_ascii_case("host"))
         .map(|(_, v)| *v);
     let effective_host = custom_host.unwrap_or(host);
-    let uri = format!("https://{effective_host}{path}");
+    // The URI authority is bracketed for an IPv6 literal (`https://[::1]/`),
+    // while the `host` header value is bracket-stripped — so `:authority`
+    // (driven by the URI) and `host` agree on the unbracketed form, matching
+    // the h2 handling (RFC 9114 §4.3.1 requires them to match).
+    let uri = format!("https://{}{path}", crate::http_common::uri_authority(effective_host));
     let mut builder = hyper::Request::builder()
         .method(method)
         .uri(uri)
-        .header("host", effective_host)
+        .header("host", crate::http_common::wire_host(effective_host))
         .header("user-agent", "ip-tools")
         .header("accept", "*/*");
     for (name, value) in headers {
