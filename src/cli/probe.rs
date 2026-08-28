@@ -31,9 +31,10 @@ impl ProbeExpectation {
     /// `--expect-status` asserts the accepted status *set*: every status that
     /// appeared across the `--count` attempts must match (a mixed distribution
     /// like `200x57 / 503x3` reveals status flapping a single response cannot).
-    /// A repeat whose attempts never completed (empty distribution) carries no
-    /// response to assert on, so it can never satisfy the assertion — that is
-    /// itself the violation, mirroring the single-shot `Expectation`.
+    /// A repeat whose attempts produced no HTTP response at all (empty
+    /// distribution) carries no response to assert on, so it can never satisfy
+    /// the assertion — that is itself the violation, mirroring the single-shot
+    /// `Expectation`.
     ///
     /// `--expect-rate` asserts the aggregate `success_rate`. The two compose:
     /// `--expect-status` catches the wrong status, `--expect-rate` catches
@@ -42,7 +43,11 @@ impl ProbeExpectation {
         let mut reasons = Vec::new();
         if let Some(spec) = &self.status {
             if r.status_counts.is_empty() {
-                reasons.push("no response to assert on (no attempt completed)".to_string());
+                // The report just showed `attempts: N / success: 0`, so say
+                // plainly that the attempts ran but none produced a response
+                // (an HTTP response always carries a status, so an empty
+                // distribution means every attempt failed at the transport).
+                reasons.push("no response to assert on (every attempt failed)".to_string());
             } else {
                 let outside: Vec<String> = r
                     .status_counts
@@ -428,8 +433,8 @@ mod tests {
             v.as_deref().is_some_and(|m| m.contains("503x3") && m.contains("2xx")),
             "a 503 in the distribution must violate a 2xx assertion: {v:?}"
         );
-        // No attempt completed: there is no response to assert on, so the
-        // status assertion is violated even though no status was observed.
+        // No attempt produced a response: there is no response to assert on,
+        // so the status assertion is violated even though no status was seen.
         let v = e.violation(&result(0.0, &[]));
         assert!(
             v.as_deref().is_some_and(|m| m.contains("no response to assert on")),

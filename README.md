@@ -722,6 +722,25 @@ server-response-latency signal, so a stability sweep can tell a slow-to-respond
 backend (a TTFB tail) from a slow body transfer (total latency). The transport
 (`tcp`/`tls`) repeats carry no such signal and omit it.
 
+Like the single-shot commands, the repeat takes **asserted-reliability gates**
+— but on the *aggregate* instead of one response:
+`--expect-status SPEC` (e.g. `200` or a `2xx` class) requires **every** HTTP
+status observed across the `--count` attempts to be in the set — a
+`200x57 / 503x3` flapping mix fails a `2xx` gate that a single lucky 200 would
+pass — and `--expect-rate RATE` (a fraction `0.97` / `1` or a percent `97%`)
+requires the aggregate `success_rate` to meet the bar. An address whose
+attempts produced no HTTP response violates `--expect-status` even when no
+status was observed. Each offender prints an
+`expectation violated: <destination>: …` line on **stderr** and makes the run
+exit non-zero, independent of `--strict`; `--expect-status` applies only to
+`--protocol http|http2|http3` (a `tcp`/`tls` repeat has no status to assert
+on):
+
+```shell
+ip-tools probe example.com --protocol http --count 30 --expect-status 2xx
+ip-tools probe example.com --protocol http --expect-rate 0.97 --count 100
+```
+
 Example output:
 
 ```
@@ -740,9 +759,13 @@ Repeated probes
 ```
 
 `--csv` emits a `host,destination,attempts,success_rate,latency_p50_ms,
-latency_p95_ms,latency_max_ms,jitter_ms,failures` row per destination across
-single and multi-target sweeps — a connectivity-health sweep loads straight
-into a spreadsheet (`--csv`/`--json`/human output are mutually exclusive).
+latency_p95_ms,latency_max_ms,jitter_ms,ttfb_p50_ms,ttfb_p95_ms,ttfb_max_ms,
+failures,statuses` row per destination across single and multi-target sweeps —
+the `ttfb_*` columns carry the server-response latency on HTTP repeats (empty
+for `tcp`/`tls` repeats) and `statuses` the observed HTTP status distribution
+(e.g. `200x60`, or blank when no attempt produced a response) — so a
+connectivity-health sweep loads straight into a spreadsheet
+(`--csv`/`--json`/human output are mutually exclusive).
 
 ### Scripting exit codes
 
@@ -763,6 +786,13 @@ ip-tools route example.com --strict || echo "a hop was lost"
 attempt (repeated `probe`), any failed DNS lookup (`dns`), any non-`Healthy`
 diagnosis (`diagnose`) or any lost hop (`route`). Output is still rendered in
 full; only the exit code changes.
+
+For **assertions** — "exit non-zero unless the response is *exactly* the shape
+I expected" — the `--expect-*` gates take over: `--expect-status` /
+`--expect-contains` on the single-shot `http`/`http2`/`http3` commands, and
+`--expect-status` / `--expect-rate` on the repeated `probe` (see the sections
+above). Unlike `--strict`, a violated assertion also names each offender on
+stderr.
 
 ### Local IP helpers
 
