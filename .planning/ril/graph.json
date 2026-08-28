@@ -1,8 +1,8 @@
 {
   "ril_version": 1,
-  "round": 11,
+  "round": 12,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-28T19:56:55+00:00",
+  "updated_at": "2026-08-28T21:39:58+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -11,7 +11,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:45+00:00",
       "updated_at": "2026-08-21T17:36:45+00:00",
-      "touched_round": 8,
+      "touched_round": 11,
       "desc": "DNS probes: system resolver, --server custom, --doh RFC8484 (hand-rolled wire), literal short-circuit, RCODE surfacing"
     },
     "COMP-tcp": {
@@ -111,7 +111,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 0,
+      "touched_round": 11,
       "desc": "typed observation model: DNS/TCP/TLS/HTTP/latency/probe/diagnosis; serde Serialize"
     },
     "COMP-report": {
@@ -121,7 +121,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 6,
+      "touched_round": 11,
       "desc": "human + --json rendering of all observation types"
     },
     "COMP-lib": {
@@ -4254,6 +4254,191 @@
       "updated_at": "2026-08-28T19:56:55+00:00",
       "touched_round": 11,
       "desc": "An explicit --header 'host: ...' was appended on top of the probe's own Host header (h1/h3) or left clashing with the :authority pseudo-header (h2), producing an RFC 7230 section 5.4-malformed request or an h2 authority/host conflict instead of routing a shared-IP virtual host"
+    },
+    "ISS-084": {
+      "id": "ISS-084",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-28T21:30:54+00:00",
+      "updated_at": "2026-08-28T21:39:57+00:00",
+      "touched_round": 11,
+      "desc": "DoH/DoT wire path reports a NOERROR empty answer (NODATA: the name exists but has no records of the queried type) as success-with-0-records while the resolver-backed path reports the identical condition as a no-type-records-found failure — a mixed system+--doh run shows SYSTEM=failure next to DOH=success, and --strict/repeat aggregation disagree by resolver",
+      "severity": "medium"
+    },
+    "ISS-085": {
+      "id": "ISS-085",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-28T21:30:54+00:00",
+      "updated_at": "2026-08-28T21:39:57+00:00",
+      "touched_round": 11,
+      "desc": "cert_covers_hostname fails to match a bracketed IPv6-literal SNI (Target::parse keeps the brackets) against a bare IP SAN, so a cert that does cover the address is reported covers-no in the human TLS/HTTP reports, both CSVs, and the diagnose certificate-coverage rule",
+      "severity": "medium"
+    },
+    "ISS-086": {
+      "id": "ISS-086",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-28T21:30:54+00:00",
+      "updated_at": "2026-08-28T21:39:58+00:00",
+      "touched_round": 11,
+      "desc": "HTTP repeat probes count an attempt whose headers+status arrive but whose body never completes as a clean success, pushing latency at the full --timeout wall-clock and letting --expect-rate 1/--expect-status assert a body-stalling endpoint green; the single-shot layer already reports body-incomplete",
+      "severity": "medium"
+    },
+    "ISS-087": {
+      "id": "ISS-087",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-28T21:30:55+00:00",
+      "updated_at": "2026-08-28T21:39:58+00:00",
+      "touched_round": 11,
+      "desc": "dns --count N --json omits success_rate (a Rust-only method) while probe --json serializes the analogous metric — JSON consumers get a different repeat-aggregate schema across the two commands",
+      "severity": "low"
+    },
+    "ISS-088": {
+      "id": "ISS-088",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-28T21:30:55+00:00",
+      "updated_at": "2026-08-28T21:39:58+00:00",
+      "touched_round": 11,
+      "desc": "probe protocol-scope guard compares --method/--path/--tls-version against their defaults, so explicitly-passed default-shaped flags slip through and are silently ignored",
+      "severity": "low"
+    },
+    "TASK-081": {
+      "id": "TASK-081",
+      "type": "task",
+      "status": "abandoned",
+      "version": 2,
+      "created_at": "2026-08-28T21:31:24+00:00",
+      "updated_at": "2026-08-28T21:36:38+00:00",
+      "touched_round": 11,
+      "category": "correctness",
+      "severity": "medium",
+      "desc": "(created in error — task creation failed on string severity and left this shell node; superseded by TASK-084)"
+    },
+    "TASK-082": {
+      "id": "TASK-082",
+      "type": "task",
+      "status": "abandoned",
+      "version": 2,
+      "created_at": "2026-08-28T21:31:24+00:00",
+      "updated_at": "2026-08-28T21:36:38+00:00",
+      "touched_round": 11,
+      "category": "correctness",
+      "severity": "medium",
+      "desc": "(created in error — task creation failed on string severity and left this shell node; superseded by TASK-085)"
+    },
+    "TASK-083": {
+      "id": "TASK-083",
+      "type": "task",
+      "status": "abandoned",
+      "version": 2,
+      "created_at": "2026-08-28T21:31:24+00:00",
+      "updated_at": "2026-08-28T21:36:38+00:00",
+      "touched_round": 11,
+      "category": "maintainability",
+      "severity": "low",
+      "desc": "(created in error — task creation failed on string severity and left this shell node; superseded by TASK-086)"
+    },
+    "TASK-084": {
+      "id": "TASK-084",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-28T21:32:19+00:00",
+      "updated_at": "2026-08-28T21:39:58+00:00",
+      "touched_round": 11,
+      "category": "correctness",
+      "severity": 0.75,
+      "confidence": 0.95,
+      "desc": "Repeat-probe honesty: a headers+status-then-stall HTTP attempt must aggregate as a Timeout failure (not a success with timeout-scaled latency), keeping status/TTFB recorded"
+    },
+    "TASK-085": {
+      "id": "TASK-085",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-28T21:32:19+00:00",
+      "updated_at": "2026-08-28T21:39:58+00:00",
+      "touched_round": 11,
+      "category": "correctness",
+      "severity": 0.6,
+      "confidence": 0.95,
+      "desc": "Resolver-consistent DNS verdicts + covers honesty: DoH/DoT NODATA aligns with the resolver path; cert_covers_hostname strips brackets so a bracketed IPv6-literal SNI matches its bare IP SAN"
+    },
+    "TASK-086": {
+      "id": "TASK-086",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-28T21:32:19+00:00",
+      "updated_at": "2026-08-28T21:39:58+00:00",
+      "touched_round": 11,
+      "category": "maintainability",
+      "severity": 0.4,
+      "confidence": 0.95,
+      "desc": "Aggregate/CLI shape polish: DnsRepeatResult serializes success_rate (JSON parity with probe); probe protocol-scope guard fires on explicitly-passed default-shaped flags via clap value_source"
+    },
+    "CHG-081": {
+      "id": "CHG-081",
+      "type": "change",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-28T21:33:06+00:00",
+      "updated_at": "2026-08-28T21:39:58+00:00",
+      "touched_round": 11,
+      "commit": "a121b38",
+      "desc": "DoH/DoT report NODATA (NOERROR, zero wanted records) as the same no-type-records-found failure the resolver path surfaces, instead of success-with-0-records; mixed system+--doh verdicts and --strict/aggregation now agree by resolver (a121b38)"
+    },
+    "CHG-082": {
+      "id": "CHG-082",
+      "type": "change",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-28T21:33:06+00:00",
+      "updated_at": "2026-08-28T21:39:58+00:00",
+      "touched_round": 11,
+      "commit": "a121b38",
+      "desc": "cert_covers_hostname strips the brackets an IPv6-literal SNI keeps, so a cert whose IP SAN covers the address is no longer reported covers-no in human/CSV/diagnose-rule (a121b38)"
+    },
+    "CHG-083": {
+      "id": "CHG-083",
+      "type": "change",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-28T21:33:06+00:00",
+      "updated_at": "2026-08-28T21:39:58+00:00",
+      "touched_round": 11,
+      "commit": "a121b38",
+      "desc": "HTTP repeat probes count a headers+status-then-stall attempt as a Timeout failure (status/TTFB still recorded) instead of a clean success with latency at the full --timeout; --expect-rate/--expect-status can no longer assert a body-stalling endpoint green (a121b38)"
+    },
+    "CHG-084": {
+      "id": "CHG-084",
+      "type": "change",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-28T21:33:06+00:00",
+      "updated_at": "2026-08-28T21:39:58+00:00",
+      "touched_round": 11,
+      "commit": "a121b38",
+      "desc": "DnsRepeatResult serializes success_rate (JSON parity with probe --json); api-baseline regenerated; accessor made const (a121b38)"
+    },
+    "CHG-085": {
+      "id": "CHG-085",
+      "type": "change",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-28T21:33:06+00:00",
+      "updated_at": "2026-08-28T21:39:58+00:00",
+      "touched_round": 11,
+      "commit": "a121b38",
+      "desc": "probe protocol-scope guard fires on explicitly-passed default-shaped flags (--method GET/--path //--tls-version auto on tcp|tls) via clap value_source(CommandLine) instead of value comparison (a121b38)"
     }
   },
   "edges": [
@@ -7208,6 +7393,144 @@
       "to": "COMP-http",
       "type": "located_in",
       "created_at": "2026-08-28T19:56:55+00:00"
+    },
+    {
+      "from": "ISS-084",
+      "to": "COMP-dns",
+      "type": "located_in",
+      "created_at": "2026-08-28T21:33:40+00:00"
+    },
+    {
+      "from": "ISS-085",
+      "to": "COMP-report",
+      "type": "located_in",
+      "created_at": "2026-08-28T21:33:40+00:00"
+    },
+    {
+      "from": "ISS-086",
+      "to": "COMP-probe",
+      "type": "located_in",
+      "created_at": "2026-08-28T21:33:40+00:00"
+    },
+    {
+      "from": "ISS-087",
+      "to": "COMP-model",
+      "type": "located_in",
+      "created_at": "2026-08-28T21:33:40+00:00"
+    },
+    {
+      "from": "ISS-088",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-28T21:33:40+00:00"
+    },
+    {
+      "from": "TASK-084",
+      "to": "ISS-086",
+      "type": "addresses",
+      "created_at": "2026-08-28T21:33:40+00:00"
+    },
+    {
+      "from": "TASK-085",
+      "to": "ISS-084",
+      "type": "addresses",
+      "created_at": "2026-08-28T21:33:40+00:00"
+    },
+    {
+      "from": "TASK-085",
+      "to": "ISS-085",
+      "type": "addresses",
+      "created_at": "2026-08-28T21:33:40+00:00"
+    },
+    {
+      "from": "TASK-086",
+      "to": "ISS-087",
+      "type": "addresses",
+      "created_at": "2026-08-28T21:33:40+00:00"
+    },
+    {
+      "from": "TASK-086",
+      "to": "ISS-088",
+      "type": "addresses",
+      "created_at": "2026-08-28T21:33:40+00:00"
+    },
+    {
+      "from": "CHG-083",
+      "to": "TASK-084",
+      "type": "implements",
+      "created_at": "2026-08-28T21:33:40+00:00"
+    },
+    {
+      "from": "CHG-081",
+      "to": "TASK-085",
+      "type": "implements",
+      "created_at": "2026-08-28T21:33:41+00:00"
+    },
+    {
+      "from": "CHG-082",
+      "to": "TASK-085",
+      "type": "implements",
+      "created_at": "2026-08-28T21:33:41+00:00"
+    },
+    {
+      "from": "CHG-084",
+      "to": "TASK-086",
+      "type": "implements",
+      "created_at": "2026-08-28T21:33:41+00:00"
+    },
+    {
+      "from": "CHG-085",
+      "to": "TASK-086",
+      "type": "implements",
+      "created_at": "2026-08-28T21:33:41+00:00"
+    },
+    {
+      "from": "CHG-081",
+      "to": "ISS-084",
+      "type": "resolves",
+      "created_at": "2026-08-28T21:33:41+00:00"
+    },
+    {
+      "from": "CHG-082",
+      "to": "ISS-085",
+      "type": "resolves",
+      "created_at": "2026-08-28T21:33:41+00:00"
+    },
+    {
+      "from": "CHG-083",
+      "to": "ISS-086",
+      "type": "resolves",
+      "created_at": "2026-08-28T21:33:41+00:00"
+    },
+    {
+      "from": "CHG-084",
+      "to": "ISS-087",
+      "type": "resolves",
+      "created_at": "2026-08-28T21:33:41+00:00"
+    },
+    {
+      "from": "CHG-085",
+      "to": "ISS-088",
+      "type": "resolves",
+      "created_at": "2026-08-28T21:33:41+00:00"
+    },
+    {
+      "from": "TASK-081",
+      "to": "ISS-086",
+      "type": "addresses",
+      "created_at": "2026-08-28T21:39:26+00:00"
+    },
+    {
+      "from": "TASK-082",
+      "to": "ISS-085",
+      "type": "addresses",
+      "created_at": "2026-08-28T21:39:26+00:00"
+    },
+    {
+      "from": "TASK-083",
+      "to": "ISS-087",
+      "type": "addresses",
+      "created_at": "2026-08-28T21:39:26+00:00"
     }
   ]
 }
