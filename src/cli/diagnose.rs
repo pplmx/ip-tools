@@ -213,7 +213,7 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches, style: Style) -> ExitCode {
     }
 
     if unresolved > 0 {
-        eprintln!("Error: {unresolved} host(s) did not resolve to any address");
+        eprintln!("Error: {unresolved} host(s) produced no address to probe (unresolvable, or emptied by the --ipv4/--ipv6 scope)");
         return ExitCode::FAILURE;
     }
     if anomalies > 0 {
@@ -293,12 +293,29 @@ async fn diagnose_one(
     // records both families (resolution is unscoped, exactly like the probe
     // commands), and an IP-literal of the wrong family leaves the pool empty
     // so the usual no-address failure fires.
+    let resolved_any = !addresses.is_empty();
     addresses.retain(|a| family.keeps(a));
     if addresses.is_empty() {
-        eprintln!(
-            "Error: hostname {} did not resolve to any address via the system resolver, --server, --doh, or --dot resolvers",
-            target.host
-        );
+        // Two distinct failures deserve distinct messages: the hostname truly
+        // did not resolve (any resolver, any family), vs. it resolved but the
+        // `--ipv4`/`--ipv6` scope emptied the pool (a real "no IPv6 records"
+        // condition, not a resolver failure).
+        if resolved_any {
+            let fam = match family {
+                FamilyScope::V4 => "IPv4",
+                FamilyScope::V6 => "IPv6",
+                FamilyScope::Both => "",
+            };
+            eprintln!(
+                "Error: target {} resolves, but the --ipv4/--ipv6 scope leaves no {fam} addresses to probe",
+                target.host
+            );
+        } else {
+            eprintln!(
+                "Error: hostname {} did not resolve to any address via the system resolver, --server, --doh, or --dot resolvers",
+                target.host
+            );
+        }
         return None;
     }
     // `--reverse`: add reverse-DNS (PTR) names to the DNS evidence stack so
@@ -486,13 +503,7 @@ impl DiagnoseReport {
 
 /// Escape a single CSV field: quote it when it contains a comma, quote, or
 /// newline, doubling embedded quotes (RFC 4180).
-fn csv_field(value: &str) -> String {
-    if value.contains(',') || value.contains('"') || value.contains('\n') {
-        format!("\"{}\"", value.replace('"', "\"\""))
-    } else {
-        value.to_string()
-    }
-}
+use super::csv_field;
 
 /// Render every diagnosis across every report as CSV rows: a header line then
 /// one `host,severity,category,confidence,summary,evidence,possible_causes`
@@ -507,11 +518,11 @@ fn render_csv(reports: &[DiagnoseReport]) -> String {
         for d in &report.diagnoses {
             out.push_str(&csv_field(&report.target));
             out.push(',');
-            out.push_str(&csv_field(&format!("{:?}", d.severity)));
+            out.push_str(&csv_field(&serde_enum(&d.severity)));
             out.push(',');
-            out.push_str(&csv_field(&format!("{:?}", d.category)));
+            out.push_str(&csv_field(&serde_enum(&d.category)));
             out.push(',');
-            out.push_str(&csv_field(&format!("{:?}", d.confidence)));
+            out.push_str(&csv_field(&serde_enum(&d.confidence)));
             out.push(',');
             out.push_str(&csv_field(&d.summary));
             out.push(',');
@@ -522,6 +533,17 @@ fn render_csv(reports: &[DiagnoseReport]) -> String {
         }
     }
     out
+}
+
+/// Render an enum value exactly as its JSON serialization (the diagnostics
+/// enums carry `#[serde(rename_all = ...)]`: `HIGH`, `total_connectivity_loss`,
+/// ...), so a CSV row pivots against the `--json` output — `Debug`'s `High` /
+/// `TotalConnectivityLoss` spellings would silently diverge.
+fn serde_enum<T: serde::Serialize>(v: &T) -> String {
+    serde_json::to_value(v)
+        .ok()
+        .and_then(|x| x.as_str().map(str::to_owned))
+        .unwrap_or_default()
 }
 
 /// Join a list of strings with "; " for a single CSV cell (empty when the

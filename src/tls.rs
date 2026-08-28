@@ -398,8 +398,10 @@ fn cert_summary(der: &rustls_pki_types::CertificateDer<'_>) -> Option<Certificat
     })
 }
 
-/// Render a certificate [`GeneralName`] (subjectAltName) as a string, or
-/// `None` for name types we do not surface (otherName, registered ID, ...).
+/// Render a certificate
+/// [`GeneralName`](x509_parser::extensions::GeneralName) (subjectAltName) as
+/// a string, or `None` for name types we do not surface (otherName,
+/// registered ID, ...).
 fn general_name_string(name: &x509_parser::extensions::GeneralName) -> Option<String> {
     use x509_parser::extensions::GeneralName;
     Some(match name {

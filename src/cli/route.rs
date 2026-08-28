@@ -245,17 +245,11 @@ fn render_route_csv(hops: &[RouteHop]) -> String {
     out
 }
 
-/// Quote a CSV field when it contains a comma, quote, or newline (RFC 4180).
-fn csv_field(value: &str) -> String {
-    if value.contains(',') || value.contains('"') || value.contains('\n') {
-        format!("\"{}\"", value.replace('"', "\"\""))
-    } else {
-        value.to_string()
-    }
-}
+use super::csv_field;
 
 #[cfg(test)]
 mod tests {
+    use super::csv_field;
     use super::*;
     use ip_tools::LatencyStats;
 

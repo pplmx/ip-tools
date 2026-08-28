@@ -137,6 +137,50 @@ fn tcp_cli_csv_export_renders_rows() {
 }
 
 #[test]
+fn probe_flow_family_scope_empty_pool_fails_cleanly() {
+    // `tcp --ipv6` on an IPv4-only hostname resolves the A record but the
+    // scope empties the address pool. It must fail with a message naming the
+    // scope — not silently exit 0 with zero probes and an empty report.
+    let server = local_dns_server(&["192.0.2.77"], &[]);
+    let assert = cmd()
+        .args([
+            "tcp",
+            "host.example",
+            "--server",
+            &server.to_string(),
+            "--ipv6",
+            "--timeout",
+            "1200",
+        ])
+        .assert()
+        .failure();
+    let err = stderr(&assert);
+    assert!(
+        err.contains("scope leaves no IPv6 addresses"),
+        "--ipv6 must name the family-scoped empty pool: {err}"
+    );
+    // The plain run (both families, one address) still probes and reports that
+    // address — scope-empty stays scoped-only.
+    let out = stdout(
+        &cmd()
+            .args([
+                "tcp",
+                "host.example",
+                "--server",
+                &server.to_string(),
+                "--timeout",
+                "1200",
+            ])
+            .assert()
+            .success(),
+    );
+    assert!(
+        out.contains("192.0.2.77"),
+        "unscoped run must still show the resolved address: {out}"
+    );
+}
+
+#[test]
 fn tls_cli_reports_failure_against_plain_listener() {
     let addr = local_tcp_listener();
     let out = stdout(
@@ -211,6 +255,63 @@ fn probe_cli_protocol_tls_accepts_and_reports_failures_on_plain_listener() {
     assert!(out.contains("Repeated probes"), "probe heading missing: {out}");
     assert!(out.contains("attempts: 2"), "expected 2 attempts: {out}");
     assert!(out.contains("failure:  2"), "expected 2 failures: {out}");
+}
+
+#[test]
+fn probe_cli_rejects_http_request_flags_for_non_http_protocols() {
+    // `--method`/`--path`/`--header`/`--body` are silently ignored by the
+    // tcp/tls protocol arms (no HTTP request is sent), and `--tls-version`
+    // means nothing to a tcp repeat. Those mismatches must fail fast with a
+    // clear error instead of appearing to be honored.
+    let addr = local_tcp_listener();
+    let cases: &[(&str, &str, &str)] = &[
+        ("tls", "--path", "/x"),
+        ("tcp", "--method", "HEAD"),
+        ("tls", "--header", "x-test: 1"),
+        ("tcp", "--body", "x"),
+        ("tcp", "--tls-version", "1.2"),
+    ];
+    for (protocol, flag, value) in cases {
+        let assert = cmd()
+            .args([
+                "probe",
+                &addr.to_string(),
+                "--protocol",
+                protocol,
+                "--count",
+                "2",
+                "--timeout",
+                "800",
+                flag,
+                value,
+            ])
+            .assert()
+            .failure();
+        let err = stderr(&assert);
+        assert!(
+            err.contains("only apply to --protocol http|http2|http3")
+                || err.contains("only applies to --protocol tls|http|http2|http3"),
+            "{flag} with --protocol {protocol} must fail with a protocol-scope error: {err}"
+        );
+    }
+    // The HTTP-family protocols legitimately accept these flags.
+    cmd()
+        .args([
+            "probe",
+            &addr.to_string(),
+            "--protocol",
+            "http",
+            "--count",
+            "2",
+            "--timeout",
+            "800",
+            "--path",
+            "/",
+            "--method",
+            "GET",
+        ])
+        .assert()
+        .success();
 }
 
 #[test]
@@ -486,6 +587,40 @@ fn dns_cli_record_type_selects_a_single_record_type() {
 }
 
 #[test]
+fn dns_cli_ipv4_is_the_a_only_shorthand() {
+    let server = local_dns_server(&["192.0.2.77"], &["2001:db8::77"]);
+
+    // `--ipv4` is the shorthand for `--record-type A`: A-only, no AAAA row.
+    let out = stdout(
+        &cmd()
+            .args([
+                "dns",
+                "host.example",
+                "--server",
+                &server.to_string(),
+                "--ipv4",
+                "--timeout",
+                "1200",
+            ])
+            .assert()
+            .success(),
+    );
+    assert!(out.contains("192.0.2.77"), "A (via --ipv4) missing: {out}");
+    assert!(!out.contains("2001:db8::77"), "--ipv4 must exclude AAAA: {out}");
+
+    // `--ipv4` and `--ipv6` are mutually exclusive (like every other command).
+    cmd()
+        .args(["dns", "host.example", "--ipv4", "--ipv6"])
+        .assert()
+        .failure();
+    // `--ipv4` also conflicts with `--record-type` (both pick the A record set).
+    cmd()
+        .args(["dns", "host.example", "--ipv4", "--record-type", "A"])
+        .assert()
+        .failure();
+}
+
+#[test]
 fn dns_cli_count_repeats_and_aggregates_latency_stats() {
     let server = local_dns_server(&["192.0.2.77"], &[]);
     let out = stdout(
@@ -511,6 +646,23 @@ fn dns_cli_count_repeats_and_aggregates_latency_stats() {
     );
     assert!(out.contains("attempts: 5"), "attempt count wrong: {out}");
     assert!(out.contains("p50:"), "latency stats missing: {out}");
+}
+
+#[test]
+fn dns_cli_rejects_count_zero() {
+    // `dns --count 0` used to silently degrade to a single-shot lookup and
+    // exit 0, the one probe command not aligned with probe/route/diagnose's
+    // "never probe zero times" rejection. It must fail fast and exit non-zero.
+    let server = local_dns_server(&["192.0.2.77"], &[]);
+    let assert = cmd()
+        .args(["dns", "host.example", "--server", &server.to_string(), "--count", "0"])
+        .assert()
+        .failure();
+    let err = stderr(&assert);
+    assert!(
+        err.contains("--count must be at least 1"),
+        "dns --count 0 must fail with the shared message: {err}"
+    );
 }
 
 #[test]
@@ -739,8 +891,10 @@ fn tcp_cli_probes_bracketed_ipv6_literal() {
 #[test]
 fn tcp_cli_ipv4_and_ipv6_filter_the_probed_family() {
     // `--ipv4`/`--ipv6` restrict a sweep to one address family. Against the
-    // IPv4 loopback, `--ipv4` reaches the listener and `--ipv6` filters it to
-    // no addresses (exit 0, no probe output); passing both is a parse error.
+    // IPv4 loopback, `--ipv4` reaches the listener; `--ipv6` filters the pool
+    // to nothing, which must NOW be a scoped-empty failure (this scope
+    // formerly exited 0 with zero probes and an empty report); passing both is
+    // a parse error.
     let addr = local_tcp_listener();
 
     let out = stdout(
@@ -751,13 +905,15 @@ fn tcp_cli_ipv4_and_ipv6_filter_the_probed_family() {
     );
     assert!(out.contains("PASS"), "--ipv4 should probe the v4 loopback: {out}");
 
-    let out = stdout(
-        &cmd()
-            .args(["tcp", &addr.to_string(), "--ipv6", "--timeout", "800"])
-            .assert()
-            .success(),
+    let assert = cmd()
+        .args(["tcp", &addr.to_string(), "--ipv6", "--timeout", "800"])
+        .assert()
+        .failure();
+    let err = stderr(&assert);
+    assert!(
+        err.contains("scope leaves no IPv6 addresses"),
+        "--ipv6 must report the scoped-empty pool, not quietly succeed: {err}"
     );
-    assert!(!out.contains("PASS"), "--ipv6 must filter out the IPv4 loopback: {out}");
 
     cmd()
         .args(["tcp", &addr.to_string(), "--ipv4", "--ipv6"])

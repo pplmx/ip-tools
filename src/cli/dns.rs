@@ -38,6 +38,7 @@ pub(super) async fn run_dns(sub_m: &ArgMatches, style: Style) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    let only_v4 = sub_m.get_flag("ipv4");
     let only_v6 = sub_m.get_flag("ipv6");
     let insecure = sub_m.get_flag("insecure");
     let doh_endpoints: Vec<String> = sub_m
@@ -49,19 +50,29 @@ pub(super) async fn run_dns(sub_m: &ArgMatches, style: Style) -> ExitCode {
         .map(|vals| vals.cloned().collect())
         .unwrap_or_default();
     let count = *sub_m.get_one::<usize>("count").expect("count has default");
+    if count == 0 {
+        // `0` would silently degrade to a single-shot lookup and exit 0 with
+        // statistics describing one attempt — a caller mistake, and the one
+        // probe command that had not aligned with probe/route/diagnose's
+        // "never probe zero times" rejection.
+        eprintln!("Error: --count must be at least 1");
+        return ExitCode::FAILURE;
+    }
     // `--concurrency` parallelizes a multi-target DNS health sweep (default 1
     // preserves the original sequential ordering/semantics).
     let concurrency = *sub_m.get_one::<usize>("concurrency").expect("concurrency has default");
 
-    // `--record-type` requests one specific type; else `--ipv6` restricts to
-    // AAAA; else both A and AAAA (the historical default).
+    // `--record-type` requests one specific type; `--ipv4`/`--ipv6` restrict
+    // to A-only / AAAA-only; else both A and AAAA (the historical default).
     let record_types = if let Some(rt) = sub_m.get_one::<String>("record-type") {
         if let Some(rt) = parse_record_type(rt) {
             vec![rt]
         } else {
-            eprintln!("Error: unsupported record type {rt:?} (try A, AAAA, CNAME, MX, TXT, NS or SOA)");
+            eprintln!("Error: unsupported record type {rt:?} (try A, AAAA, CNAME, MX, TXT, NS, SOA, CAA, SRV or PTR)");
             return ExitCode::FAILURE;
         }
+    } else if only_v4 {
+        vec![DnsRecordType::A]
     } else if only_v6 {
         vec![DnsRecordType::Aaaa]
     } else {
@@ -421,13 +432,7 @@ fn resolver_label(r: &ResolverKind) -> String {
 }
 
 /// Quote a CSV field when it contains a comma, quote, or newline (RFC 4180).
-fn csv_field(value: &str) -> String {
-    if value.contains(',') || value.contains('"') || value.contains('\n') {
-        format!("\"{}\"", value.replace('"', "\"\""))
-    } else {
-        value.to_string()
-    }
-}
+use super::csv_field;
 
 /// Observations for an IP-literal target: the literal is its own record for
 /// the matching address family and an empty (no-records) observation for the

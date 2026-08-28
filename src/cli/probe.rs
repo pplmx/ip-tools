@@ -163,6 +163,33 @@ pub(super) async fn run_probe(sub_m: &ArgMatches, style: Style) -> ExitCode {
         eprintln!("Error: --plain only applies to --protocol http (cleartext HTTP/1.1)");
         return ExitCode::FAILURE;
     }
+    // HTTP-request flags are silently ignored by the tcp/tls protocol arms
+    // (their probes take no request at all): an operator passing `--path /x`
+    // with `--protocol tls` would believe the path was used. Reject the
+    // mismatch up front, the same fail-fast `--plain` and `--expect-status`
+    // already apply.
+    let is_http = matches!(protocol.as_str(), "http" | "http2" | "http3");
+    if !is_http {
+        // `get_many` is the repeatable ("append") accessor the explicit
+        // `--header`/`--server` parsing already uses; a flag the operator did
+        // not pass returns Err(ArgumentNotFound), not a present value.
+        let flag_present = |name: &str| sub_m.get_many::<String>(name).is_some();
+        if (sub_m.get_one::<String>("method").is_some_and(|m| m != "GET") && flag_present("method"))
+            || (sub_m.get_one::<String>("path").is_some_and(|p| p != "/") && flag_present("path"))
+            || flag_present("header")
+            || flag_present("body")
+        {
+            eprintln!("Error: --method/--path/--header/--body only apply to --protocol http|http2|http3 (the {protocol} repeat sends no HTTP request)");
+            return ExitCode::FAILURE;
+        }
+        if protocol.as_str() == "tcp"
+            && sub_m.get_one::<String>("tls-version").is_some_and(|v| v != "auto")
+            && flag_present("tls-version")
+        {
+            eprintln!("Error: --tls-version only applies to --protocol tls|http|http2|http3 (a tcp repeat has no TLS handshake)");
+            return ExitCode::FAILURE;
+        }
+    }
     let headers = match super::parse_custom_headers(sub_m) {
         Ok(v) => v,
         Err(e) => {
@@ -339,13 +366,7 @@ fn opt64(v: Option<u64>) -> String {
 }
 
 /// Quote a CSV field when it contains a comma, quote, or newline (RFC 4180).
-fn csv_field(value: &str) -> String {
-    if value.contains(',') || value.contains('"') || value.contains('\n') {
-        format!("\"{}\"", value.replace('"', "\"\""))
-    } else {
-        value.to_string()
-    }
-}
+use super::csv_field;
 
 #[cfg(test)]
 mod tests {

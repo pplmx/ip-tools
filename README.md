@@ -131,7 +131,8 @@ service endpoints like SIP/XMPP/LDAP (`SRV`) the same way you check addresses.
 `PTR` is reverse DNS: `dns --record-type PTR 192.0.2.77` auto-builds the
 `in-addr.arpa`/`ip6.arpa` reverse-zone name for an IP target and resolves the
 hostname(s) mapped to it (e.g. for rDNS / mail anti-spam checks).
-`--ipv6` is the shorthand for `--record-type AAAA`; the two conflict.
+`--ipv4`/`--ipv6` are the shorthands for A-only / AAAA-only; they conflict
+with `--record-type` and with each other.
 
 An IP-literal target is shorthand for "this is already an address": `dns
 1.1.1.1` reports the literal as its own `A` record (and a clean NODATA-style

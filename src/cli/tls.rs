@@ -67,10 +67,15 @@ fn render_tls_csv(per_target: &[(String, Vec<TlsObservation>)]) -> String {
             // show but the CSV export dropped.
             out.push_str(&csv_field(&cert.map(|c| c.sans.join(";")).unwrap_or_default()));
             out.push(',');
-            out.push_str(if cert.is_some_and(|c| cert_covers_hostname(&o.sni, &c.sans)) {
-                "yes"
-            } else {
-                ""
+            // The `covers <sni>` verdict: "yes" when the SANs cover the SNI,
+            // "no" when a certificate was presented but does not cover it
+            // (wrong-host / wildcard mismatch), empty when no certificate was
+            // observed at all — so a spreadsheet can tell the mismatch from a
+            // failed handshake, as the human `covers ...: no` row does.
+            out.push_str(match cert {
+                Some(c) if cert_covers_hostname(&o.sni, &c.sans) => "yes",
+                Some(_) => "no",
+                None => "",
             });
             out.push(',');
             out.push_str(&csv_field(&opt(o.latency_ms)));
@@ -89,13 +94,7 @@ fn opt(v: Option<u64>) -> String {
 }
 
 /// Quote a CSV field when it contains a comma, quote, or newline (RFC 4180).
-fn csv_field(value: &str) -> String {
-    if value.contains(',') || value.contains('"') || value.contains('\n') {
-        format!("\"{}\"", value.replace('"', "\"\""))
-    } else {
-        value.to_string()
-    }
-}
+use super::csv_field;
 
 #[cfg(test)]
 mod tests {

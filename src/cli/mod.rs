@@ -70,7 +70,8 @@ fn parser() -> ArgMatches {
                 .arg(doh_arg())
                 .arg(dot_arg())
                 .arg(insecure_arg())
-                .arg(record_type_arg())
+                .arg(dns_ipv4_arg())
+                .arg(dns_ipv6_arg())
                 .arg(dns_record_type_arg())
                 .arg(dns_count_arg())
                 .arg(strict_arg())
@@ -575,11 +576,22 @@ fn expect_rate_arg() -> Arg {
         .help("assert that the aggregate success rate over the repeated attempts meets this threshold (e.g. 0.97, 1, or 97%); the run exits non-zero when any address falls below it")
 }
 
-/// Select which DNS record types to query (`--ipv6` only, else both).
-fn record_type_arg() -> Arg {
+/// `--ipv4` argument for `dns`: query A records only (the AAAA-side twin of
+/// `--ipv6`, mirroring the address-family pair every probe command offers).
+fn dns_ipv4_arg() -> Arg {
+    Arg::new("ipv4")
+        .long("ipv4")
+        .action(ArgAction::SetTrue)
+        .conflicts_with("ipv6")
+        .help("query A records only (default: both A and AAAA)")
+}
+
+/// `--ipv6` argument for `dns`: query AAAA records only (default: both A and AAAA).
+fn dns_ipv6_arg() -> Arg {
     Arg::new("ipv6")
         .long("ipv6")
         .action(ArgAction::SetTrue)
+        .conflicts_with("ipv4")
         .help("query AAAA records only (default: both A and AAAA)")
 }
 
@@ -588,8 +600,9 @@ fn dns_record_type_arg() -> Arg {
     Arg::new("record-type")
         .long("record-type")
         .value_name("TYPE")
+        .conflicts_with("ipv4")
         .conflicts_with("ipv6")
-        .help("query a single record type (A, AAAA, CNAME, MX, TXT, NS, SOA, CAA, SRV); default both A and AAAA")
+        .help("query a single record type (A, AAAA, CNAME, MX, TXT, NS, SOA, CAA, SRV, PTR); default both A and AAAA")
 }
 
 fn positional_target(help: &'static str) -> Arg {
@@ -793,6 +806,10 @@ where
     // Per-target sweep result tagged with its input index so a concurrent
     // sweep can be re-sorted back to the caller's target order.
     type IndexedTarget<O> = (usize, Option<(String, Vec<O>)>);
+    // Per-target resolution result (phase 1 of the two-phase sweep): the
+    // destination index plus the probe addresses, or `None` when the target
+    // produced no address (unresolvable, or emptied by the family scope).
+    type ResolvedTarget = (usize, Option<(String, Vec<SocketAddr>)>);
 
     let json = sub_m.get_flag("json");
     // Not every subcommand routes through here defines `--csv` (the transport
@@ -856,52 +873,106 @@ where
     // so the human/JSON/CSV output stays deterministic across a fleet sweep.
     // A TTY-gated per-host progress counter is shown on stderr while the
     // sweep runs (silent when piped, quieted, or a single target).
-    let progress = std::sync::Arc::new(Progress::new(targets.len(), sub_m.get_flag("no-color")));
+    //
+    // `--concurrency` is a true bound on concurrent probes. The sweep is two
+    // flat phases — resolve every target, then probe every (target, address)
+    // pair — drawing from ONE shared semaphore, so a fleet of multi-address
+    // targets cannot fan out to concurrency × (addresses per target)
+    // simultaneous sockets (a nested-map design would, and could deadlock when
+    // the outer task holds a permit waiting on an inner map's fresh one).
+    let limit = std::sync::Arc::new(tokio::sync::Semaphore::new(concurrency.clamp(1, MAX_CONCURRENCY)));
+    let target_count = targets.len();
+    let progress = std::sync::Arc::new(Progress::new(target_count, sub_m.get_flag("no-color")));
     let progress_for_tasks = progress.clone();
     let targets_with_index: Vec<(usize, Target)> = targets.into_iter().enumerate().collect();
-    let mut indexed: Vec<IndexedTarget<O>> = parallel_map(targets_with_index, concurrency, move |(idx, target)| {
-        let servers = servers.clone();
-        let doh_endpoints = doh_endpoints.clone();
-        let dot_eps = dot_eps.clone();
-        let probe = probe.clone();
-        let sni = sni.clone();
-        let progress = progress_for_tasks.clone();
-        async move {
-            let result =
-                resolve_for_tcp_servers(&target.host, &servers, &doh_endpoints, &dot_eps, insecure, timeout).await;
-            let output = match result {
-                Ok(addrs) => {
-                    let destinations: Vec<SocketAddr> = addrs
-                        .into_iter()
-                        .filter(|ip| match (ipv4_only, ipv6_only) {
-                            (true, _) => ip.is_ipv4(),
-                            (_, true) => ip.is_ipv6(),
-                            _ => true,
-                        })
-                        .map(|ip| SocketAddr::new(ip, target.port))
-                        .collect();
-                    let host = sni.clone().unwrap_or_else(|| target.host.clone());
-                    let mut results: Vec<O> = parallel_map(destinations, concurrency, move |dest| {
-                        let host = host.clone();
-                        let probe = probe.clone();
-                        async move { probe(host, dest, timeout).await }
-                    })
-                    .await;
-                    results.sort_by_key(sort_key);
-                    Some((target.host.clone(), results))
-                }
-                Err(err) => {
-                    eprintln!("Error: {err}");
-                    None
-                }
-            };
-            progress.step(&target.host);
-            (idx, output)
+    // Phase 1: resolve each target to its (family-filtered) destinations.
+    let mut resolved: Vec<ResolvedTarget> =
+        parallel_map_with_limit(targets_with_index, limit.clone(), move |(idx, target)| {
+            let servers = servers.clone();
+            let doh_endpoints = doh_endpoints.clone();
+            let dot_eps = dot_eps.clone();
+            let progress = progress_for_tasks.clone();
+            async move {
+                let result =
+                    resolve_for_tcp_servers(&target.host, &servers, &doh_endpoints, &dot_eps, insecure, timeout).await;
+                let output = match result {
+                    Ok(addrs) => {
+                        let destinations: Vec<SocketAddr> = addrs
+                            .into_iter()
+                            .filter(|ip| match (ipv4_only, ipv6_only) {
+                                (true, _) => ip.is_ipv4(),
+                                (_, true) => ip.is_ipv6(),
+                                _ => true,
+                            })
+                            .map(|ip| SocketAddr::new(ip, target.port))
+                            .collect();
+                        // The target resolved, but the --ipv4/--ipv6 scope
+                        // emptied its address pool (e.g. `--ipv6` on an
+                        // IPv4-only host). Reporting an empty success would
+                        // silently exit 0 with zero probes; say so and treat
+                        // the target as unresolved instead.
+                        if destinations.is_empty() && (ipv4_only || ipv6_only) {
+                            let fam = if ipv4_only { "IPv4" } else { "IPv6" };
+                            eprintln!(
+                                "Error: target {} resolves, but the --ipv4/--ipv6 scope leaves no {fam} addresses to probe",
+                                target.host
+                            );
+                            None
+                        } else {
+                            Some((target.host.clone(), destinations))
+                        }
+                    }
+                    Err(err) => {
+                        eprintln!("Error: {err}");
+                        None
+                    }
+                };
+                progress.step(&target.host);
+                (idx, output)
+            }
+        })
+        .await;
+    resolved.sort_by_key(|(idx, _)| *idx);
+    // Phase 2: probe every (host, destination) pair, bounded by the same limit.
+    let probe_items: Vec<(usize, String, SocketAddr)> = resolved
+        .iter()
+        .flat_map(|(idx, output)| {
+            output
+                .as_ref()
+                .map(|(host, dests)| dests.iter().map(move |d| (*idx, host.clone(), *d)))
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    let probe_tasks = probe_items.len();
+    let probed: Vec<(usize, String, SocketAddr, O)> =
+        parallel_map_with_limit(probe_items, limit.clone(), move |(idx, host, dest)| {
+            let probe = probe.clone();
+            let sni = sni.clone();
+            let presented = sni.unwrap_or_else(|| host.clone());
+            async move { (idx, host, dest, probe(presented, dest, timeout).await) }
+        })
+        .await;
+    // Group per-target results back into the deterministic target order, each
+    // destination list sorted as before.
+    let mut per_target: Vec<Option<Vec<O>>> = (0..target_count).map(|_| None).collect();
+    for (idx, _host, _dest, result) in probed {
+        per_target[idx].get_or_insert_with(Vec::new).push(result);
+    }
+    let mut indexed: Vec<IndexedTarget<O>> = Vec::with_capacity(probe_tasks);
+    for (idx, output) in resolved {
+        match output {
+            Some((target_host, _)) => {
+                let mut results = per_target[idx].take().unwrap_or_default();
+                results.sort_by_key(sort_key);
+                indexed.push((idx, Some((target_host, results))));
+            }
+            None => indexed.push((idx, None)),
         }
-    })
-    .await;
-    progress.finish();
+    }
     indexed.sort_by_key(|(idx, _)| *idx);
+    progress.finish();
     let mut per_target: Vec<(String, Vec<O>)> = Vec::with_capacity(indexed.len());
     let mut unresolved = 0usize;
     for (_, result) in indexed {
@@ -945,7 +1016,7 @@ where
     }
 
     if unresolved > 0 {
-        eprintln!("Error: {unresolved} target(s) did not resolve to any address");
+        eprintln!("Error: {unresolved} target(s) produced no address to probe (unresolvable, or emptied by the --ipv4/--ipv6 scope)");
         return ExitCode::FAILURE;
     }
     // `--expect-status`/`--expect-contains`: an asserted response shape is a
@@ -1042,10 +1113,32 @@ where
     Fut: Future<Output = T> + Send + 'static,
 {
     let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(concurrency.clamp(1, MAX_CONCURRENCY)));
+    parallel_map_with_limit(items, semaphore, f).await
+}
+
+/// Apply `f` to `items` concurrently, bounded by a caller-provided [`Semaphore`]
+/// instead of a fresh one. This is the concurrency primitive the probe sweep
+/// and the `diagnose` pipeline share across their two levels: the outer
+/// `parallel_map` bounds how many *targets* run at once, and every inner
+/// per-address `parallel_map` draws from this *same* limit — so
+/// `--concurrency N` is a true bound on concurrent probes, not a per-nesting
+/// level bound that would let a fleet sweep fan out to N × (addresses per
+/// target) simultaneous sockets.
+pub async fn parallel_map_with_limit<I, T, F, Fut>(
+    items: Vec<I>,
+    limit: std::sync::Arc<tokio::sync::Semaphore>,
+    f: F,
+) -> Vec<T>
+where
+    I: Send + 'static,
+    T: Send + 'static,
+    F: Fn(I) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = T> + Send + 'static,
+{
     let f = std::sync::Arc::new(f);
     let mut tasks = tokio::task::JoinSet::new();
     for item in items {
-        let permit = semaphore.clone().acquire_owned().await.expect("semaphore not closed");
+        let permit = limit.clone().acquire_owned().await.expect("semaphore not closed");
         let f = std::sync::Arc::clone(&f);
         tasks.spawn(async move {
             let result = f(item).await;
@@ -1139,6 +1232,20 @@ pub fn parse_custom_servers(sub_m: &ArgMatches) -> Result<Vec<SocketAddr>, Strin
         }
     }
     Ok(servers)
+}
+
+/// Quote a value for a CSV field per RFC 4180: quote when it contains a
+/// comma, quote, CR or LF, doubling embedded quotes. The CR case matters
+/// because Excel and Python's csv (unlike a naive line-splitter) treat a bare
+/// `\r` as a record terminator even when the field is not quoted — a
+/// server-controlled body snippet carrying a bare CR would otherwise split the
+/// row into two records.
+pub fn csv_field(value: &str) -> String {
+    if value.contains(',') || value.contains('"') || value.contains('\r') || value.contains('\n') {
+        format!("\"{}\"", value.replace('"', "\"\""))
+    } else {
+        value.to_string()
+    }
 }
 
 /// Whether `name` is a valid HTTP header name (RFC 7230 `token`).
@@ -1530,5 +1637,23 @@ mod tests {
         assert!(ipv6_port_hint("[2001:db8::1]:443").is_none());
         assert!(ipv6_port_hint("1.2.3.4:443").is_none());
         assert!(ipv6_port_hint("example.com:443").is_none());
+    }
+
+    #[test]
+    fn csv_field_quotes_and_doubles_embedded_quotes() {
+        assert_eq!(csv_field("a,b"), "\"a,b\"");
+        assert_eq!(csv_field("say \"hi\""), "\"say \"\"hi\"\"\"");
+        assert_eq!(csv_field("plain"), "plain");
+    }
+
+    #[test]
+    fn csv_field_quotes_a_bare_carriage_return() {
+        // RFC 4180: a lone `\r` inside a field terminates the record for
+        // Excel and Python's csv even unquoted, so it must be quoted. A
+        // server-controlled body snippet with a bare CR used to split the row
+        // into two records before this was added.
+        assert_eq!(csv_field("only\rreturn"), "\"only\rreturn\"");
+        assert_eq!(csv_field("line1\r\nline2"), "\"line1\r\nline2\"");
+        assert_eq!(csv_field("no-cr"), "no-cr");
     }
 }

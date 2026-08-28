@@ -21,6 +21,17 @@ impl Target {
     /// Returns [`DiagError::InvalidTarget`] when the port is non-numeric or
     /// the input is malformed.
     pub fn parse(input: &str, default_port: u16) -> Result<Self> {
+        // A pasted URL (`https://example.com`) is the most common caller
+        // mistake: it has exactly one colon, so the generic branch would
+        // reject it with "expected '<host>:<port>'" and leave the operator
+        // wondering why. Name the scheme directly instead.
+        for scheme in ["http://", "https://"] {
+            if let Some(rest) = input.strip_prefix(scheme) {
+                let reason =
+                    format!("looks like a URL (did you mean '{rest}'? this tool takes 'host[:port]', not a scheme)");
+                return Err(invalid(input, &reason));
+            }
+        }
         // Bracket form: "[addr]:port" or "[addr]"
         if let Some(rest) = input.strip_prefix('[') {
             return match rest.split_once(']') {
@@ -38,6 +49,19 @@ impl Target {
                 }
                 None => Err(invalid(input, "unterminated '[' ")),
             };
+        }
+
+        // A `user@` prefix is the other common paste (from an scp/curl-style
+        // URL). It would otherwise be accepted as part of the hostname and
+        // fail later with a baffling "hostname user@example.com did not
+        // resolve". Point at the '@' up front instead.
+        if let Some((userinfo, _)) = input.rsplit_once('@') {
+            if !userinfo.is_empty() {
+                let reason = format!(
+                    "looks like a user@host string (this tool takes 'host[:port]', drop the '{userinfo}@' prefix)"
+                );
+                return Err(invalid(input, &reason));
+            }
         }
 
         // Exactly one colon => host:port, unless it looks like a bare IPv6
@@ -153,5 +177,31 @@ mod tests {
         // empty hostname, so reject it up front.
         let err = Target::parse("[]", 443).unwrap_err().to_string();
         assert!(err.contains("[]"), "empty-bracket error should name the input: {err}");
+    }
+
+    #[test]
+    fn pasted_url_gets_a_scheme_hint() {
+        // A pasted `https://example.com` is the classic caller mistake: name
+        // the scheme and suggest the bare host instead of a generic
+        // "expected '<host>:<port>'".
+        for input in ["https://example.com", "http://example.com:8080", "https://[::1]:443"] {
+            let err = Target::parse(input, 443).unwrap_err().to_string();
+            assert!(
+                err.contains("looks like a URL"),
+                "scheme hint missing for {input}: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn userinfo_prefix_gets_an_at_hint() {
+        // `user@example.com:443` would otherwise resolve as a hostname
+        // containing '@' and fail later with a baffling DNS error; point at
+        // the '@' up front.
+        let err = Target::parse("user@example.com:443", 443).unwrap_err().to_string();
+        assert!(
+            err.contains("user@host") && err.contains("user@"),
+            "userinfo hint missing: {err}"
+        );
     }
 }

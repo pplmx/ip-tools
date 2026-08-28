@@ -171,13 +171,16 @@ pub(super) fn render_http_csv(per_target: &[(String, Vec<HttpObservation>)]) -> 
             // a wrong-host/wildcard mismatch must survive a spreadsheet sweep.
             out.push_str(&csv_field(&cert.map(|c| c.sans.join(";")).unwrap_or_default()));
             out.push(',');
-            out.push_str(
-                if cert.is_some_and(|c| cert_covers_hostname(tls.map_or("", |t| t.sni.as_str()), &c.sans)) {
-                    "yes"
-                } else {
-                    ""
-                },
-            );
+            // The `covers` verdict: "yes" when the SANs cover the presented
+            // SNI, "no" when a certificate was presented but does not cover it
+            // (wrong-host / wildcard mismatch), empty when no certificate was
+            // observed at all — so a spreadsheet can tell the mismatch from a
+            // failed handshake.
+            out.push_str(match (cert, tls.map(|t| t.sni.as_str())) {
+                (Some(c), Some(sni)) if cert_covers_hostname(sni, &c.sans) => "yes",
+                (Some(_), Some(_)) => "no",
+                _ => "",
+            });
             out.push(',');
             // The observed response headers (the diagnostic-relevant set the
             // human report curates: server identity, CDN/proxy hops, caching,
@@ -238,13 +241,7 @@ fn opt(v: Option<u64>) -> String {
 }
 
 /// Quote a CSV field when it contains a comma, quote, or newline (RFC 4180).
-fn csv_field(value: &str) -> String {
-    if value.contains(',') || value.contains('"') || value.contains('\n') {
-        format!("\"{}\"", value.replace('"', "\"\""))
-    } else {
-        value.to_string()
-    }
-}
+use super::csv_field;
 
 #[cfg(test)]
 mod tests {
@@ -325,8 +322,8 @@ mod tests {
         assert!(
             lines
                 .next()
-                .is_some_and(|l| l.starts_with(&format!("{}other.example,", head("192.0.2.2:443")))),
-            "non-covering SANs render the SANs and a blank covers: {out}"
+                .is_some_and(|l| l.starts_with(&format!("{}other.example,no,", head("192.0.2.2:443")))),
+            "non-covering SANs render the SANs and covers=no: {out}"
         );
         // Cert-less row: no subject/issuer/not_after either, then blank sans
         // and covers before the shared trailing columns.
