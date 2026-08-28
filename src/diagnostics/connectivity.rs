@@ -93,12 +93,17 @@ pub(super) fn family_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosis>) {
     if input.tcp.is_empty() {
         return;
     }
+    // A family counts as reachable when ANY address of it answered: a mixed
+    // IPv4 set (one address up, one down) is partial connectivity between
+    // addresses — which `connectivity_rules` reports with the failing
+    // addresses' names — not "IPv4 fails". The family verdict must mean the
+    // whole family produced no success at all.
     let family_result = |ipv4: bool| -> Option<bool> {
         let group: Vec<&TcpObservation> = input.tcp.iter().filter(|o| o.destination.is_ipv4() == ipv4).collect();
         if group.is_empty() {
             return None;
         }
-        Some(group.iter().all(|o| o.success))
+        Some(group.iter().any(|o| o.success))
     };
     let v4 = family_result(true);
     let v6 = family_result(false);

@@ -154,8 +154,15 @@ pub(super) fn quic_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosis>) {
 
 /// Intermittent connectivity from repeated-probe results.
 pub(super) fn intermittent_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosis>) {
+    // `diagnose` feeds one repeat per transport AND per HTTP protocol into
+    // `input.probes` (tcp_repeat + http_repeat on the same destination), and
+    // every one of them can independently trip this rule. One flaky address
+    // yields one verdict, not a stacked pair of identical rows — the extra
+    // probe types are separate *evidence* for the same Intermittent category.
+    let mut reported: Vec<std::net::SocketAddr> = Vec::new();
     for p in input.probes {
-        if p.attempts > 1 && p.failures > 0 && p.successes > 0 {
+        if p.attempts > 1 && p.failures > 0 && p.successes > 0 && !reported.contains(&p.destination) {
+            reported.push(p.destination);
             let rate = p.success_rate * 100.0;
             out.push(Diagnosis {
                 severity: Severity::Medium,
@@ -430,7 +437,11 @@ pub(super) fn redirect_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosis>) 
         .filter(|h| h.failure.is_none())
         .filter_map(|h| {
             let status = h.status?;
-            if (300..400).contains(&status) {
+            // Only the codes that signal a followable redirect: 304 Not
+            // Modified is a normal revalidation response (no redirect target),
+            // and 300/305/306 are not redirects either — a cached 304 must
+            // not be reported as "redirected".
+            if matches!(status, 301 | 302 | 303 | 307 | 308) {
                 let target = h.location.as_deref().unwrap_or("(no Location header)");
                 Some(format!("{} -> {status} {target}", h.destination))
             } else {
@@ -508,8 +519,12 @@ pub(super) fn http_consistency_rules(input: &DiagnosticInput, out: &mut Vec<Diag
         })
         .collect();
 
-    // Cross-address-family divergence: one family uniformly 2xx, the other
-    // returns any non-2xx (both families must have at least one completion).
+    // Cross-address-family divergence: one family served at least one 2xx
+    // while the other never did (both families must have at least one
+    // completion). A within-family mix (200 and 500 on the same family) is an
+    // address-level divergence the per-address rule reports — not a claim
+    // about the family — so a family only diverges when it produced no 2xx
+    // at all.
     let family_status = |ipv4: bool| -> Vec<u16> {
         input
             .http
@@ -520,7 +535,7 @@ pub(super) fn http_consistency_rules(input: &DiagnosticInput, out: &mut Vec<Diag
     };
     let v4 = family_status(true);
     let v6 = family_status(false);
-    let fam_content = |statuses: &[u16]| statuses.iter().all(|s| content(*s));
+    let fam_content = |statuses: &[u16]| statuses.iter().any(|s| content(*s));
     let family_divergence: Option<String> = if !v4.is_empty() && !v6.is_empty() && fam_content(&v4) != fam_content(&v6)
     {
         let render = |name: &str, raw: &[u16]| {

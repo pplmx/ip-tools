@@ -590,4 +590,120 @@ mod tests {
         assert_eq!(f.unwrap().confidence, Confidence::Low);
         assert!(!f.unwrap().possible_causes.is_empty());
     }
+
+    #[test]
+    fn filtering_does_not_double_count_one_flaky_address() {
+        // The same flaky address can trip both the address-specific signal
+        // (its single-shot path failure alongside another address's success)
+        // and the repeat-flapping signal (2/3 in its own repeat). That is one
+        // cause — the unreliable path — not two independent signals, so the
+        // filtering verdict must not fire.
+        let tcp = [tp("1.1.1.1:443", true), tp("2.2.2.2:443", false)];
+        let mut stats = LatencyStats::default();
+        stats.push(100);
+        stats.push(200);
+        let probes = [ProbeResult {
+            destination: "2.2.2.2:443".parse().unwrap(),
+            attempts: 3,
+            successes: 2,
+            failures: 1,
+            success_rate: 2.0 / 3.0,
+            latency: stats.summarize(),
+            ttfb: LatencyStats::default().summarize(),
+            failure_counts: vec![],
+            status_counts: Vec::new(),
+        }];
+        let out = diagnose(&input(&[], &tcp, &[], &[], &probes));
+        assert!(
+            !categories(&out).contains(&DiagnosticCategory::PossibleNetworkFiltering),
+            "one flaky address must not be read as two filtering signals: {out:?}"
+        );
+    }
+
+    #[test]
+    fn redirect_rule_ignores_304_revalidation() {
+        // A 304 Not Modified is a cache-revalidation response with no redirect
+        // target; it must not produce an "HTTP ... which redirected" verdict.
+        let http = [HttpObservation {
+            destination: "1.1.1.1:443".parse().unwrap(),
+            host: "example.com".into(),
+            method: "GET".into(),
+            path: "/".into(),
+            tls: None,
+            protocol: Some("HTTP/1.1".into()),
+            status: Some(304),
+            location: None,
+            headers: Vec::new(),
+            body_bytes: Some(0),
+            body_snippet: None,
+            ttfb_ms: None,
+            latency_ms: Some(10),
+            failure: None,
+        }];
+        let out = diagnose(&input(&[], &[], &[], &http, &[]));
+        assert!(
+            !categories(&out).contains(&DiagnosticCategory::Http),
+            "a cached 304 must not be an HTTP redirect diagnosis: {out:?}"
+        );
+    }
+
+    #[test]
+    fn intermittent_verdict_is_deduped_per_destination() {
+        // `diagnose` feeds both the TCP repeat and an HTTP repeat per
+        // destination into `input.probes`; both can show flakiness for the
+        // same address. One flaky destination yields one Intermittent verdict,
+        // not a stacked pair of identical rows.
+        let mut stats = LatencyStats::default();
+        stats.push(100);
+        stats.push(200);
+        let probes = [
+            ProbeResult {
+                destination: "1.1.1.1:443".parse().unwrap(),
+                attempts: 3,
+                successes: 2,
+                failures: 1,
+                success_rate: 2.0 / 3.0,
+                latency: stats.summarize(),
+                ttfb: LatencyStats::default().summarize(),
+                failure_counts: vec![],
+                status_counts: Vec::new(),
+            },
+            ProbeResult {
+                destination: "1.1.1.1:443".parse().unwrap(),
+                attempts: 3,
+                successes: 2,
+                failures: 1,
+                success_rate: 2.0 / 3.0,
+                latency: stats.summarize(),
+                ttfb: LatencyStats::default().summarize(),
+                failure_counts: vec![],
+                status_counts: Vec::new(),
+            },
+        ];
+        let out = diagnose(&input(&[], &[], &[], &[], &probes));
+        let n = out
+            .iter()
+            .filter(|d| d.category == DiagnosticCategory::Intermittent)
+            .count();
+        assert_eq!(n, 1, "one flaky destination must yield one verdict: {out:?}");
+    }
+
+    #[test]
+    fn mixed_family_addresses_are_not_read_as_family_loss() {
+        // IPv4 = {one ok, one timeout}, IPv6 = {one ok}: the failing IPv4
+        // address is a partial-connectivity event (the address-level rule
+        // names it), not "IPv4 connectivity fails" — which must mean no
+        // address of the family answered at all.
+        let tcp = [
+            tp("1.1.1.1:443", true),
+            tp("2.2.2.2:443", false),
+            tp("[2001:db8::1]:443", true),
+        ];
+        let out = diagnose(&input(&[], &tcp, &[], &[], &[]));
+        assert!(
+            !categories(&out).contains(&DiagnosticCategory::AddressFamily),
+            "a mixed family must not be read as whole-family loss: {out:?}"
+        );
+        assert!(categories(&out).contains(&DiagnosticCategory::PartialConnectivity));
+    }
 }

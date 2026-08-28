@@ -76,10 +76,22 @@ pub(super) fn filtering_rules(input: &DiagnosticInput, dns_disagreement: bool, o
         });
     }
     // Genuine *intermittency*: both successes and failures on the same
-    // address. Where every attempt of a repeated probe fails on an address
-    // that TCP could never reach, the result is not an independent signal —
-    // it is the same reachability cause already covered above.
-    let has_repeat_fail = input.probes.iter().any(|p| p.successes > 0 && p.failures > 0);
+    // address. Two exclusions keep the "independent signals" contract honest:
+    // where every attempt of a repeated probe fails on an address that TCP
+    // could never reach, the result is the same reachability cause already
+    // covered above; and where the flapping address is the very address whose
+    // single-shot path failure already drove the address-specific signal, the
+    // same unreliable path is one cause, not two.
+    let specific_failing: Vec<std::net::SocketAddr> = input
+        .tcp
+        .iter()
+        .filter(|o| path_failure(o))
+        .map(|o| o.destination)
+        .collect();
+    let has_repeat_fail = input
+        .probes
+        .iter()
+        .any(|p| p.successes > 0 && p.failures > 0 && !specific_failing.contains(&p.destination));
     if has_repeat_fail {
         signals += 1;
         evidence.push(Evidence {
