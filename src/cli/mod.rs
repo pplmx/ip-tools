@@ -795,9 +795,9 @@ where
     type IndexedTarget<O> = (usize, Option<(String, Vec<O>)>);
 
     let json = sub_m.get_flag("json");
-    // Only the `probe` subcommand defines `--csv` (it supplies the renderer);
-    // the other per-address probe commands have no `csv` arg, so read it
-    // defensively (try_get_one returns Err when the arg isn't defined).
+    // Not every subcommand routes through here defines `--csv` (the transport
+    // and HTTP probes do; `diagnose` renders its own CSV rows below), so read
+    // it defensively — try_get_one returns Err when the arg isn't defined.
     let csv = sub_m
         .try_get_one::<bool>("csv")
         .ok()
