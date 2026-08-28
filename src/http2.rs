@@ -261,15 +261,24 @@ async fn probe_impl(
     });
 
     // Build the request; h2 needs an authority, so construct the URI from a
-    // full URL (hyper fills the :authority pseudo-header).
-    let uri = format!("https://{host}{path}");
+    // full URL (hyper fills the :authority pseudo-header). An explicit `host`
+    // header overrides that authority (routing a shared-IP vhost) and is not
+    // re-emitted as a second `host` header alongside :authority.
+    let custom_host = headers
+        .iter()
+        .find(|(n, _)| n.eq_ignore_ascii_case("host"))
+        .map(|(_, v)| *v);
+    let effective_host = custom_host.unwrap_or(host);
+    let uri = format!("https://{effective_host}{path}");
     let mut builder = hyper::Request::builder()
         .method(method)
         .uri(uri)
         .header("user-agent", "ip-tools")
         .header("accept", "*/*");
     for (name, value) in headers {
-        builder = builder.header(*name, *value);
+        if custom_host.is_none() || !name.eq_ignore_ascii_case("host") {
+            builder = builder.header(*name, *value);
+        }
     }
     // A request body is announced with an explicit content-length.
     let builder = match body {
@@ -333,8 +342,10 @@ async fn probe_impl(
     let mut ended = false;
     let mut snippet: Vec<u8> = Vec::with_capacity(BODY_SNIPPET_BYTES);
     let mut full_body: Vec<u8> = Vec::new();
+    // Whole-body-deadline: a slow-dripping body cannot stall past --timeout.
+    let deadline = tokio::time::Instant::now() + timeout;
     loop {
-        let chunk = match tokio::time::timeout(timeout, body.data()).await {
+        let chunk = match tokio::time::timeout_at(deadline, body.data()).await {
             Ok(Some(Ok(chunk))) => chunk,
             Ok(Some(Err(e))) => return base.with_failure(http_error("http/2 body", &e)),
             Ok(None) => {

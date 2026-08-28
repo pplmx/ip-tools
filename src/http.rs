@@ -431,15 +431,30 @@ where
         let _ = connection.await;
     });
 
-    // 3. Build and send the request.
+    // 3. Build and send the request. An explicit `host` header (e.g.
+    // `--header 'host: vhost.example'` against a shared-IP virtual host)
+    // replaces the default Host instead of stacking a second, RFC 7230 §5.4-
+    // malformed Host on top of it.
+    let mut custom_host: Option<&str> = None;
     let mut builder = hyper::Request::builder()
         .method(method)
         .uri(path)
-        .header("host", host)
+        .header(
+            "host",
+            match headers.iter().find(|(n, _)| n.eq_ignore_ascii_case("host")) {
+                Some((_, v)) => {
+                    custom_host = Some(v);
+                    v
+                }
+                None => host,
+            },
+        )
         .header("user-agent", "ip-tools")
         .header("accept", "*/*");
     for (name, value) in headers {
-        builder = builder.header(*name, *value);
+        if custom_host.is_none() || !name.eq_ignore_ascii_case("host") {
+            builder = builder.header(*name, *value);
+        }
     }
     // A request body is sent with an explicit content-length. When there is
     // no body (the default GET), keep the body-less `Empty` so nothing extra
@@ -498,8 +513,13 @@ where
     // snippet alone would force a re-run in curl to inspect a WAF page, a JS
     // challenge, a captive-portal prompt or an API error).
     let mut full_body: Vec<u8> = Vec::new();
+    // The whole body read is one operation: deadline from the first byte so a
+    // slow-dripping body (a fresh chunk every <timeout period) cannot stall the
+    // probe past `--timeout` indefinitely — each read bounded by the same wall
+    // clock, not a separately-reset per-frame timer.
+    let deadline = tokio::time::Instant::now() + timeout;
     loop {
-        let frame = match tokio::time::timeout(timeout, body.frame()).await {
+        let frame = match tokio::time::timeout_at(deadline, body.frame()).await {
             Ok(Some(Ok(frame))) => frame,
             Ok(Some(Err(e))) => return base.with_failure(http_error("HTTP/1.1 body", &e)),
             Ok(None) => {

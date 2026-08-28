@@ -854,6 +854,130 @@ async fn http3_probe_fails_against_closed_udp_port() {
     );
 }
 
+/// A server that sends headers and then trickles body bytes forever (a fresh
+/// chunk every <timeout period) must not bypass the probe's wall-clock bound:
+/// the body read is one operation bounded by `--timeout`, so an endless
+/// slow-drip stream is cut off as an incomplete response instead of stalling
+/// the probe indefinitely. The bound is generous relative to the response head
+/// (so the head reliably arrives even under parallel test load) yet the head
+/// still comes first — it is the endless drip that the deadline must cut off.
+#[tokio::test(flavor = "current_thread")]
+async fn slow_dripping_body_is_bounded_by_the_probe_timeout() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind listener");
+    let addr = listener.local_addr().expect("listener addr");
+    let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+    let dripper = tokio::spawn(async move {
+        use tokio::io::AsyncWriteExt;
+        // Signal readiness once the accept loop is actually running, so the
+        // probe never races the handler under parallel test load.
+        let _ = ready_tx.send(());
+        while let Ok((stream, _peer)) = listener.accept().await {
+            tokio::spawn(async move {
+                let mut stream = stream;
+                let _ = stream
+                    .write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 100000\r\n\r\n")
+                    .await;
+                // A new body chunk every 300 ms, forever. A per-frame-reset
+                // timeout would treat each read as fresh and never fire.
+                let mut n: u64 = 0;
+                loop {
+                    let chunk = format!("{n:064}\n").into_bytes();
+                    n += 1;
+                    if stream.write_all(&chunk).await.is_err() {
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(300)).await;
+                }
+            });
+        }
+    });
+    let _ = ready_rx.await;
+
+    // Each drip (300 ms) is well inside the bound (3 s), yet the body never
+    // completes — only the absolute deadline can stop the probe, which is
+    // exactly the regression being pinned.
+    let bound = Duration::from_secs(3);
+    let start = std::time::Instant::now();
+    let obs = http::probe_plain(addr, "localhost", "GET", "/", &[], None, bound).await;
+    let elapsed = start.elapsed();
+
+    assert_eq!(obs.status, Some(200), "headers received: {obs:?}");
+    assert_eq!(obs.body_bytes, None, "an endless slow-drip body is incomplete: {obs:?}");
+    // The 300ms-per-chunk body never ends; the probe must stop near the
+    // --timeout bound (plus a grace), not track the endless stream.
+    assert!(
+        elapsed < Duration::from_secs(6),
+        "the probe must stop near --timeout, not track an endless stream (elapsed {elapsed:?})"
+    );
+    dripper.abort();
+}
+
+/// An explicit `--header 'host: ...'` must replace the default Host header
+/// on the wire (RFC 7230 §5.4 rejects a request carrying two Hosts), not
+/// stack a second one under the probe's own host. Verified against a raw
+/// socket so the actual request bytes are asserted.
+#[tokio::test(flavor = "current_thread")]
+async fn explicit_host_header_overrides_the_default_on_the_wire() {
+    use tokio::io::AsyncReadExt;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind listener");
+    let addr = listener.local_addr().expect("listener addr");
+    let (sent_tx, mut sent_rx) = tokio::sync::mpsc::channel(1);
+    let server = tokio::spawn(async move {
+        use tokio::io::AsyncWriteExt;
+        if let Ok((mut stream, _peer)) = listener.accept().await {
+            let mut buf = [0u8; 4096];
+            let n = tokio::time::timeout(Duration::from_secs(3), stream.read(&mut buf))
+                .await
+                .map_or(0, |r| r.unwrap_or(0));
+            let _ = sent_tx.send(String::from_utf8_lossy(&buf[..n]).into_owned()).await;
+            let _ = stream
+                .write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\nok")
+                .await;
+        }
+    });
+
+    let obs = http::probe_plain(
+        addr,
+        "default.example",
+        "GET",
+        "/",
+        &[("host", "vhost.example"), ("x-custom", "1")],
+        None,
+        Duration::from_secs(2),
+    )
+    .await;
+    assert_eq!(obs.status, Some(200), "probe should complete: {obs:?}");
+    assert!(obs.failure.is_none(), "probe must not fail: {obs:?}");
+
+    let request = tokio::time::timeout(Duration::from_secs(3), sent_rx.recv())
+        .await
+        .expect("server should report the request")
+        .expect("channel open");
+    let header_lines: Vec<&str> = request
+        .lines()
+        .filter(|l| l.contains(':') && !l.starts_with("GET "))
+        .collect();
+    let hosts: Vec<&str> = header_lines
+        .iter()
+        .filter(|l| l.to_ascii_lowercase().starts_with("host:"))
+        .copied()
+        .collect();
+    assert_eq!(
+        hosts,
+        vec!["host: vhost.example"],
+        "exactly one Host header, overridden by --header host: request was:\n{request}"
+    );
+    assert!(
+        request.contains("x-custom: 1"),
+        "non-host custom headers must still be sent:\n{request}"
+    );
+    server.abort();
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn tls_and_http_probe_time_out_when_server_never_responds() {
     // A TCP listener that accepts connections but never sends TLS bytes: the
@@ -2292,10 +2416,16 @@ fn diagnose_cli_ipv4_and_ipv6_scope_the_pipeline_to_one_family() {
         !out.status.success(),
         "diagnose --ipv6 on an IPv4 literal must fail (no address of that family)"
     );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    // The target resolves (it is a literal); the error is that the --ipv6
+    // scope empties the address pool — not a misleading "did not resolve".
     assert!(
-        String::from_utf8_lossy(&out.stderr).contains("did not resolve"),
-        "--ipv6 must report the empty family pool: {}",
-        String::from_utf8_lossy(&out.stderr)
+        stderr.contains("--ipv6 scope leaves no IPv6 addresses"),
+        "--ipv6 must report the family-scoped empty pool: {stderr}"
+    );
+    assert!(
+        !stderr.contains("did not resolve"),
+        "--ipv6 on a resolving target must not claim resolution failed: {stderr}"
     );
 
     // clap enforces the mutual exclusion (`--ipv4 --ipv6` is a parse error).
@@ -2822,6 +2952,13 @@ fn diagnose_cli_csv_export_renders_diagnosis_rows() {
             && stdout.contains("TCP path OK; UDP/QUIC path failed")
             && stdout.contains("QUIC disabled / not offered by server"),
         "expected the diagnosis row to carry its evidence and possible causes: {stdout}"
+    );
+    // The severity/category/confidence cells use the JSON spellings (HIGH,
+    // total_connectivity_loss, ...) — not Debug's `High`/`TotalConnectivityLoss`
+    // — so a CSV row pivots against `diagnose --json` output.
+    assert!(
+        !stdout.contains("TotalConnectivityLoss") && !stdout.contains(",High,") && !stdout.contains(",Medium,"),
+        "diagnose --csv must use JSON enum spellings, not Debug's: {stdout}"
     );
 }
 

@@ -252,15 +252,25 @@ async fn probe_impl(
         let _ = driver.wait_idle().await;
     });
 
-    let uri = format!("https://{host}{path}");
+    // An explicit `host` header replaces the default in both the URI authority
+    // (which drives h3's :authority) and the `host` header, instead of stacking
+    // a second malformed Host on top of the default (RFC 7230 §5.4).
+    let custom_host = headers
+        .iter()
+        .find(|(n, _)| n.eq_ignore_ascii_case("host"))
+        .map(|(_, v)| *v);
+    let effective_host = custom_host.unwrap_or(host);
+    let uri = format!("https://{effective_host}{path}");
     let mut builder = hyper::Request::builder()
         .method(method)
         .uri(uri)
-        .header("host", host)
+        .header("host", effective_host)
         .header("user-agent", "ip-tools")
         .header("accept", "*/*");
     for (name, value) in headers {
-        builder = builder.header(*name, *value);
+        if custom_host.is_none() || !name.eq_ignore_ascii_case("host") {
+            builder = builder.header(*name, *value);
+        }
     }
     // A request body is announced with an explicit content-length.
     let builder = match body {
@@ -298,7 +308,21 @@ async fn probe_impl(
             }
         }
     }
-    let _ = tokio::time::timeout(timeout, req_stream.finish()).await;
+    // Finalize the request stream (FIN). A failure or a stall here means the
+    // request side never completed — blame the request, not a later response
+    // timeout (which would otherwise mislabel an un-flushable upload).
+    match tokio::time::timeout(timeout, req_stream.finish()).await {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => {
+            return base.with_failure(failure(FailureKind::Http, format!("http/3 request finish failed: {e}")))
+        }
+        Err(_) => {
+            return base.with_failure(failure(
+                FailureKind::Timeout,
+                format!("http/3 request finish to {destination} timed out after {timeout:?}"),
+            ))
+        }
+    }
 
     // TTFB: time from the request being sent to receiving the response
     // headers. The request stream resolves as soon as it is accepted — the
@@ -335,8 +359,10 @@ async fn probe_impl(
     let mut ended = false;
     let mut snippet: Vec<u8> = Vec::with_capacity(BODY_SNIPPET_BYTES);
     let mut full_body: Vec<u8> = Vec::new();
+    // Whole-body-deadline: a slow-dripping body cannot stall past --timeout.
+    let deadline = tokio::time::Instant::now() + timeout;
     loop {
-        let chunk = match tokio::time::timeout(timeout, req_stream.recv_data()).await {
+        let chunk = match tokio::time::timeout_at(deadline, req_stream.recv_data()).await {
             Ok(Ok(Some(chunk))) => chunk,
             Ok(Ok(None)) => {
                 ended = true;
