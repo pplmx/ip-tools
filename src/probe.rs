@@ -295,8 +295,21 @@ pub async fn http3_repeat(
 /// surfacing the status distribution in the report), present on every
 /// completed response; the fifth is the time-to-first-byte (server-response
 /// latency), `None` when no headers arrived.
+///
+/// A response whose body never completes (headers + status arrived, then the
+/// stream stalled past `--timeout` — `body_bytes: None`) is *not* a clean
+/// success: the single-shot probe surfaces it as `body: incomplete (timed
+/// out)`, so the repeat aggregate must not fold it into `successes` with the
+/// latency pushed at the full wall-clock `--timeout` (which would report a
+/// server that answered in 0 ms as `latency p95 ≈ timeout` and let a
+/// body-stalling endpoint satisfy `--expect-rate 1 --expect-status 2xx`). It
+/// is bucketed as a `Timeout` failure while its status and TTFB are still
+/// recorded — the server did answer, it just never delivered the body.
 fn http_outcome(obs: HttpObservation) -> (bool, Option<u64>, Option<FailureKind>, Option<u16>, Option<u64>) {
     if obs.failure.is_none() {
+        if obs.body_bytes.is_none() {
+            return (false, None, Some(FailureKind::Timeout), obs.status, obs.ttfb_ms);
+        }
         (true, obs.latency_ms, None, obs.status, obs.ttfb_ms)
     } else {
         let kind = obs.failure.map(|f| f.kind);
@@ -327,12 +340,16 @@ where
         if let Some(status) = status {
             *statuses.entry(status).or_default() += 1;
         }
+        // TTFB is the time until response headers arrive, so it is a valid
+        // sample for every attempt that reached headers — including one whose
+        // body later stalled (the single-shot probe reports its ttfb too).
+        // Transport failures carry `None` and are unaffected.
+        if let Some(ttfb_ms) = ttfb_ms {
+            ttfb.push(ttfb_ms);
+        }
         if ok {
             successes += 1;
             latency.push(latency_ms.unwrap_or(0));
-            if let Some(ttfb_ms) = ttfb_ms {
-                ttfb.push(ttfb_ms);
-            }
         } else if let Some(kind) = kind {
             *failures.entry(kind).or_default() += 1;
         }
@@ -369,7 +386,53 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::repeat_impl;
+    use super::{http_outcome, repeat_impl};
+    use crate::model::FailureKind;
+
+    /// A transport-success HTTP observation whose body never completed.
+    fn stalled_obs(latency_ms: u64) -> crate::model::HttpObservation {
+        crate::model::HttpObservation {
+            destination: "192.0.2.1:443".parse().unwrap(),
+            host: "stall.invalid".into(),
+            method: "GET".into(),
+            path: "/".into(),
+            tls: None,
+            protocol: Some("HTTP/1.1".into()),
+            status: Some(200),
+            location: None,
+            headers: Vec::new(),
+            body_bytes: None, // headers arrived, then the stream stalled
+            body_snippet: None,
+            latency_ms: Some(latency_ms), // the full wall-clock wait
+            ttfb_ms: Some(0),             // headers answered immediately
+            failure: None,
+        }
+    }
+
+    #[test]
+    fn http_outcome_treats_a_stalled_body_as_a_failure() {
+        // Headers + status arrived, but the body never completed: the attempt
+        // must not aggregate as a clean success with the latency pushed at the
+        // full `--timeout` wall-clock. Status and TTFB stay recorded (the
+        // server did answer), but the attempt counts as a Timeout failure.
+        let (ok, latency, kind, status, ttfb) = http_outcome(stalled_obs(801));
+        assert!(!ok, "a body-stalled exchange is not a completed probe");
+        assert_eq!(latency, None, "no polluting timeout-scaled latency sample");
+        assert_eq!(kind, Some(FailureKind::Timeout));
+        assert_eq!(status, Some(200), "the status is still surfaced");
+        assert_eq!(ttfb, Some(0), "the server-response latency is still sampled");
+    }
+
+    #[test]
+    fn http_outcome_keeps_a_completed_body_a_success() {
+        let mut obs = stalled_obs(9);
+        obs.body_bytes = Some(12); // body completed
+        let (ok, latency, kind, _, ttfb) = http_outcome(obs);
+        assert!(ok);
+        assert_eq!(latency, Some(9));
+        assert_eq!(kind, None);
+        assert_eq!(ttfb, Some(0));
+    }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn repeat_impl_aggregates_http_status_counts() {

@@ -173,6 +173,10 @@ pub struct DnsRepeatResult {
     pub successes: usize,
     /// Queries that failed.
     pub failures: usize,
+    /// Success rate in `0.0..=1.0`, serialized like [`crate::model::ProbeResult`]'s
+    /// own `success_rate` so `dns --count --json` and `probe --json` expose the
+    /// same aggregate schema.
+    pub success_rate: f64,
     /// Latency statistics over the successful queries.
     pub latency: LatencySummary,
     /// Failure distribution (count per failure kind).
@@ -184,13 +188,10 @@ pub struct DnsRepeatResult {
 }
 
 impl DnsRepeatResult {
-    /// Success rate in `0.0..=1.0`.
+    /// Success rate in `0.0..=1.0` (the serialized [`Self::success_rate`]
+    /// field; kept as an accessor for callers that predate the field).
     #[must_use]
-    pub fn success_rate(&self) -> f64 {
-        if self.attempts == 0 {
-            0.0
-        } else {
-            self.successes as f64 / self.attempts as f64
-        }
+    pub const fn success_rate(&self) -> f64 {
+        self.success_rate
     }
 }

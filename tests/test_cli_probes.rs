@@ -264,12 +264,20 @@ fn probe_cli_rejects_http_request_flags_for_non_http_protocols() {
     // means nothing to a tcp repeat. Those mismatches must fail fast with a
     // clear error instead of appearing to be honored.
     let addr = local_tcp_listener();
+    // The default-shaped values (`--method GET`, `--path /`, `--tls-version
+    // auto`) are explicit-but-equal-to-default: an operator passing them
+    // still believes they take effect, so they must be rejected too — the
+    // earlier value-comparison against the defaults let exactly these slip
+    // through silently.
     let cases: &[(&str, &str, &str)] = &[
         ("tls", "--path", "/x"),
         ("tcp", "--method", "HEAD"),
         ("tls", "--header", "x-test: 1"),
         ("tcp", "--body", "x"),
         ("tcp", "--tls-version", "1.2"),
+        ("tcp", "--method", "GET"),
+        ("tls", "--path", "/"),
+        ("tcp", "--tls-version", "auto"),
     ];
     for (protocol, flag, value) in cases {
         let assert = cmd()
@@ -646,6 +654,41 @@ fn dns_cli_count_repeats_and_aggregates_latency_stats() {
     );
     assert!(out.contains("attempts: 5"), "attempt count wrong: {out}");
     assert!(out.contains("p50:"), "latency stats missing: {out}");
+}
+
+#[test]
+fn dns_cli_repeat_json_serializes_success_rate() {
+    // `dns --count --json` must carry the same `success_rate` field as
+    // `probe --json`: the DNS repeat aggregate's headline metric used to be a
+    // Rust-only method, so JSON consumers got a different schema for the same
+    // logical metric across the two repeat commands.
+    let server = local_dns_server(&["192.0.2.77"], &[]);
+    let out = stdout(
+        &cmd()
+            .args([
+                "dns",
+                "host.example",
+                "--server",
+                &server.to_string(),
+                "--count",
+                "3",
+                "--record-type",
+                "A",
+                "--json",
+                "--timeout",
+                "1200",
+            ])
+            .assert()
+            .success(),
+    );
+    assert!(
+        out.contains("\"success_rate\": 1.0"),
+        "the repeat JSON must serialize the success rate: {out}"
+    );
+    assert!(
+        out.contains("\"attempts\": 3"),
+        "the repeat JSON must still carry attempts: {out}"
+    );
 }
 
 #[test]

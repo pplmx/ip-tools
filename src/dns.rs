@@ -171,6 +171,11 @@ pub fn aggregate_repeat(bucket: &[DnsObservation], record_type: DnsRecordType, a
         attempts,
         successes,
         failures: attempts.saturating_sub(successes),
+        success_rate: if attempts == 0 {
+            0.0
+        } else {
+            successes as f64 / attempts as f64
+        },
         latency: latency.summarize(),
         failure_counts,
         ttl: min_ttl,
@@ -506,6 +511,16 @@ pub async fn doh_query(
             )
         }
     };
+    // A NOERROR answer with no wanted-type records is NODATA — the name
+    // exists but has none of this record type. The resolver-backed path
+    // reports the identical condition as a `no {type} records found for
+    // {host}` failure (hickory's NoRecordsFound), so the wire paths must not
+    // silently succeed with zero records: on a mixed `--doh` run the same
+    // host would otherwise show SYSTEM=failure next to DOH=success, and
+    // `--strict` / repeat aggregation would disagree by resolver.
+    if parsed.rcode == 0 && parsed.records.is_empty() {
+        return fail(FailureKind::Dns, format!("no {record_type} records found for {host}"));
+    }
     // A non-NOERROR response code means the resolution itself failed (e.g.
     // SERVFAIL, NXDOMAIN), even though the endpoint answered HTTP 200.
     if parsed.rcode != 0 {
@@ -694,6 +709,12 @@ pub async fn dot_query(
             )
         }
     };
+    // NODATA (NOERROR, zero wanted records) is reported as a `no {type}
+    // records found for {host}` failure, exactly as the resolver-backed path
+    // surfaces hickory's NoRecordsFound — see `doh_query` for the rationale.
+    if parsed.rcode == 0 && parsed.records.is_empty() {
+        return fail(FailureKind::Dns, format!("no {record_type} records found for {host}"));
+    }
     if parsed.rcode != 0 {
         return DnsObservation {
             records: Vec::new(),

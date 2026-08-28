@@ -200,6 +200,11 @@ pub fn render_tls(style: &Style, observations: &[TlsObservation]) -> String {
 /// left-most label.
 #[must_use]
 pub fn cert_covers_hostname(sni: &str, sans: &[String]) -> bool {
+    // An IPv6-literal SNI keeps its brackets (`Target::parse("[2001:db8::1]", _)`
+    // stores the host as `[2001:db8::1]`), which fails to parse as an address.
+    // Strip them so the presented name matches the bare IP SAN — the human
+    // report's `presented_name_differs` already trims for its sideline.
+    let sni = sni.trim_start_matches('[').trim_end_matches(']');
     if let Ok(ip) = sni.parse::<std::net::IpAddr>() {
         return sans.iter().any(|san| san.parse::<std::net::IpAddr>().ok() == Some(ip));
     }
@@ -1190,6 +1195,7 @@ mod tests {
             attempts: 4,
             successes: 3,
             failures: 1,
+            success_rate: 3.0 / 4.0,
             latency: stats.summarize(),
             failure_counts: vec![FailureCount {
                 kind: FailureKind::Dns,
@@ -1493,6 +1499,22 @@ mod tests {
         assert!(!cert_covers_hostname("192.0.2.1", &sans(&["127.0.0.1"])));
         // No match.
         assert!(!cert_covers_hostname("other.example", &sans(&["example.com"])));
+    }
+
+    #[test]
+    fn cert_covers_hostname_matches_bracketed_ipv6_literal_sni() {
+        // `Target::parse("[2001:db8::1]", _)` keeps the brackets on the host,
+        // which flows through to the SNI. The IP-literal branch parses the SNI
+        // as an address; brackets made that parse fail and dropped the match
+        // to a bare IP SAN (`covers ...: no` on a cert that does cover the
+        // address) — in the human TLS/HTTP reports, both CSVs, and the
+        // diagnose certificate-coverage rule.
+        let sans = |s: &[&str]| s.iter().map(ToString::to_string).collect::<Vec<_>>();
+        assert!(cert_covers_hostname("[2001:db8::1]", &sans(&["2001:db8::1"])));
+        assert!(!cert_covers_hostname("[2001:db8::1]", &sans(&["2001:db8::2"])));
+        // Bracketed IPv4 (an unusual but accepted input form) matches too.
+        assert!(cert_covers_hostname("[127.0.0.1]", &sans(&["127.0.0.1"])));
+        assert!(cert_covers_hostname("2001:db8::1", &sans(&["2001:db8::1"])));
     }
 
     #[test]

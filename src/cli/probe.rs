@@ -170,22 +170,24 @@ pub(super) async fn run_probe(sub_m: &ArgMatches, style: Style) -> ExitCode {
     // already apply.
     let is_http = matches!(protocol.as_str(), "http" | "http2" | "http3");
     if !is_http {
-        // `get_many` is the repeatable ("append") accessor the explicit
-        // `--header`/`--server` parsing already uses; a flag the operator did
-        // not pass returns Err(ArgumentNotFound), not a present value.
-        let flag_present = |name: &str| sub_m.get_many::<String>(name).is_some();
-        if (sub_m.get_one::<String>("method").is_some_and(|m| m != "GET") && flag_present("method"))
-            || (sub_m.get_one::<String>("path").is_some_and(|p| p != "/") && flag_present("path"))
-            || flag_present("header")
-            || flag_present("body")
+        // An option's clap *default* (e.g. `--method`'s `GET`, `--path`'s `/`,
+        // `--tls-version`'s `auto`) is present in the matches and must not
+        // count as "passed": the guard must fire only when the operator
+        // actually typed the flag, so it checks `value_source`. The previous
+        // value-comparison against the defaults let explicitly-passed but
+        // default-shaped values (`--method GET`, `--path /`, `--tls-version
+        // auto` on a tcp/tls repeat) slip through silently.
+        let explicitly_given =
+            |name: &str| matches!(sub_m.value_source(name), Some(clap::parser::ValueSource::CommandLine));
+        if explicitly_given("method")
+            || explicitly_given("path")
+            || explicitly_given("header")
+            || explicitly_given("body")
         {
             eprintln!("Error: --method/--path/--header/--body only apply to --protocol http|http2|http3 (the {protocol} repeat sends no HTTP request)");
             return ExitCode::FAILURE;
         }
-        if protocol.as_str() == "tcp"
-            && sub_m.get_one::<String>("tls-version").is_some_and(|v| v != "auto")
-            && flag_present("tls-version")
-        {
+        if protocol.as_str() == "tcp" && explicitly_given("tls-version") {
             eprintln!("Error: --tls-version only applies to --protocol tls|http|http2|http3 (a tcp repeat has no TLS handshake)");
             return ExitCode::FAILURE;
         }

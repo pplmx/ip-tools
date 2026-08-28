@@ -676,6 +676,61 @@ async fn stalled_body_reports_incomplete_for_all_protocols() {
     );
 }
 
+#[test]
+fn probe_repeat_counts_a_stalled_body_as_a_failure() {
+    // A server that answers 200 but never completes the body must not fold
+    // into the repeat aggregate as `success: 100%` with the latency pushed at
+    // the full `--timeout` wall-clock (the single-shot layer reports
+    // `body: incomplete (timed out)`). Each stalled attempt is a failed
+    // exchange, so `--expect-rate 1 --expect-status 2xx` gates the run
+    // non-zero instead of asserting the endpoint green.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    // The stall route is served by the TLS listener (the cleartext listener
+    // has no StalledBody arm), so probe over TLS with `--insecure` (the
+    // fixture cert is self-signed) and route by the overridden Host header.
+    let tls = fixture.tcp_addr().to_string();
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "probe",
+            &tls,
+            "--protocol",
+            "http",
+            "--insecure",
+            "--header",
+            "host: stall.invalid",
+            "--count",
+            "3",
+            "--timeout",
+            "800",
+            "--expect-rate",
+            "1",
+            "--expect-status",
+            "2xx",
+        ])
+        .output()
+        .expect("run probe --expect-rate against a stall server");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        !out.status.success(),
+        "a body-stalling endpoint must not pass --expect-rate 1: {stdout}\n{stderr}"
+    );
+    assert!(
+        stdout.contains("success:  0"),
+        "the aggregate must report zero successful exchanges: {stdout}\n{stderr}"
+    );
+    assert!(
+        stdout.contains("failure:  3"),
+        "every stalled attempt must be bucketed as a failure: {stdout}\n{stderr}"
+    );
+}
+
 /// A server that accepts the HTTP/3 request (QUIC + h3 control path works)
 /// but never sends a response — a hung server. The probe's response wait must
 /// hit its wall-clock bound and fail cleanly, never hang or report success.
@@ -1635,6 +1690,48 @@ fn dns_cli_doh_reports_error_from_a_non_dns_endpoint() {
     assert!(
         stdout.contains("invalid response"),
         "expected a DoH parse-error observation: {stdout}"
+    );
+}
+
+#[test]
+fn dns_cli_doh_reports_no_records_for_a_nodata_answer() {
+    // A NOERROR answer with zero wanted-type records (NODATA) must surface as
+    // a `no A records found for ...` failure observation — the same verdict
+    // the resolver-backed path reports via hickory's NoRecordsFound. On a
+    // mixed run (system resolver + --doh) the same host would otherwise show
+    // SYSTEM=failure next to DOH=success, and --strict / repeat aggregation
+    // would disagree by resolver.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let endpoint = format!("https://{}/dns-empty", fixture.tcp_addr());
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "dns",
+            "host.example",
+            "--doh",
+            &endpoint,
+            "--insecure",
+            "--record-type",
+            "A",
+            "--timeout",
+            "2000",
+        ])
+        .output()
+        .expect("run dns --doh against a NODATA endpoint");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "dns --doh should still exit 0 (an error is an observation): {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.contains("no A records found for host.example"),
+        "a NODATA answer must report the no-records verdict: {stdout}"
     );
 }
 

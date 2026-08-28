@@ -293,6 +293,20 @@ const DOH_PTR_RESPONSE: &[u8] = &[
     0x04, b'h', b'o', b's', b't', 0x07, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 0x00,
 ];
 
+/// Canned NODATA (NOERROR, zero answers) DNS response served by the fixture
+/// at `/dns-empty`: a valid answer meaning "the name exists, but has no
+/// records of the queried type". The response parser skips the question
+/// section before reading answers, so a static A question serves any queried
+/// record type as a NODATA answer.
+const DOH_EMPTY_RESPONSE: &[u8] = &[
+    // header: id 0x1234, flags 0x8180 (QR|RD|RA, NOERROR), QD=1, AN=0, NS=0, AR=0
+    0x12, 0x34, 0x81, 0x80, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    // question name: host.example (4 host, 7 example, 0 root)
+    0x04, b'h', b'o', b's', b't', 0x07, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 0x00,
+    // qtype A (1), qclass IN (1)
+    0x00, 0x01, 0x00, 0x01,
+];
+
 /// Accept TLS connections and serve HTTP/1.1 or HTTP/2 chosen by negotiated
 /// ALPN.
 #[allow(clippy::too_many_lines)] // one hand-written arm per fixture route is clearest inline
@@ -332,6 +346,16 @@ async fn run_tcp_server(listener: tokio::net::TcpListener, acceptor: tokio_rustl
                         .header("content-type", "application/dns-message")
                         .body(http_body_util::Full::new(bytes::Bytes::from_static(DOH_PTR_RESPONSE)).boxed())
                         .expect("static doh ptr response");
+                    return Ok::<_, std::convert::Infallible>(resp);
+                }
+                if req.uri().path().starts_with("/dns-empty") {
+                    // Serve a canned NODATA answer (NOERROR, zero answers):
+                    // the host exists but has no records of the queried type.
+                    let resp = hyper::Response::builder()
+                        .status(200)
+                        .header("content-type", "application/dns-message")
+                        .body(http_body_util::Full::new(bytes::Bytes::from_static(DOH_EMPTY_RESPONSE)).boxed())
+                        .expect("static doh empty response");
                     return Ok::<_, std::convert::Infallible>(resp);
                 }
                 match route_for(&req) {
