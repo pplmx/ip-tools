@@ -1,8 +1,8 @@
 {
   "ril_version": 1,
-  "round": 12,
+  "round": 13,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-28T21:39:58+00:00",
+  "updated_at": "2026-08-28T23:17:58+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -31,7 +31,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 0,
+      "touched_round": 12,
       "desc": "TLS handshake with SNI, ALPN, cipher, cert subject/issuer/validity; --insecure mode"
     },
     "COMP-http": {
@@ -41,7 +41,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 11,
+      "touched_round": 12,
       "desc": "HTTPS/HTTP1.1 single request per address over TLS, status/redirect/body-size"
     },
     "COMP-http2": {
@@ -61,7 +61,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 0,
+      "touched_round": 12,
       "desc": "HTTP/3 QUIC probe over UDP path, distinct from TCP path"
     },
     "COMP-probe": {
@@ -91,7 +91,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 11,
+      "touched_round": 12,
       "desc": "Deterministic evidence-based diagnostic engine (layer.rs/connectivity.rs/filtering.rs/dns.rs), no network I/O"
     },
     "COMP-cli": {
@@ -101,7 +101,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 11,
+      "touched_round": 12,
       "desc": "clap arg tree + dispatch; --strict/--json/--timeout/--concurrency/--server/--insecure/--method/--count flags"
     },
     "COMP-model": {
@@ -121,7 +121,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 11,
+      "touched_round": 12,
       "desc": "human + --json rendering of all observation types"
     },
     "COMP-lib": {
@@ -4439,6 +4439,106 @@
       "touched_round": 11,
       "commit": "a121b38",
       "desc": "probe protocol-scope guard fires on explicitly-passed default-shaped flags (--method GET/--path //--tls-version auto on tcp|tls) via clap value_source(CommandLine) instead of value comparison (a121b38)"
+    },
+    "ISS-089": {
+      "id": "ISS-089",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-28T23:16:06+00:00",
+      "updated_at": "2026-08-28T23:17:43+00:00",
+      "touched_round": 12,
+      "desc": "Human HTTP block label is not honest: http --plain / diagnose --plain (no TLS layer at all) is headed 'HTTPS', and nothing in an HttpObservation can correct it (tls is only set on handshake success)"
+    },
+    "ISS-090": {
+      "id": "ISS-090",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-28T23:16:06+00:00",
+      "updated_at": "2026-08-28T23:17:43+00:00",
+      "touched_round": 12,
+      "desc": "diagnose TotalConnectivityLoss (HIGH + --strict failure) is raised when every address fails with the host's own no-route verdict (ENETUNREACH/EHOSTUNREACH): the total-loss branch missed the all-local-unreachability exclusion the partial branch had, blaming the destination for a missing local route"
+    },
+    "ISS-091": {
+      "id": "ISS-091",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-28T23:16:07+00:00",
+      "updated_at": "2026-08-28T23:17:43+00:00",
+      "touched_round": 12,
+      "desc": "A TLS handshake that stalls past the probe bound is classified as generic FailureKind::Timeout, so it is not attributable to the TLS layer and the h1/h2 rows running their TLS step through connect_to get double-counted as HTTP-layer errors"
+    },
+    "ISS-092": {
+      "id": "ISS-092",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-28T23:16:07+00:00",
+      "updated_at": "2026-08-28T23:17:43+00:00",
+      "touched_round": 12,
+      "desc": "IPv6-literal wire forms are wrong: the bracket-wrapped host string ([::1]) is sent verbatim in the HTTP/1.1 Host header and HTTP/3 host header + QUIC SNI (quinn rejects ServerName '[::1]', breaking h3 outright), and a bare-IPv6 '--header host: ::1' override produces an invalid https://::1/ h2/h3 URI authority"
+    },
+    "ISS-093": {
+      "id": "ISS-093",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-28T23:16:07+00:00",
+      "updated_at": "2026-08-28T23:17:43+00:00",
+      "touched_round": 12,
+      "desc": "diagnose --concurrency N bounds each probe phase per-target, not the whole fleet: a multi-target sweep of multi-address targets can fan out to N x targets x phases simultaneous sockets -- not a true global concurrency bound like the probe sweep's two flat phases"
+    },
+    "TASK-087": {
+      "id": "TASK-087",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-28T23:16:25+00:00",
+      "updated_at": "2026-08-28T23:17:43+00:00",
+      "touched_round": 12,
+      "category": "correctness",
+      "severity": 0.5,
+      "confidence": 1.0,
+      "desc": "Honest HTTP/HTTPS human block label: cleartext http --plain / diagnose --plain headed HTTP via a render_http_plain variant, while a TLS run keeps HTTPS even when its handshake failed (tls only recorded on success)"
+    },
+    "TASK-088": {
+      "id": "TASK-088",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-28T23:16:25+00:00",
+      "updated_at": "2026-08-28T23:17:43+00:00",
+      "touched_round": 12,
+      "category": "correctness",
+      "severity": 0.6,
+      "confidence": 1.0,
+      "desc": "Truthful connectivity verdicts: total-loss branch also excludes all-local-unreachability; TLS handshake stall classified as TlsHandshake (not generic Timeout) so it stays attributable to the TLS layer"
+    },
+    "TASK-089": {
+      "id": "TASK-089",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-28T23:16:26+00:00",
+      "updated_at": "2026-08-28T23:17:43+00:00",
+      "touched_round": 12,
+      "category": "correctness",
+      "severity": 0.5,
+      "confidence": 1.0,
+      "desc": "Wire-correct IPv6 host forms across http/http2/http3 (bracket-strip Host/authority/QUIC SNI, re-bracket bare IPv6 URI authority) and diagnose --concurrency as a true global probe bound via one shared semaphore"
+    },
+    "CHG-086": {
+      "id": "CHG-086",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-28T23:17:43+00:00",
+      "updated_at": "2026-08-28T23:17:43+00:00",
+      "touched_round": 12,
+      "commit": "9cb0896",
+      "desc": "Round 3 detail-optimization batch (9cb0896): honest HTTP/HTTPS human block label via render_http_plain (cleartext headed HTTP; failed-handshake TLS stays HTTPS); total-loss all-local-unreachability exclusion; TLS handshake stall -> TlsHandshake; wire-correct IPv6 Host/authority/QUIC SNI forms + bare-IPv6 URI re-bracketing across http/http2/http3; diagnose global concurrency bound via shared_semaphore. api-baseline regenerated (render_http_plain added). 342 tests green"
     }
   },
   "edges": [
@@ -7531,6 +7631,120 @@
       "to": "ISS-087",
       "type": "addresses",
       "created_at": "2026-08-28T21:39:26+00:00"
+    },
+    {
+      "from": "ISS-089",
+      "to": "COMP-report",
+      "type": "located_in",
+      "created_at": "2026-08-28T23:17:25+00:00"
+    },
+    {
+      "from": "ISS-090",
+      "to": "COMP-diagnose",
+      "type": "located_in",
+      "created_at": "2026-08-28T23:17:25+00:00"
+    },
+    {
+      "from": "ISS-091",
+      "to": "COMP-tls",
+      "type": "located_in",
+      "created_at": "2026-08-28T23:17:25+00:00"
+    },
+    {
+      "from": "ISS-092",
+      "to": "COMP-http",
+      "type": "located_in",
+      "created_at": "2026-08-28T23:17:26+00:00"
+    },
+    {
+      "from": "ISS-092",
+      "to": "COMP-http3",
+      "type": "located_in",
+      "created_at": "2026-08-28T23:17:26+00:00"
+    },
+    {
+      "from": "ISS-093",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-28T23:17:26+00:00"
+    },
+    {
+      "from": "TASK-087",
+      "to": "ISS-089",
+      "type": "addresses",
+      "created_at": "2026-08-28T23:17:26+00:00"
+    },
+    {
+      "from": "TASK-088",
+      "to": "ISS-090",
+      "type": "addresses",
+      "created_at": "2026-08-28T23:17:26+00:00"
+    },
+    {
+      "from": "TASK-088",
+      "to": "ISS-091",
+      "type": "addresses",
+      "created_at": "2026-08-28T23:17:26+00:00"
+    },
+    {
+      "from": "TASK-089",
+      "to": "ISS-092",
+      "type": "addresses",
+      "created_at": "2026-08-28T23:17:26+00:00"
+    },
+    {
+      "from": "TASK-089",
+      "to": "ISS-093",
+      "type": "addresses",
+      "created_at": "2026-08-28T23:17:26+00:00"
+    },
+    {
+      "from": "CHG-086",
+      "to": "TASK-087",
+      "type": "implements",
+      "created_at": "2026-08-28T23:17:43+00:00"
+    },
+    {
+      "from": "CHG-086",
+      "to": "TASK-088",
+      "type": "implements",
+      "created_at": "2026-08-28T23:17:43+00:00"
+    },
+    {
+      "from": "CHG-086",
+      "to": "TASK-089",
+      "type": "implements",
+      "created_at": "2026-08-28T23:17:43+00:00"
+    },
+    {
+      "from": "CHG-086",
+      "to": "ISS-089",
+      "type": "resolves",
+      "created_at": "2026-08-28T23:17:58+00:00"
+    },
+    {
+      "from": "CHG-086",
+      "to": "ISS-090",
+      "type": "resolves",
+      "created_at": "2026-08-28T23:17:58+00:00"
+    },
+    {
+      "from": "CHG-086",
+      "to": "ISS-091",
+      "type": "resolves",
+      "created_at": "2026-08-28T23:17:58+00:00"
+    },
+    {
+      "from": "CHG-086",
+      "to": "ISS-092",
+      "type": "resolves",
+      "created_at": "2026-08-28T23:17:58+00:00"
+    },
+    {
+      "from": "CHG-086",
+      "to": "ISS-093",
+      "type": "resolves",
+      "created_at": "2026-08-28T23:17:58+00:00"
     }
   ]
 }
