@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 11,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-28T05:28:47+00:00",
+  "updated_at": "2026-08-28T19:56:55+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -4161,6 +4161,99 @@
       "touched_round": 11,
       "rationale": "Uniform --json shape across target counts (H3-5): single-target emits a bare observation array (dropping the host key) while sweeps emit [{target, results}]. Making single-target wrapped too would be a JSON-contract break for existing single-target scripts; keeping it and documenting the difference is the non-breaking choice pre-1.0. The sweep form already carries the target; the residual gap (single-target JSON lacks the host string) is accepted and documented.",
       "alternatives_rejected": "Always wrapping single-target output in {target, results} (breaks current single-target JSON consumers); adding a host field to every observation (model change across all observation types)"
+    },
+    "ISS-078": {
+      "id": "ISS-078",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-28T15:23:21+00:00",
+      "updated_at": "2026-08-28T19:53:08+00:00",
+      "touched_round": 11,
+      "desc": "diagnose --reverse on an IP-literal? target raises a false HIGH 'DNS resolution failed' verdict: the literal short-circuits forward A/AAAA lookups so the DNS evidence stack holds only PTR observations; hickory reports NXDOMAIN/no-records for an address with no reverse zone as a failure, so the engine's 'any_failure && !any_success' branch fires a resolution-failure verdict (and breaks --strict) for a normal absent-PTR condition"
+    },
+    "ISS-079": {
+      "id": "ISS-079",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-28T15:24:45+00:00",
+      "updated_at": "2026-08-28T19:53:08+00:00",
+      "touched_round": 11,
+      "desc": "latency_instability_rules iterates input.probes without the per-destination dedup intermittent_rules applies: diagnose feeds one repeat per transport AND per HTTP protocol on the same destination, so a congested path slowing both the TCP connect and the HTTP transfer produces two byte-identical 'Latency instability for <dest>' verdicts"
+    },
+    "ISS-080": {
+      "id": "ISS-080",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-28T15:24:45+00:00",
+      "updated_at": "2026-08-28T19:53:08+00:00",
+      "touched_round": 11,
+      "desc": "certificate_lifetime_rules and certificate_coverage_rules emit one diagnosis per TLS observation: diagnose runs one TLS probe per resolved address with the same SNI, so a dual-stack host serving the same expiring or non-covering certificate yields N byte-identical Certificate verdicts instead of one"
+    },
+    "ISS-081": {
+      "id": "ISS-081",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-28T15:24:45+00:00",
+      "updated_at": "2026-08-28T19:56:55+00:00",
+      "touched_round": 11,
+      "desc": "diagnose --ipv6 (or --ipv4) on a host that resolves only the other family prints 'did not resolve to any address', misattributing successful resolution to resolver failure: the family scope emptied the pool, a 'no such-family records' condition not a resolution failure; the sweep that drops the host then repeats the misleading wording"
+    },
+    "CHG-078": {
+      "id": "CHG-078",
+      "type": "change",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-28T15:27:10+00:00",
+      "updated_at": "2026-08-28T19:55:21+00:00",
+      "touched_round": 11,
+      "commit": "9129235",
+      "desc": "Diagnosis-engine verdict dedup and honesty: dns_rules counts only forward A/AAAA toward resolution failure (an absent --reverse PTR no longer raises a false HIGH); latency_instability and certificate lifetime/coverage rules dedup per destination/cause; regression tests added (9129235)"
+    },
+    "CHG-079": {
+      "id": "CHG-079",
+      "type": "change",
+      "status": "resolved",
+      "version": 1,
+      "created_at": "2026-08-28T19:56:12+00:00",
+      "updated_at": "2026-08-28T19:56:12+00:00",
+      "touched_round": 11,
+      "commit": "fcfb986",
+      "desc": "CLI/report polish: shared RFC-4180 csv_field quotes bare CR (seven copies consolidated); family-scoped-empty sweep targets fail with a scope-naming message; diagnose --csv uses JSON enum spellings; tls/http http2/3 covers column distinguishes 'no' from no-cert; probe rejects HTTP-request flags on tcp/tls and --tls-version on tcp; dns gains --ipv4 and rejects --count 0; target.rs gives URL/userinfo hints; stale record-type help/message lists CAA/SRV/PTR; rustdoc fix in tls.rs (fcfb986)"
+    },
+    "CHG-080": {
+      "id": "CHG-080",
+      "type": "change",
+      "status": "resolved",
+      "version": 1,
+      "created_at": "2026-08-28T19:56:12+00:00",
+      "updated_at": "2026-08-28T19:56:12+00:00",
+      "touched_round": 11,
+      "commit": "193dc9a",
+      "desc": "HTTP wire correctness: whole body read bounded by an absolute --timeout deadline (slow-drip bodies cut off as incomplete, previously ran forever); an explicit --header 'host:' replaces Host/:authority instead of stacking a duplicate; h3 finish() failure/timeout reported as request-side, not mislabeled response timeout; run_probe_flow sweep flattened to two shared-semaphore phases so --concurrency bounds concurrent probes globally (193dc9a)"
+    },
+    "ISS-082": {
+      "id": "ISS-082",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-28T19:56:12+00:00",
+      "updated_at": "2026-08-28T19:56:55+00:00",
+      "touched_round": 11,
+      "desc": "The HTTP/1.1, HTTP/2 and HTTP/3 body readers applied --timeout per read rather than to the whole body read: a server trickling a fresh chunk every <timeout period could stall the probe indefinitely (latency_ms growing unbounded) despite the documented per-operation timeout. Also each read's own timer meant a slow but continuous server was never cut off"
+    },
+    "ISS-083": {
+      "id": "ISS-083",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-28T19:56:12+00:00",
+      "updated_at": "2026-08-28T19:56:55+00:00",
+      "touched_round": 11,
+      "desc": "An explicit --header 'host: ...' was appended on top of the probe's own Host header (h1/h3) or left clashing with the :authority pseudo-header (h2), producing an RFC 7230 section 5.4-malformed request or an h2 authority/host conflict instead of routing a shared-IP virtual host"
     }
   },
   "edges": [
@@ -7037,6 +7130,84 @@
       "to": "HYP-001",
       "type": "refutes",
       "created_at": "2026-08-28T05:28:47+00:00"
+    },
+    {
+      "from": "CHG-078",
+      "to": "ISS-078",
+      "type": "resolves",
+      "created_at": "2026-08-28T15:31:38+00:00"
+    },
+    {
+      "from": "CHG-078",
+      "to": "ISS-079",
+      "type": "resolves",
+      "created_at": "2026-08-28T15:31:38+00:00"
+    },
+    {
+      "from": "CHG-078",
+      "to": "ISS-080",
+      "type": "resolves",
+      "created_at": "2026-08-28T15:31:38+00:00"
+    },
+    {
+      "from": "CHG-078",
+      "to": "ISS-081",
+      "type": "resolves",
+      "created_at": "2026-08-28T15:31:38+00:00"
+    },
+    {
+      "from": "ISS-078",
+      "to": "COMP-diagnose",
+      "type": "located_in",
+      "created_at": "2026-08-28T15:31:38+00:00"
+    },
+    {
+      "from": "ISS-079",
+      "to": "COMP-diagnose",
+      "type": "located_in",
+      "created_at": "2026-08-28T15:31:38+00:00"
+    },
+    {
+      "from": "ISS-080",
+      "to": "COMP-diagnose",
+      "type": "located_in",
+      "created_at": "2026-08-28T15:31:38+00:00"
+    },
+    {
+      "from": "ISS-081",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-28T15:31:38+00:00"
+    },
+    {
+      "from": "CHG-079",
+      "to": "ISS-081",
+      "type": "resolves",
+      "created_at": "2026-08-28T19:56:55+00:00"
+    },
+    {
+      "from": "CHG-080",
+      "to": "ISS-082",
+      "type": "resolves",
+      "created_at": "2026-08-28T19:56:55+00:00"
+    },
+    {
+      "from": "CHG-080",
+      "to": "ISS-083",
+      "type": "resolves",
+      "created_at": "2026-08-28T19:56:55+00:00"
+    },
+    {
+      "from": "ISS-082",
+      "to": "COMP-http",
+      "type": "located_in",
+      "created_at": "2026-08-28T19:56:55+00:00"
+    },
+    {
+      "from": "ISS-083",
+      "to": "COMP-http",
+      "type": "located_in",
+      "created_at": "2026-08-28T19:56:55+00:00"
     }
   ]
 }
