@@ -1,8 +1,8 @@
 {
   "ril_version": 1,
-  "round": 13,
+  "round": 14,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-28T23:17:58+00:00",
+  "updated_at": "2026-08-28T23:27:38+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -121,7 +121,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 12,
+      "touched_round": 14,
       "desc": "human + --json rendering of all observation types"
     },
     "COMP-lib": {
@@ -4539,6 +4539,68 @@
       "touched_round": 12,
       "commit": "9cb0896",
       "desc": "Round 3 detail-optimization batch (9cb0896): honest HTTP/HTTPS human block label via render_http_plain (cleartext headed HTTP; failed-handshake TLS stays HTTPS); total-loss all-local-unreachability exclusion; TLS handshake stall -> TlsHandshake; wire-correct IPv6 Host/authority/QUIC SNI forms + bare-IPv6 URI re-bracketing across http/http2/http3; diagnose global concurrency bound via shared_semaphore. api-baseline regenerated (render_http_plain added). 342 tests green"
+    },
+    "ISS-094": {
+      "id": "ISS-094",
+      "type": "issue",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-28T23:25:38+00:00",
+      "updated_at": "2026-08-28T23:25:38+00:00",
+      "touched_round": 14,
+      "desc": "(agent-1 #4) Human report column alignment: mixed-width destinations/hosts can leave ragged columns across the fixed-width status/latency rows -- a cosmetic inconsistency for very long hostnames or IPv6 literals in a fleet report"
+    },
+    "ISS-095": {
+      "id": "ISS-095",
+      "type": "issue",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-28T23:25:38+00:00",
+      "updated_at": "2026-08-28T23:25:38+00:00",
+      "touched_round": 14,
+      "desc": "(agent-1 #5/#6) Defensive latency fallbacks fabricate a literal '0 ms': render_tcp PASS / render_tls / render_http success rows print 'N ms' via latency_ms.unwrap_or(0), which for a None latency (possible only by model construction -- probe paths always record Some) would present an unmeasured 0 as a measured value; repeat latency block likewise unwraps 0 under an existing count>0 guard"
+    },
+    "ISS-096": {
+      "id": "ISS-096",
+      "type": "issue",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-28T23:25:38+00:00",
+      "updated_at": "2026-08-28T23:25:38+00:00",
+      "touched_round": 14,
+      "desc": "(agent-1 #7) Cert-expiry row reads 'expires in 0 days' for a certificate expiring today -- numerically honest but awkward; 'expires today' is the clearer terminal phrasing"
+    },
+    "ISS-097": {
+      "id": "ISS-097",
+      "type": "issue",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-28T23:25:38+00:00",
+      "updated_at": "2026-08-28T23:25:38+00:00",
+      "touched_round": 14,
+      "desc": "(agent-1 width/color audit) A colored status token is padded as a whole token, so ANSI escapes do not shift the column under --no-color/plain output; verify every render_* site keeps painting padded tokens whole (TCP covered; HTTP status rows render colored status inside an unpadded format string)"
+    },
+    "DEC-078": {
+      "id": "DEC-078",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-28T23:26:43+00:00",
+      "updated_at": "2026-08-28T23:26:43+00:00",
+      "touched_round": 13,
+      "rationale": "Round-3 post-fold deep-dive (route.rs, report latency/cert-expiry renderers, probe.rs repeat_impl, cli/mod.rs orchestration) surfaced nothing above the 3.0 priority threshold: all remaining candidates are defensive display fallbacks (unreachable '0 ms' prints, 'expires in 0 days' phrasing, column alignment for very long hosts) recorded as ISS-094..097. Consistent with DEC-073's established below-gate-polish deferral pattern; fixing them now would be commit volume without user-visible correctness value. Unresolved-target JSON shape stays under the DEC-077 deferral; sub-ms latency display under DEC-076",
+      "alternatives_rejected": "Fixing ISS-095's unwrap_or(0) sites (defensive-only, unreachable via probe paths); rewording ISS-096 (churn for a 3-char phrase); a full column-alignment pass (ISS-094) across all render_* fns"
+    },
+    "DEC-079": {
+      "id": "DEC-079",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-28T23:26:43+00:00",
+      "updated_at": "2026-08-28T23:26:43+00:00",
+      "touched_round": 13,
+      "rationale": "Quality-convergence stops: no active task at/above priority 3.0, high-severity issues all resolved or decision-deferred (DEC-076/077/078), VERIFY fully green (342 tests, fmt/clippy(psd)/doc/api-baseline), consecutive deep-dive passes left only below-threshold candidates (recorded ISS-094..097 + DEC-078), graph consistent. Re-activation only via a new operator direction (supersedes this decision), a real user issue, or substantive repo change -- first re-verifying the baseline before any further iteration",
+      "alternatives_rejected": "Continuing empty round-spinning (validation-audit chores with no delivered change); manufacturing an above-threshold task from the below-threshold candidates to avoid the stop call"
     }
   },
   "edges": [
@@ -7745,6 +7807,30 @@
       "to": "ISS-093",
       "type": "resolves",
       "created_at": "2026-08-28T23:17:58+00:00"
+    },
+    {
+      "from": "ISS-094",
+      "to": "COMP-report",
+      "type": "located_in",
+      "created_at": "2026-08-28T23:27:38+00:00"
+    },
+    {
+      "from": "ISS-095",
+      "to": "COMP-report",
+      "type": "located_in",
+      "created_at": "2026-08-28T23:27:38+00:00"
+    },
+    {
+      "from": "ISS-096",
+      "to": "COMP-report",
+      "type": "located_in",
+      "created_at": "2026-08-28T23:27:38+00:00"
+    },
+    {
+      "from": "ISS-097",
+      "to": "COMP-report",
+      "type": "located_in",
+      "created_at": "2026-08-28T23:27:38+00:00"
     }
   ]
 }
