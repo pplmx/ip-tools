@@ -920,8 +920,24 @@ fn parse_dns_response(bytes: &[u8], want: DnsRecordType) -> Result<ParsedDnsResp
             return Err("truncated answer header".to_string());
         }
         let rtype = u16::from_be_bytes([bytes[pos], bytes[pos + 1]]);
-        // Capture the first answer's TTL (class(2) + ttl(4) precede rdlength).
-        if first_ttl.is_none() {
+        // Capture the first answer's TTL (class(2) + ttl(4) precede rdlength),
+        // but only from a record of the *wanted* type: an answer section often
+        // leads with a CNAME (aliasing) whose TTL is not the address record's
+        // caching bound, and the hickory-backed resolver path captures its TTL
+        // from type-matching records alone — the wire path must agree.
+        let is_wanted = match want {
+            DnsRecordType::A => rtype == 1,
+            DnsRecordType::Aaaa => rtype == 28,
+            DnsRecordType::Cname => rtype == 5,
+            DnsRecordType::Ns => rtype == 2,
+            DnsRecordType::Ptr => rtype == 12,
+            DnsRecordType::Mx => rtype == 15,
+            DnsRecordType::Txt => rtype == 16,
+            DnsRecordType::Soa => rtype == 6,
+            DnsRecordType::Caa => rtype == 257,
+            DnsRecordType::Srv => rtype == 33,
+        };
+        if is_wanted && first_ttl.is_none() {
             first_ttl = Some(u32::from_be_bytes([
                 bytes[pos + 4],
                 bytes[pos + 5],
@@ -1515,6 +1531,10 @@ mod tests {
     /// Build a one-question DNS message for `host.example` with the given
     /// answer (rtype, rdata) pairs.
     fn response_with(answers: &[(u16, Vec<u8>)]) -> Vec<u8> {
+        response_with_ttls(&answers.iter().map(|(t, d)| (*t, d.clone(), 60u32)).collect::<Vec<_>>())
+    }
+
+    fn response_with_ttls(answers: &[(u16, Vec<u8>, u32)]) -> Vec<u8> {
         let mut bytes = Vec::new();
         let ancount = answers.len() as u16;
         bytes.extend_from_slice(&[
@@ -1535,11 +1555,11 @@ mod tests {
             4, b'h', b'o', b's', b't', 7, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 0,
         ]);
         bytes.extend_from_slice(&[0, 1, 0, 1]); // qtype A, qclass IN
-        for (rtype, rdata) in answers {
+        for (rtype, rdata, ttl) in answers {
             bytes.extend_from_slice(&[0xC0, 0x0C]); // owner name ptr -> question
             bytes.extend_from_slice(&rtype.to_be_bytes());
             bytes.extend_from_slice(&[0, 1]); // class IN
-            bytes.extend_from_slice(&60u32.to_be_bytes()); // TTL
+            bytes.extend_from_slice(&ttl.to_be_bytes());
             bytes.extend_from_slice(&(rdata.len() as u16).to_be_bytes());
             bytes.extend_from_slice(rdata);
         }
@@ -1599,6 +1619,22 @@ mod tests {
         let parsed = parse_dns_response(&response_with(&[(1, vec![192, 0, 2, 1])]), DnsRecordType::A).unwrap();
         assert_eq!(parsed.ttl, Some(60));
         assert_eq!(parsed.records, vec![DnsRecord::A(Ipv4Addr::new(192, 0, 2, 1))]);
+    }
+
+    #[test]
+    fn parse_dns_response_ttl_comes_from_the_wanted_record_type() {
+        // An A query whose answer section leads with a CNAME (aliasing) must
+        // report the A record's TTL, not the CNAME's — the latter is not the
+        // address record's caching bound.
+        let name_ptr = vec![0xC0, 0x0C]; // compression pointer to "host.example"
+        let bytes = response_with_ttls(&[(5, name_ptr, 3600), (1, vec![192, 0, 2, 1], 300)]);
+        let parsed = parse_dns_response(&bytes, DnsRecordType::A).unwrap();
+        assert_eq!(parsed.records, vec![DnsRecord::A(Ipv4Addr::new(192, 0, 2, 1))]);
+        assert_eq!(
+            parsed.ttl,
+            Some(300),
+            "the TTL must be the A record's, not the leading CNAME's"
+        );
     }
 
     #[test]

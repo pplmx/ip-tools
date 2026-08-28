@@ -306,6 +306,30 @@ fn render_status(style: Style, status: u16) -> String {
     }
 }
 
+/// Term-print-safe rendering of a server-controlled body snippet for the
+/// human report. C0 control characters — above all the ANSI ESC (`\x1b`) that
+/// a hostile body could otherwise use to spoof the tool's own styled verdicts,
+/// plus newlines that would split the `body content:` row — are emitted as
+/// visible escapes, so the report's rows and the terminal stay intact. JSON
+/// escapes by its serializer and CSV by its field quoting; this is the
+/// human-only guard.
+fn sanitize_snippet(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '\x1b' => out.push_str("\\x1b"),
+            '\n' => out.push_str("\\n"),
+            '\t' => out.push_str("\\t"),
+            '\r' => out.push_str("\\r"),
+            '\u{0}'..='\u{8}' | '\u{b}' | '\u{c}' | '\u{e}'..='\u{1f}' | '\u{7f}' => {
+                out.push_str(&format!("\\x{:02x}", u32::from(c)));
+            }
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
 /// Render HTTPS/HTTP observations as human text.
 #[must_use]
 pub fn render_http(style: &Style, observations: &[HttpObservation]) -> String {
@@ -402,7 +426,7 @@ pub fn render_http(style: &Style, observations: &[HttpObservation]) -> String {
         }
         if let Some(snippet) = &obs.body_snippet {
             out.push_str("    body content: ");
-            out.push_str(snippet);
+            out.push_str(&sanitize_snippet(snippet));
             out.push('\n');
         }
         out.push_str(&format!("    latency: {} ms\n", obs.latency_ms.unwrap_or(0)));
@@ -1633,5 +1657,17 @@ mod tests {
         assert!(
             render_tls(&colored, std::slice::from_ref(&tls_no)).contains("covers attacker.example: \x1b[31mno\x1b[0m")
         );
+    }
+
+    #[test]
+    fn sanitize_snippet_neutralizes_terminal_control_characters() {
+        // ANSI escape (would spoof the tool's own verdict color), newlines
+        // (would split the body-content row), and other C0 controls must all
+        // render as visible escapes; ordinary text passes through unchanged.
+        assert_eq!(sanitize_snippet("ok"), "ok");
+        assert_eq!(sanitize_snippet("\x1b[31mFAIL\x1b[0m"), "\\x1b[31mFAIL\\x1b[0m");
+        assert_eq!(sanitize_snippet("line1\nline2"), "line1\\nline2");
+        assert_eq!(sanitize_snippet("a\tb"), "a\\tb");
+        assert_eq!(sanitize_snippet("nul\x00byte"), "nul\\x00byte");
     }
 }
