@@ -566,6 +566,60 @@ async fn http_probes_cap_oversized_response_bodies() {
     );
 }
 
+/// `--max-body-bytes` must be a *strict* bound: the reported `body_bytes`
+/// equals the cap exactly for every protocol (not the cap plus a whole frame),
+/// and a response body larger than the cap is detected as capped, not as
+/// complete.
+#[tokio::test(flavor = "multi_thread")]
+async fn max_body_bytes_is_a_strict_bound_for_all_protocols() {
+    let fixture = FixtureServer::start().await;
+    let cap = 128u64;
+
+    let h1 = http::probe_insecure_with_version_output(
+        fixture.tcp_addr(),
+        "big.invalid",
+        "GET",
+        "/",
+        &[],
+        None,
+        timeout(),
+        tls::TlsProtocol::Auto,
+        cap,
+        None,
+    )
+    .await;
+    assert_eq!(h1.body_bytes, Some(cap), "http1 must stop exactly at the cap: {h1:?}");
+
+    let h2 = http2::probe_insecure_with_version_output(
+        fixture.tcp_addr(),
+        "big.invalid",
+        "GET",
+        "/",
+        &[],
+        None,
+        timeout(),
+        tls::TlsProtocol::Auto,
+        cap,
+        None,
+    )
+    .await;
+    assert_eq!(h2.body_bytes, Some(cap), "http2 must stop exactly at the cap: {h2:?}");
+
+    let h3 = http3::probe_insecure_output(
+        fixture.udp_addr(),
+        "big.invalid",
+        "GET",
+        "/",
+        &[],
+        None,
+        timeout(),
+        cap,
+        None,
+    )
+    .await;
+    assert_eq!(h3.body_bytes, Some(cap), "http3 must stop exactly at the cap: {h3:?}");
+}
+
 /// The body must still be observable (non-zero) when a real body is served —
 /// guards against the cap truncating everything or the fixture being bypassed.
 #[tokio::test(flavor = "multi_thread")]

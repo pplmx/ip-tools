@@ -8,7 +8,7 @@
 //! behaviour is visible.
 
 use crate::http_common::{
-    body_snippet_string, build_tls_observation, collect_response_headers, http_error, push_body_snippet,
+    body_snippet_string, build_tls_observation, collect_response_headers, http_error, push_bounded_body,
     BODY_SNIPPET_BYTES, MAX_BODY_BYTES,
 };
 use crate::model::http::HttpObservation;
@@ -509,17 +509,17 @@ where
             Err(_) => break, // body read timed out before completion
         };
         if let Ok(data) = frame.into_data() {
-            push_body_snippet(&mut snippet, &data[..]);
-            bytes_read = bytes_read.saturating_add(data.len() as u64);
-            if body_output.is_some() {
-                // The read is already bounded by MAX_BODY_BYTES below, so the
-                // retained copy cannot exceed the cap.
-                full_body.extend_from_slice(&data[..]);
+            let capped = push_bounded_body(
+                &mut snippet,
+                body_output.is_some().then_some(&mut full_body),
+                &mut bytes_read,
+                max_body_bytes,
+                &data[..],
+            );
+            if capped {
+                ended = true;
+                break;
             }
-        }
-        if bytes_read >= max_body_bytes {
-            ended = true;
-            break;
         }
     }
     let body_bytes = ended.then_some(bytes_read);

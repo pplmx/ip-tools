@@ -6,7 +6,7 @@
 //! first-class, observable distinction.
 
 use crate::http_common::{
-    body_snippet_string, build_tls_observation, collect_response_headers, http_error, push_body_snippet,
+    body_snippet_string, build_tls_observation, collect_response_headers, http_error, push_bounded_body,
     BODY_SNIPPET_BYTES, MAX_BODY_BYTES,
 };
 use crate::model::http::HttpObservation;
@@ -343,13 +343,17 @@ async fn probe_impl(
             }
             Err(_) => break, // body read timed out before completion
         };
-        push_body_snippet(&mut snippet, &chunk[..]);
-        bytes_read = bytes_read.saturating_add(chunk.len() as u64);
-        if body_output.is_some() {
-            full_body.extend_from_slice(&chunk[..]);
-        }
+        let capped = push_bounded_body(
+            &mut snippet,
+            body_output.is_some().then_some(&mut full_body),
+            &mut bytes_read,
+            max_body_bytes,
+            &chunk[..],
+        );
+        // The whole chunk was read off the wire (whatever was retained), so
+        // release its full flow-control window.
         let _ = body.flow_control().release_capacity(chunk.len());
-        if bytes_read >= max_body_bytes {
+        if capped {
             ended = true;
             break;
         }

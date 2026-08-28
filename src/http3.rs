@@ -5,7 +5,7 @@
 //! `TCP/HTTPS PASS / QUIC/HTTP3 FAIL` (and the reverse) observable.
 
 use crate::http_common::{
-    body_snippet_string, collect_response_headers, push_body_snippet, BODY_SNIPPET_BYTES, MAX_BODY_BYTES,
+    body_snippet_string, collect_response_headers, push_bounded_body, BODY_SNIPPET_BYTES, MAX_BODY_BYTES,
 };
 use crate::model::http::HttpObservation;
 use crate::model::tls::TlsObservation;
@@ -272,8 +272,6 @@ async fn probe_impl(
         Err(e) => return base.with_failure(failure(FailureKind::Protocol, format!("could not build request: {e}"))),
     };
 
-    // TTFB: time from sending the request to receiving the response headers.
-    let ttfb_start = Instant::now();
     let mut req_stream = match tokio::time::timeout(timeout, send_request.send_request(request)).await {
         Ok(Ok(s)) => s,
         Ok(Err(e)) => return base.with_failure(failure(FailureKind::Http, format!("http/3 request failed: {e}"))),
@@ -284,7 +282,6 @@ async fn probe_impl(
             ));
         }
     };
-    let ttfb_ms = Some(ttfb_start.elapsed().as_millis() as u64);
     // A request body is pushed on the request stream as a DATA frame before
     // the stream is finished.
     if let Some(bytes) = body {
@@ -303,6 +300,12 @@ async fn probe_impl(
     }
     let _ = tokio::time::timeout(timeout, req_stream.finish()).await;
 
+    // TTFB: time from the request being sent to receiving the response
+    // headers. The request stream resolves as soon as it is accepted — the
+    // response head arrives separately via `recv_response` — so the clock must
+    // start here, not around `send_request` (which would only measure request
+    // enqueue and always report ~0).
+    let ttfb_start = Instant::now();
     let response = match tokio::time::timeout(timeout, req_stream.recv_response()).await {
         Ok(Ok(r)) => r,
         Ok(Err(e)) => return base.with_failure(failure(FailureKind::Http, format!("http/3 response failed: {e}"))),
@@ -313,6 +316,7 @@ async fn probe_impl(
             ));
         }
     };
+    let ttfb_ms = Some(ttfb_start.elapsed().as_millis() as u64);
 
     let status = response.status().as_u16();
     let location = response
@@ -341,12 +345,14 @@ async fn probe_impl(
             Err(_) => break, // body read timed out before completion
             Ok(Err(e)) => return base.with_failure(failure(FailureKind::Http, format!("http/3 body failed: {e}"))),
         };
-        push_body_snippet(&mut snippet, chunk.chunk());
-        bytes_read = bytes_read.saturating_add(chunk.remaining() as u64);
-        if body_output.is_some() {
-            full_body.extend_from_slice(chunk.chunk());
-        }
-        if bytes_read >= max_body_bytes {
+        let capped = push_bounded_body(
+            &mut snippet,
+            body_output.is_some().then_some(&mut full_body),
+            &mut bytes_read,
+            max_body_bytes,
+            chunk.chunk(),
+        );
+        if capped {
             ended = true;
             break;
         }
