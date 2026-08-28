@@ -38,8 +38,14 @@ pub fn render_dns(style: &Style, host: &str, observations: &[DnsObservation]) ->
     let mut out = String::new();
     out.push_str(&format!("DNS {host}\n"));
 
-    // Group by resolver, then list each record type's addresses.
-    // Order is stable: system first, then custom resolvers.
+    // Group by resolver, then list each record type's observations. Order is
+    // stable: system first, then custom resolvers. Every observation is
+    // rendered — not just the first per (resolver, record type) — so a
+    // resolver that legitimately produced more than one (e.g. `diagnose
+    // --reverse` resolves every address and adds a PTR row labelled with the
+    // address) keeps all of them in the human report, matching CSV/JSON which
+    // iterate the full set (the dedicated `dns` command yields exactly one
+    // observation per key, so its output is unchanged).
     let mut seen_resolvers = Vec::new();
     for obs in observations {
         if !seen_resolvers.iter().any(|r| r == &obs.resolver) {
@@ -49,15 +55,27 @@ pub fn render_dns(style: &Style, host: &str, observations: &[DnsObservation]) ->
     for resolver in seen_resolvers {
         out.push_str(&format!("  {}\n", resolver_label(&resolver)));
         for rt in ALL_DNS_RECORD_TYPES {
-            let Some(obs) = observations
+            let matched: Vec<&DnsObservation> = observations
                 .iter()
-                .find(|o| o.resolver == resolver && o.record_type == rt)
-            else {
+                .filter(|o| o.resolver == resolver && o.record_type == rt)
+                .collect();
+            if matched.is_empty() {
                 continue;
-            };
-            out.push_str(&format!("    {:4}: ", rt_label(rt)));
-            out.push_str(&render_dns_one(*style, obs));
-            out.push('\n');
+            }
+            for obs in matched {
+                // A row whose observation's `hostname` (e.g. one address of a
+                // multi-address `--reverse` sweep) differs from the section's
+                // target is labelled, so which address's answer it is stays
+                // visible instead of collapsing into ambiguity.
+                let label = if obs.hostname != host && !obs.hostname.is_empty() {
+                    format!("{} :: ", obs.hostname)
+                } else {
+                    String::new()
+                };
+                out.push_str(&format!("    {:4}: {label}", rt_label(rt)));
+                out.push_str(&render_dns_one(*style, obs));
+                out.push('\n');
+            }
         }
     }
     out
@@ -850,6 +868,35 @@ mod tests {
         let obs = [dns_obs(ResolverKind::System, DnsRecordType::A, &[], None, None)];
         assert!(render_dns(&Style::plain(), "example.com", &obs).contains("no records"));
         assert!(render_dns(&Style::plain(), "example.com", &[]).contains("DNS example.com"));
+    }
+
+    #[test]
+    fn render_dns_keeps_every_observation_not_just_the_first_per_resolver() {
+        // `diagnose --reverse` on a multi-address host adds one System PTR
+        // observation per resolved address; the human report must keep all of
+        // them (each labelled with the address it answers) instead of
+        // rendering only the first, matching JSON/CSV which iterate the full
+        // set. The dedicated `dns` command yields one observation per
+        // (resolver, record type), so its output is unchanged by this.
+        let ptr = |addr: &str, target: &str| DnsObservation {
+            hostname: addr.to_string(),
+            resolver: ResolverKind::System,
+            record_type: DnsRecordType::Ptr,
+            records: vec![DnsRecord::Ptr(target.to_string())],
+            ttl: Some(60),
+            latency_ms: Some(2),
+            error: None,
+        };
+        let obs = [ptr("192.0.2.1", "one.example"), ptr("192.0.2.2", "two.example")];
+        let out = render_dns(&Style::plain(), "example.com", &obs);
+        assert!(
+            out.contains("192.0.2.1 :: one.example"),
+            "the first reverse row must carry its address label: {out}"
+        );
+        assert!(
+            out.contains("192.0.2.2 :: two.example"),
+            "the second reverse row must not be dropped: {out}"
+        );
     }
 
     #[test]
