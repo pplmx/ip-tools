@@ -28,6 +28,13 @@ pub(super) async fn run_route(sub_m: &ArgMatches, style: Style) -> ExitCode {
         .expect("probes-per-hop has default");
     let timeout_ms = *sub_m.get_one::<u64>("timeout").expect("timeout has default");
 
+    // A 0-repeat request is a caller mistake, and silently running a single
+    // trace would hide it (probe's `--count` rejects 0 the same way).
+    if count == 0 {
+        eprintln!("Error: --count must be at least 1");
+        return ExitCode::FAILURE;
+    }
+
     let target = match Target::parse(target_str, DEFAULT_PORT) {
         Ok(t) => t,
         Err(e) => {

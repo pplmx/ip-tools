@@ -214,6 +214,12 @@ fn traceroute_linux(target: IpAddr, cfg: &TracerouteConfig) -> Result<Vec<RouteH
                     Err(_) => {}
                 }
             }
+            // The hop answered: sending the remaining probes is wasted work —
+            // routers commonly rate-limit TTL-exceeded replies, so the extra
+            // probes would each spin the full timeout for no new information.
+            if !hop.lost {
+                break;
+            }
         }
 
         hops.push(hop);

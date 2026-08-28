@@ -74,7 +74,7 @@ fn parser() -> ArgMatches {
                 .arg(dns_record_type_arg())
                 .arg(dns_count_arg())
                 .arg(strict_arg())
-                .arg(timeout_arg())
+                .arg(timeout_arg("5000"))
                 .arg(dns_concurrency_arg())
                 .arg(csv_arg()),
         )
@@ -202,7 +202,11 @@ fn parser() -> ArgMatches {
                         .help("probes per hop"),
                 )
                 .arg(strict_arg())
-                .arg(timeout_arg())
+                // Per-probe ICMP wait for traceroute: the generic 5 s default
+                // (fine for connect probes) turns a lost hop into a 15 s stall
+                // (3 probes x timeout); the library default is 1 s and a
+                // responsive trace is the whole point.
+                .arg(timeout_arg("1000"))
                 .arg(csv_arg())
                 .arg(route_count_arg()),
         )
@@ -275,17 +279,17 @@ fn probe_command(name: &'static str, about: &'static str, extras: &[Arg]) -> Com
     cmd.arg(server_arg())
         .arg(doh_arg())
         .arg(dot_arg())
-        .arg(timeout_arg())
+        .arg(timeout_arg("5000"))
         .arg(concurrency_arg())
 }
 
 /// Common `--timeout` argument (milliseconds).
-fn timeout_arg() -> Arg {
+fn timeout_arg(default_ms: &'static str) -> Arg {
     Arg::new("timeout")
         .long("timeout")
         .value_name("MILLIS")
         .value_parser(clap::value_parser!(u64))
-        .default_value("5000")
+        .default_value(default_ms)
         .help("per-operation timeout in milliseconds")
 }
 

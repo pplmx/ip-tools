@@ -26,6 +26,9 @@ pub struct Progress {
     shown: bool,
     done: AtomicUsize,
     total: usize,
+    /// Longest `\r N/total label` line rendered so far, so the completion line
+    /// can pad itself to overwrite any leftover label characters.
+    max_line: AtomicUsize,
 }
 
 impl Progress {
@@ -43,6 +46,7 @@ impl Progress {
             shown,
             done: AtomicUsize::new(0),
             total,
+            max_line: AtomicUsize::new(0),
         }
     }
 
@@ -52,17 +56,30 @@ impl Progress {
             return;
         }
         let done = self.done.fetch_add(1, Ordering::Relaxed) + 1;
-        eprint!("\r  {done}/{} {label}", self.total);
+        let line = format!("  {done}/{} {label}", self.total);
+        self.max_line.fetch_max(line.len(), Ordering::Relaxed);
+        eprint!("\r{line}");
     }
 
-    /// Terminate whichever progress line is on screen with a newline.
+    /// Terminate whichever progress line is on screen with a newline, padding
+    /// past the longest label drawn so far so no leftover characters stay
+    /// glued to "complete".
     pub fn finish(&self) {
         if !self.shown {
             return;
         }
         let done = self.done.load(Ordering::Relaxed);
-        eprintln!("\r  {done}/{} complete", self.total);
+        let line = completion_line(done, self.total, self.max_line.load(Ordering::Relaxed));
+        eprintln!("\r{line}");
     }
+}
+
+/// The `\r  N/total complete` line, padded with trailing spaces to at least
+/// `pad_to` characters so it overwrites a longer `step` label still on screen.
+fn completion_line(done: usize, total: usize, pad_to: usize) -> String {
+    let line = format!("  {done}/{total} complete");
+    let pad = pad_to.saturating_sub(line.len());
+    format!("{line}{}", " ".repeat(pad))
 }
 
 #[cfg(test)]
@@ -85,12 +102,27 @@ mod tests {
     }
 
     #[test]
+    fn completion_line_pads_past_a_longer_step_label() {
+        // A `step` label longer than "complete" must leave no leftover
+        // characters on the final line; the completion line pads to overwrite.
+        let line = completion_line(3, 3, 30);
+        assert_eq!(line.len(), 30, "the line must overwrite the full 30-char step");
+        assert!(
+            line.starts_with("  3/3 complete"),
+            "completion text preserved: {line:?}"
+        );
+        assert_eq!(completion_line(2, 10, 0), "  2/10 complete");
+        assert_eq!(completion_line(2, 10, 6), "  2/10 complete");
+    }
+
+    #[test]
     fn silent_progress_is_a_noop() {
         // A suppressed progress must never touch stderr or advance its count.
         let progress = Progress {
             shown: false,
             done: AtomicUsize::new(0),
             total: 3,
+            max_line: AtomicUsize::new(0),
         };
         progress.step("a");
         progress.step("b");
