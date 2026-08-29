@@ -939,6 +939,15 @@ where
         .await;
     resolved.sort_by_key(|(idx, _)| *idx);
     // Phase 2: probe every (host, destination) pair, bounded by the same limit.
+    //
+    // The probe phase is where a sweep actually spends its wall-clock time (a
+    // `--count N` repeat against a blackholed address burns N×timeout in
+    // silence, and even the per-host resolve counter above freezes once the
+    // probes start). Finish the resolve counter's line, then run a second
+    // per-destination counter over the probe tasks so a long sweep shows live
+    // movement instead of looking hung. TTY-gated exactly like the resolve
+    // display (`Progress` writes nothing when piped/quieted/single-task).
+    progress.finish();
     let probe_items: Vec<(usize, String, SocketAddr)> = resolved
         .iter()
         .flat_map(|(idx, output)| {
@@ -951,14 +960,22 @@ where
         })
         .collect();
     let probe_tasks = probe_items.len();
+    let probe_progress = std::sync::Arc::new(Progress::new(probe_tasks, sub_m.get_flag("no-color")));
+    let probe_progress_for_tasks = probe_progress.clone();
     let probed: Vec<(usize, String, SocketAddr, O)> =
         parallel_map_with_limit(probe_items, limit.clone(), move |(idx, host, dest)| {
             let probe = probe.clone();
             let sni = sni.clone();
+            let probe_progress = probe_progress_for_tasks.clone();
             let presented = sni.unwrap_or_else(|| host.clone());
-            async move { (idx, host, dest, probe(presented, dest, timeout).await) }
+            async move {
+                let result = probe(presented, dest, timeout).await;
+                probe_progress.step(&format!("{host} {dest}"));
+                (idx, host, dest, result)
+            }
         })
         .await;
+    probe_progress.finish();
     // Group per-target results back into the deterministic target order, each
     // destination list sorted as before.
     let mut per_target: Vec<Option<Vec<O>>> = (0..target_count).map(|_| None).collect();
@@ -977,7 +994,6 @@ where
         }
     }
     indexed.sort_by_key(|(idx, _)| *idx);
-    progress.finish();
     let mut per_target: Vec<(String, Vec<O>)> = Vec::with_capacity(indexed.len());
     let mut unresolved = 0usize;
     for (_, result) in indexed {
