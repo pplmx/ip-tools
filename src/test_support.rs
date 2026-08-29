@@ -213,9 +213,9 @@ static QUIC_SLOWFLAP_COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::
 /// Strip the port (and any IPv6 brackets) from a `Host` header value, so the
 /// host-keyed routes match whether or not the probe named its non-default
 /// port: `localhost:8080` → `localhost`, `[::1]:8443` → `::1`, while a bare
-/// `host` or `::1` passes through. Mirrors [`hyper::uri::Authority::host`]
-/// (which the `:authority` branch already uses) and how a real vhost router
-/// typically keys on the host name alone.
+/// `host` or `::1` passes through. Mirrors `Authority::host` on the
+/// `:authority` branch (which the h2/h3 requests use) and how a real vhost
+/// router typically keys on the host name alone.
 fn host_header_bare(value: &str) -> &str {
     if let Some(rest) = value.strip_prefix('[') {
         // Bracket form `[addr]:port` or `[addr]`: strip through the closing

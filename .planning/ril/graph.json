@@ -1,8 +1,8 @@
 {
   "ril_version": 1,
-  "round": 16,
+  "round": 17,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-29T05:46:52+00:00",
+  "updated_at": "2026-08-29T20:06:54+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -11,7 +11,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:45+00:00",
       "updated_at": "2026-08-21T17:36:45+00:00",
-      "touched_round": 11,
+      "touched_round": 17,
       "desc": "DNS probes: system resolver, --server custom, --doh RFC8484 (hand-rolled wire), literal short-circuit, RCODE surfacing"
     },
     "COMP-tcp": {
@@ -31,7 +31,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 12,
+      "touched_round": 17,
       "desc": "TLS handshake with SNI, ALPN, cipher, cert subject/issuer/validity; --insecure mode"
     },
     "COMP-http": {
@@ -41,7 +41,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 12,
+      "touched_round": 17,
       "desc": "HTTPS/HTTP1.1 single request per address over TLS, status/redirect/body-size"
     },
     "COMP-http2": {
@@ -51,7 +51,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 0,
+      "touched_round": 17,
       "desc": "HTTP/2 single request over ALPN h2 connection, protocol identity preserved on failure"
     },
     "COMP-http3": {
@@ -61,7 +61,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 12,
+      "touched_round": 17,
       "desc": "HTTP/3 QUIC probe over UDP path, distinct from TCP path"
     },
     "COMP-probe": {
@@ -81,7 +81,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 11,
+      "touched_round": 17,
       "desc": "Linux UDP/ICMP traceroute, root/CAP_NET_RAW gated, IPv4-only"
     },
     "COMP-diagnose": {
@@ -101,7 +101,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 12,
+      "touched_round": 17,
       "desc": "clap arg tree + dispatch; --strict/--json/--timeout/--concurrency/--server/--insecure/--method/--count flags"
     },
     "COMP-model": {
@@ -111,7 +111,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 11,
+      "touched_round": 17,
       "desc": "typed observation model: DNS/TCP/TLS/HTTP/latency/probe/diagnosis; serde Serialize"
     },
     "COMP-report": {
@@ -4609,7 +4609,7 @@
       "version": 1,
       "created_at": "2026-08-29T00:43:57+00:00",
       "updated_at": "2026-08-29T00:43:57+00:00",
-      "touched_round": 14,
+      "touched_round": 17,
       "rationale": "Re-activation via new /goal operator directive (detail-optimization / bug-fix / polish / 打磨 / interactivity / usability / ease-of-use). Supersedes DEC-079 converged-idle stop: the four previously below-threshold report-polish candidates (ISS-094..097, deferred by DEC-078) are now squarely in scope as explicit user-visible polish work. Baseline re-verified green first (342 tests with test-server, fmt/clippy/doc/release clean).",
       "alternatives_rejected": "Staying parked at converged-idle despite the explicit user directive; manufacturing new core features instead of the requested polish work"
     },
@@ -4887,6 +4887,320 @@
       "touched_round": 15,
       "rationale": "--strict/--expect-* on the probe commands count a local \"network unreachable\" (an address family with no global route) as a failed probe, while the diagnose engine excludes all-local-unreachability from destination-blame verdicts (AddressFamily instead). Verified live on a v6-less host: both `tcp example.com --strict` AND `diagnose example.com --strict` exit non-zero for the same facts — so the exit-code contract is NOT contradictory, only the stderr attribution differs (diagnose names AddressFamily; tcp says \"N probes failed to complete\"). Keeping --strict strict is correct: a probe that genuinely could not connect IS a failed probe and the absent route is real signal; silently ignoring it would let `tcp host --strict` pass while v6 probes never completed. The operator scopes with --ipv4/--ipv6 (documented) and reads the human report, which already names each unreachable address. No behavior change.",
       "alternatives_rejected": "Making --strict skip local-unreachability failures (would hide genuine probe failures and contradict the documented \"exit non-zero when a probe failed to complete\" contract); auto-adding --ipv4 for the operator (would silently change what was probed)"
+    },
+    "ISS-106": {
+      "id": "ISS-106",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-29T17:36:31+00:00",
+      "updated_at": "2026-08-29T18:23:40+00:00",
+      "touched_round": 17,
+      "title": "empty target list (empty @file / empty stdin) silently probes nothing and exits 0",
+      "severity": "high",
+      "desc": "parse_targets returns empty Vec; run_probe_flow proceeds with 0 targets -> human no output, json [], csv header-only, exit 0. Automation false-green. Parallel to --count 0 / family-scope-empty fail-fasts"
+    },
+    "ISS-107": {
+      "id": "ISS-107",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-29T17:37:25+00:00",
+      "updated_at": "2026-08-29T17:58:40+00:00",
+      "touched_round": 17,
+      "title": "HTTP Host/:authority omit port for non-default ports (RFC 7230 5.4 / 9113 8.3.1 / 9114 4.3.1)",
+      "severity": "medium",
+      "desc": "http example.com:8080 sends Host: example.com (no :8080); same for h2 :authority, h3 :authority+host, DoH endpoint host. vhost-by-host:port routing breaks. port available from destination.port()/eport"
+    },
+    "ISS-108": {
+      "id": "ISS-108",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-29T17:37:25+00:00",
+      "updated_at": "2026-08-29T18:23:40+00:00",
+      "touched_round": 17,
+      "title": "--json --csv documented mutually exclusive but silently prints CSV (json swallowed)",
+      "severity": "medium",
+      "desc": "if csv { } else if json { } chain; README claims mutually exclusive; no warning"
+    },
+    "ISS-109": {
+      "id": "ISS-109",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-29T17:37:25+00:00",
+      "updated_at": "2026-08-29T18:23:40+00:00",
+      "touched_round": 17,
+      "title": "--concurrency 0 silently clamped to 1 (--timeout 0 range error leaks u64::MAX)",
+      "severity": "low",
+      "desc": "concurrency_arg usize + clamp(1,MAX) at cli/mod.rs:901; sibling options fail-fast on 0. timeout range prints 1..18446744073709551615"
+    },
+    "ISS-110": {
+      "id": "ISS-110",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-29T17:37:25+00:00",
+      "updated_at": "2026-08-29T19:31:09+00:00",
+      "touched_round": 17,
+      "title": "trailing-dot FQDN rejected by DoH/DoT wire path but accepted by resolver path",
+      "severity": "low",
+      "desc": "build_query splits on '.' -> empty trailing label errors invalid DNS label; dns example.com. works via hickory. One-line trailing-dot strip"
+    },
+    "ISS-111": {
+      "id": "ISS-111",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-29T17:37:25+00:00",
+      "updated_at": "2026-08-29T19:31:09+00:00",
+      "touched_round": 17,
+      "title": "DoH/DoT responses > 64 KiB truncated and reported as body read failed with no cap hint",
+      "severity": "low",
+      "desc": "Limited(DOH_MAX_BODY)/DOT_MAX_LEN convert a legal large response into a failure; no cap-hit message"
+    },
+    "ISS-112": {
+      "id": "ISS-112",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-29T17:37:25+00:00",
+      "updated_at": "2026-08-29T19:31:09+00:00",
+      "touched_round": 17,
+      "title": "http3 handshake timeout is a uniform silent timeout with no diagnostic hint",
+      "severity": "low",
+      "desc": "most endpoints do not speak h3; message says only quic handshake timed out - no may-not-support-h3-or-UDP-filtered hint"
+    },
+    "ISS-113": {
+      "id": "ISS-113",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-29T17:37:25+00:00",
+      "updated_at": "2026-08-29T18:23:40+00:00",
+      "touched_round": 17,
+      "title": "route --count > 65535 wraps the u16 per-hop answered counter (false 100% loss)",
+      "severity": "low",
+      "desc": "aggregate_runs entry.0 += 1 on u16; --count unbounded usize; add fail-fast guard <= u16::MAX"
+    },
+    "ISS-114": {
+      "id": "ISS-114",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-29T17:37:25+00:00",
+      "updated_at": "2026-08-29T19:31:09+00:00",
+      "touched_round": 17,
+      "title": "probe --protocol help advertises TCP|TLS|HTTP|HTTP2|HTTP3 which the parser rejects",
+      "severity": "low",
+      "desc": "value_name in protocol_arg lowercase to match possible values"
+    },
+    "ISS-115": {
+      "id": "ISS-115",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-29T17:37:25+00:00",
+      "updated_at": "2026-08-29T19:31:09+00:00",
+      "touched_round": 17,
+      "title": "TLS probe against a plaintext/HTTP port leaks rustls internals (InvalidContentType) with no --plain hint",
+      "severity": "medium",
+      "desc": "peek first plaintext bytes after connect; hint server answered cleartext - usually a plaintext port; retry with --plain"
+    },
+    "ISS-116": {
+      "id": "ISS-116",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-29T17:37:25+00:00",
+      "updated_at": "2026-08-29T19:31:09+00:00",
+      "touched_round": 17,
+      "title": "--expect-contains only searches first 1024 body bytes -> false violation for larger bodies",
+      "severity": "low",
+      "desc": "needle beyond BODY_SNIPPET_BYTES reported as violation indistinguishable from absent; append honest caveat when body_bytes > snippet cap"
+    },
+    "ISS-117": {
+      "id": "ISS-117",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-29T17:37:25+00:00",
+      "updated_at": "2026-08-29T19:47:20+00:00",
+      "touched_round": 17,
+      "title": "route ICMP type-3 (destination unreachable) branch has zero test coverage",
+      "severity": "medium",
+      "desc": "parse_icmp_udp_src accepts type 3 but tests build only type-11; the type-3 path terminates the trace at the final hop"
+    },
+    "ISS-118": {
+      "id": "ISS-118",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-29T17:37:25+00:00",
+      "updated_at": "2026-08-29T19:47:20+00:00",
+      "touched_round": 17,
+      "title": "serialized --json failure object contract never asserted (no round-trip derive)",
+      "severity": "medium",
+      "desc": "all tests parse --json into untyped Value; never assert the failure.{kind,message} snake_case shape"
+    },
+    "ISS-119": {
+      "id": "ISS-119",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-29T17:37:25+00:00",
+      "updated_at": "2026-08-29T19:47:20+00:00",
+      "touched_round": 17,
+      "title": "http2::probe base variant has zero callers (dead public API)",
+      "severity": "low",
+      "desc": "subsumed by probe_with_version/probe_with_roots; add parity test to keep exercised"
+    },
+    "ISS-120": {
+      "id": "ISS-120",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-29T17:37:25+00:00",
+      "updated_at": "2026-08-29T19:47:20+00:00",
+      "touched_round": 17,
+      "title": "diagnose/route zero-value CLI guards untested; render_probe_csv doc header mismatches emitted header",
+      "severity": "low",
+      "desc": "mirror probe/dns --count 0 tests; fix the doc comment to the real 13-col header"
+    },
+    "ISS-121": {
+      "id": "ISS-121",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-29T17:37:25+00:00",
+      "updated_at": "2026-08-29T19:31:10+00:00",
+      "touched_round": 17,
+      "title": "--no-color / NO_COLOR silently also disable the TTY progress counter (undocumented coupling)",
+      "severity": "low",
+      "desc": "Progress::should_show requires !no_color; decouple or document in --no-color help"
+    },
+    "ISS-122": {
+      "id": "ISS-122",
+      "type": "issue",
+      "status": "stale",
+      "version": 2,
+      "created_at": "2026-08-29T17:37:26+00:00",
+      "updated_at": "2026-08-29T20:06:54+00:00",
+      "touched_round": 17,
+      "title": "no shell tab-completion scripts for the 12-subcommand / 40-flag CLI",
+      "severity": "low",
+      "desc": "deferred to a feature round per DEC-082 (needs clap_complete dep + deny/MSRV review)"
+    },
+    "TASK-098": {
+      "id": "TASK-098",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-29T17:38:59+00:00",
+      "updated_at": "2026-08-29T17:58:40+00:00",
+      "touched_round": 17,
+      "category": "correctness",
+      "title": "thread destination port into HTTP-family wire authority"
+    },
+    "TASK-099": {
+      "id": "TASK-099",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-29T17:38:59+00:00",
+      "updated_at": "2026-08-29T18:23:40+00:00",
+      "touched_round": 17,
+      "category": "dx",
+      "title": "fail-fast guards: empty target list, --json+--csv mutex, --concurrency 0"
+    },
+    "TASK-100": {
+      "id": "TASK-100",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-29T17:38:59+00:00",
+      "updated_at": "2026-08-29T19:31:10+00:00",
+      "touched_round": 17,
+      "category": "dx",
+      "title": "wire/message honesty batch: trailing-dot DNS, DoH 64KiB cap, h3 timeout hint, route count cap, protocol value_name, plaintext-port hint, expect-contains caveat, --no-color help"
+    },
+    "TASK-101": {
+      "id": "TASK-101",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-29T17:38:59+00:00",
+      "updated_at": "2026-08-29T19:47:20+00:00",
+      "touched_round": 17,
+      "category": "test-quality",
+      "title": "close test gaps: route ICMP type-3, json failure contract, diagnose/route zero guards, http2::probe parity, render_probe_csv doc"
+    },
+    "CHG-095": {
+      "id": "CHG-095",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-29T17:57:31+00:00",
+      "updated_at": "2026-08-29T17:57:31+00:00",
+      "touched_round": 17,
+      "commit": "1cd594d",
+      "title": "Host/:authority carry the destination port when non-default (wire_authority/uri_authority_at)"
+    },
+    "CHG-096": {
+      "id": "CHG-096",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-29T18:23:40+00:00",
+      "updated_at": "2026-08-29T18:23:40+00:00",
+      "touched_round": 17,
+      "commit": "8c1f389",
+      "title": "fail fast on empty target lists, --json+--csv, zero concurrency/timeout, route count cap"
+    },
+    "CHG-097": {
+      "id": "CHG-097",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-29T19:31:09+00:00",
+      "updated_at": "2026-08-29T19:31:09+00:00",
+      "touched_round": 17,
+      "commit": "8b07e81",
+      "title": "honest hints and messages across DNS/http3/TLS/expect paths (trailing dot, DoH cap, h3 hint, protocol value_name, plaintext hint, expect caveat, no-color help)"
+    },
+    "CHG-098": {
+      "id": "CHG-098",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-29T19:31:09+00:00",
+      "updated_at": "2026-08-29T19:31:09+00:00",
+      "touched_round": 17,
+      "commit": "fbdcd17",
+      "title": "dns build_query trailing-root-dot unit test"
+    },
+    "CHG-099": {
+      "id": "CHG-099",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-29T19:47:19+00:00",
+      "updated_at": "2026-08-29T19:47:19+00:00",
+      "touched_round": 17,
+      "commit": "23581f1",
+      "title": "close test gaps + CSV doc: route ICMP type-3, JSON failure contract, zero-run guards, http2::probe parity"
+    },
+    "DEC-082": {
+      "id": "DEC-082",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-29T20:05:40+00:00",
+      "updated_at": "2026-08-29T20:05:40+00:00",
+      "touched_round": 17,
+      "rationale": "Round-17 closure (operator goal: detail-fix/polish/usability). All 4 selected mainlines delivered (TASK-098..101 resolve ISS-106..121); full gate green (tests/clippy PEDANTIC+NURSERY/fmt/docs -D warnings/api-baseline diff empty). Three findings are consciously deferred rather than executed now: (1) ISS-122 shell tab-completions — a genuine 'ease-of-use' feature but it needs a new dependency (clap_complete) with cargo-deny/MSRV review and is a feature-level addition, so it is parked for a dedicated feature round rather than bolted onto this bug-fix convergence round; (2) the unused pub IpVersion enum (consistency-agent finding #5) — public API, removal is a minor-bump breaking change with no user-visible value; it stays as dead public API until a semver-minor release can drop it; (3) DEC-077's uniform --json root shape stays deferred (documented, would be a JSON-contract break; re-confirmed not in scope).",
+      "alternatives_rejected": "Adding clap_complete now without a dependency audit (would race this round's convergence for a feature); removing IpVersion in a patch (breaking public API); reopening DEC-077 (breaks the documented single-target JSON shape)"
     }
   },
   "edges": [
@@ -8285,6 +8599,348 @@
       "to": "TASK-097",
       "type": "governs",
       "created_at": "2026-08-29T05:37:00+00:00"
+    },
+    {
+      "from": "TASK-098",
+      "to": "ISS-107",
+      "type": "addresses",
+      "created_at": "2026-08-29T17:40:16+00:00"
+    },
+    {
+      "from": "TASK-099",
+      "to": "ISS-106",
+      "type": "addresses",
+      "created_at": "2026-08-29T17:40:16+00:00"
+    },
+    {
+      "from": "TASK-099",
+      "to": "ISS-108",
+      "type": "addresses",
+      "created_at": "2026-08-29T17:40:16+00:00"
+    },
+    {
+      "from": "TASK-099",
+      "to": "ISS-109",
+      "type": "addresses",
+      "created_at": "2026-08-29T17:40:16+00:00"
+    },
+    {
+      "from": "TASK-100",
+      "to": "ISS-110",
+      "type": "addresses",
+      "created_at": "2026-08-29T17:40:16+00:00"
+    },
+    {
+      "from": "TASK-100",
+      "to": "ISS-111",
+      "type": "addresses",
+      "created_at": "2026-08-29T17:40:16+00:00"
+    },
+    {
+      "from": "TASK-100",
+      "to": "ISS-112",
+      "type": "addresses",
+      "created_at": "2026-08-29T17:40:16+00:00"
+    },
+    {
+      "from": "TASK-100",
+      "to": "ISS-113",
+      "type": "addresses",
+      "created_at": "2026-08-29T17:40:16+00:00"
+    },
+    {
+      "from": "TASK-100",
+      "to": "ISS-114",
+      "type": "addresses",
+      "created_at": "2026-08-29T17:40:16+00:00"
+    },
+    {
+      "from": "TASK-100",
+      "to": "ISS-115",
+      "type": "addresses",
+      "created_at": "2026-08-29T17:40:16+00:00"
+    },
+    {
+      "from": "TASK-100",
+      "to": "ISS-116",
+      "type": "addresses",
+      "created_at": "2026-08-29T17:40:16+00:00"
+    },
+    {
+      "from": "TASK-100",
+      "to": "ISS-120",
+      "type": "addresses",
+      "created_at": "2026-08-29T17:40:16+00:00"
+    },
+    {
+      "from": "TASK-100",
+      "to": "ISS-121",
+      "type": "addresses",
+      "created_at": "2026-08-29T17:40:17+00:00"
+    },
+    {
+      "from": "TASK-101",
+      "to": "ISS-117",
+      "type": "addresses",
+      "created_at": "2026-08-29T17:40:17+00:00"
+    },
+    {
+      "from": "TASK-101",
+      "to": "ISS-118",
+      "type": "addresses",
+      "created_at": "2026-08-29T17:40:17+00:00"
+    },
+    {
+      "from": "TASK-101",
+      "to": "ISS-119",
+      "type": "addresses",
+      "created_at": "2026-08-29T17:40:17+00:00"
+    },
+    {
+      "from": "ISS-106",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-29T17:40:17+00:00"
+    },
+    {
+      "from": "ISS-107",
+      "to": "COMP-http",
+      "type": "located_in",
+      "created_at": "2026-08-29T17:40:17+00:00"
+    },
+    {
+      "from": "ISS-107",
+      "to": "COMP-http2",
+      "type": "located_in",
+      "created_at": "2026-08-29T17:40:17+00:00"
+    },
+    {
+      "from": "ISS-107",
+      "to": "COMP-http3",
+      "type": "located_in",
+      "created_at": "2026-08-29T17:40:17+00:00"
+    },
+    {
+      "from": "ISS-108",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-29T17:40:17+00:00"
+    },
+    {
+      "from": "ISS-109",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-29T17:40:17+00:00"
+    },
+    {
+      "from": "ISS-110",
+      "to": "COMP-dns",
+      "type": "located_in",
+      "created_at": "2026-08-29T17:40:17+00:00"
+    },
+    {
+      "from": "ISS-111",
+      "to": "COMP-dns",
+      "type": "located_in",
+      "created_at": "2026-08-29T17:40:17+00:00"
+    },
+    {
+      "from": "ISS-112",
+      "to": "COMP-http3",
+      "type": "located_in",
+      "created_at": "2026-08-29T17:40:17+00:00"
+    },
+    {
+      "from": "ISS-113",
+      "to": "COMP-route",
+      "type": "located_in",
+      "created_at": "2026-08-29T17:40:17+00:00"
+    },
+    {
+      "from": "ISS-114",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-29T17:40:17+00:00"
+    },
+    {
+      "from": "ISS-115",
+      "to": "COMP-tls",
+      "type": "located_in",
+      "created_at": "2026-08-29T17:40:17+00:00"
+    },
+    {
+      "from": "ISS-116",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-29T17:40:17+00:00"
+    },
+    {
+      "from": "ISS-117",
+      "to": "COMP-route",
+      "type": "located_in",
+      "created_at": "2026-08-29T17:40:17+00:00"
+    },
+    {
+      "from": "ISS-118",
+      "to": "COMP-model",
+      "type": "located_in",
+      "created_at": "2026-08-29T17:40:18+00:00"
+    },
+    {
+      "from": "ISS-119",
+      "to": "COMP-http2",
+      "type": "located_in",
+      "created_at": "2026-08-29T17:40:18+00:00"
+    },
+    {
+      "from": "ISS-120",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-29T17:40:18+00:00"
+    },
+    {
+      "from": "ISS-121",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-29T17:40:18+00:00"
+    },
+    {
+      "from": "ISS-122",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-29T17:40:18+00:00"
+    },
+    {
+      "from": "CHG-095",
+      "to": "ISS-107",
+      "type": "resolves",
+      "created_at": "2026-08-29T17:58:40+00:00"
+    },
+    {
+      "from": "CHG-095",
+      "to": "TASK-098",
+      "type": "implements",
+      "created_at": "2026-08-29T17:58:40+00:00"
+    },
+    {
+      "from": "CHG-096",
+      "to": "ISS-106",
+      "type": "resolves",
+      "created_at": "2026-08-29T18:23:40+00:00"
+    },
+    {
+      "from": "CHG-096",
+      "to": "ISS-108",
+      "type": "resolves",
+      "created_at": "2026-08-29T18:23:40+00:00"
+    },
+    {
+      "from": "CHG-096",
+      "to": "ISS-109",
+      "type": "resolves",
+      "created_at": "2026-08-29T18:23:40+00:00"
+    },
+    {
+      "from": "CHG-096",
+      "to": "ISS-113",
+      "type": "resolves",
+      "created_at": "2026-08-29T18:23:40+00:00"
+    },
+    {
+      "from": "CHG-096",
+      "to": "TASK-099",
+      "type": "implements",
+      "created_at": "2026-08-29T18:23:40+00:00"
+    },
+    {
+      "from": "CHG-097",
+      "to": "ISS-110",
+      "type": "resolves",
+      "created_at": "2026-08-29T19:31:09+00:00"
+    },
+    {
+      "from": "CHG-097",
+      "to": "ISS-111",
+      "type": "resolves",
+      "created_at": "2026-08-29T19:31:09+00:00"
+    },
+    {
+      "from": "CHG-097",
+      "to": "ISS-112",
+      "type": "resolves",
+      "created_at": "2026-08-29T19:31:09+00:00"
+    },
+    {
+      "from": "CHG-097",
+      "to": "ISS-114",
+      "type": "resolves",
+      "created_at": "2026-08-29T19:31:09+00:00"
+    },
+    {
+      "from": "CHG-097",
+      "to": "ISS-115",
+      "type": "resolves",
+      "created_at": "2026-08-29T19:31:09+00:00"
+    },
+    {
+      "from": "CHG-097",
+      "to": "ISS-116",
+      "type": "resolves",
+      "created_at": "2026-08-29T19:31:09+00:00"
+    },
+    {
+      "from": "CHG-097",
+      "to": "ISS-121",
+      "type": "resolves",
+      "created_at": "2026-08-29T19:31:09+00:00"
+    },
+    {
+      "from": "CHG-097",
+      "to": "TASK-100",
+      "type": "implements",
+      "created_at": "2026-08-29T19:31:09+00:00"
+    },
+    {
+      "from": "CHG-098",
+      "to": "ISS-110",
+      "type": "resolves",
+      "created_at": "2026-08-29T19:32:31+00:00"
+    },
+    {
+      "from": "CHG-099",
+      "to": "ISS-117",
+      "type": "resolves",
+      "created_at": "2026-08-29T19:47:19+00:00"
+    },
+    {
+      "from": "CHG-099",
+      "to": "ISS-118",
+      "type": "resolves",
+      "created_at": "2026-08-29T19:47:20+00:00"
+    },
+    {
+      "from": "CHG-099",
+      "to": "ISS-119",
+      "type": "resolves",
+      "created_at": "2026-08-29T19:47:20+00:00"
+    },
+    {
+      "from": "CHG-099",
+      "to": "ISS-120",
+      "type": "resolves",
+      "created_at": "2026-08-29T19:47:20+00:00"
+    },
+    {
+      "from": "CHG-099",
+      "to": "TASK-101",
+      "type": "implements",
+      "created_at": "2026-08-29T19:47:20+00:00"
+    },
+    {
+      "from": "DEC-082",
+      "to": "DEC-080",
+      "type": "supersedes",
+      "created_at": "2026-08-29T20:06:54+00:00"
     }
   ]
 }
