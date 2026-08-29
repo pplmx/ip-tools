@@ -1,8 +1,8 @@
 {
   "ril_version": 1,
-  "round": 14,
+  "round": 15,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-28T23:27:38+00:00",
+  "updated_at": "2026-08-29T02:02:25+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -4543,41 +4543,41 @@
     "ISS-094": {
       "id": "ISS-094",
       "type": "issue",
-      "status": "active",
-      "version": 1,
+      "status": "resolved",
+      "version": 2,
       "created_at": "2026-08-28T23:25:38+00:00",
-      "updated_at": "2026-08-28T23:25:38+00:00",
-      "touched_round": 14,
+      "updated_at": "2026-08-29T02:02:24+00:00",
+      "touched_round": 15,
       "desc": "(agent-1 #4) Human report column alignment: mixed-width destinations/hosts can leave ragged columns across the fixed-width status/latency rows -- a cosmetic inconsistency for very long hostnames or IPv6 literals in a fleet report"
     },
     "ISS-095": {
       "id": "ISS-095",
       "type": "issue",
-      "status": "active",
-      "version": 1,
+      "status": "resolved",
+      "version": 2,
       "created_at": "2026-08-28T23:25:38+00:00",
-      "updated_at": "2026-08-28T23:25:38+00:00",
-      "touched_round": 14,
+      "updated_at": "2026-08-29T02:02:24+00:00",
+      "touched_round": 15,
       "desc": "(agent-1 #5/#6) Defensive latency fallbacks fabricate a literal '0 ms': render_tcp PASS / render_tls / render_http success rows print 'N ms' via latency_ms.unwrap_or(0), which for a None latency (possible only by model construction -- probe paths always record Some) would present an unmeasured 0 as a measured value; repeat latency block likewise unwraps 0 under an existing count>0 guard"
     },
     "ISS-096": {
       "id": "ISS-096",
       "type": "issue",
-      "status": "active",
-      "version": 1,
+      "status": "resolved",
+      "version": 2,
       "created_at": "2026-08-28T23:25:38+00:00",
-      "updated_at": "2026-08-28T23:25:38+00:00",
-      "touched_round": 14,
+      "updated_at": "2026-08-29T02:02:24+00:00",
+      "touched_round": 15,
       "desc": "(agent-1 #7) Cert-expiry row reads 'expires in 0 days' for a certificate expiring today -- numerically honest but awkward; 'expires today' is the clearer terminal phrasing"
     },
     "ISS-097": {
       "id": "ISS-097",
       "type": "issue",
-      "status": "active",
-      "version": 1,
+      "status": "resolved",
+      "version": 2,
       "created_at": "2026-08-28T23:25:38+00:00",
-      "updated_at": "2026-08-28T23:25:38+00:00",
-      "touched_round": 14,
+      "updated_at": "2026-08-29T02:02:24+00:00",
+      "touched_round": 15,
       "desc": "(agent-1 width/color audit) A colored status token is padded as a whole token, so ANSI escapes do not shift the column under --no-color/plain output; verify every render_* site keeps painting padded tokens whole (TCP covered; HTTP status rows render colored status inside an unpadded format string)"
     },
     "DEC-078": {
@@ -4598,9 +4598,112 @@
       "version": 1,
       "created_at": "2026-08-28T23:26:43+00:00",
       "updated_at": "2026-08-28T23:26:43+00:00",
-      "touched_round": 13,
+      "touched_round": 14,
       "rationale": "Quality-convergence stops: no active task at/above priority 3.0, high-severity issues all resolved or decision-deferred (DEC-076/077/078), VERIFY fully green (342 tests, fmt/clippy(psd)/doc/api-baseline), consecutive deep-dive passes left only below-threshold candidates (recorded ISS-094..097 + DEC-078), graph consistent. Re-activation only via a new operator direction (supersedes this decision), a real user issue, or substantive repo change -- first re-verifying the baseline before any further iteration",
       "alternatives_rejected": "Continuing empty round-spinning (validation-audit chores with no delivered change); manufacturing an above-threshold task from the below-threshold candidates to avoid the stop call"
+    },
+    "DEC-080": {
+      "id": "DEC-080",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-29T00:43:57+00:00",
+      "updated_at": "2026-08-29T00:43:57+00:00",
+      "touched_round": 14,
+      "rationale": "Re-activation via new /goal operator directive (detail-optimization / bug-fix / polish / 打磨 / interactivity / usability / ease-of-use). Supersedes DEC-079 converged-idle stop: the four previously below-threshold report-polish candidates (ISS-094..097, deferred by DEC-078) are now squarely in scope as explicit user-visible polish work. Baseline re-verified green first (342 tests with test-server, fmt/clippy/doc/release clean).",
+      "alternatives_rejected": "Staying parked at converged-idle despite the explicit user directive; manufacturing new core features instead of the requested polish work"
+    },
+    "TASK-090": {
+      "id": "TASK-090",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-29T01:10:12+00:00",
+      "updated_at": "2026-08-29T02:02:24+00:00",
+      "touched_round": 15,
+      "category": "maintainability",
+      "severity": 3.0,
+      "label": "(ISS-095) report honesty: present unmeasured latency as \"-\" not fabricated \"0 ms\""
+    },
+    "TASK-091": {
+      "id": "TASK-091",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-29T01:10:12+00:00",
+      "updated_at": "2026-08-29T02:02:24+00:00",
+      "touched_round": 15,
+      "category": "docs",
+      "severity": 2.0,
+      "label": "(ISS-096) cert expiry phrasing: \"expires today\" for days==0"
+    },
+    "TASK-092": {
+      "id": "TASK-092",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-29T01:10:12+00:00",
+      "updated_at": "2026-08-29T02:02:24+00:00",
+      "touched_round": 15,
+      "category": "maintainability",
+      "severity": 3.0,
+      "label": "(ISS-094) dynamic column width in render_tcp/render_route(_repeat) so long hosts align"
+    },
+    "TASK-093": {
+      "id": "TASK-093",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-29T01:10:12+00:00",
+      "updated_at": "2026-08-29T02:02:25+00:00",
+      "touched_round": 15,
+      "category": "test-quality",
+      "severity": 2.5,
+      "label": "(ISS-097) ANSI-strip regression guard: colored render minus escapes == plain render"
+    },
+    "CHG-087": {
+      "id": "CHG-087",
+      "type": "change",
+      "status": "active",
+      "version": 2,
+      "created_at": "2026-08-29T01:59:22+00:00",
+      "updated_at": "2026-08-29T02:01:44+00:00",
+      "touched_round": 15,
+      "label": "report honesty: unmeasured latency renders \"-\" (ISS-095)",
+      "commit": "c979031"
+    },
+    "CHG-088": {
+      "id": "CHG-088",
+      "type": "change",
+      "status": "active",
+      "version": 2,
+      "created_at": "2026-08-29T01:59:22+00:00",
+      "updated_at": "2026-08-29T02:01:45+00:00",
+      "touched_round": 15,
+      "label": "cert expiry phrasing \"expires today\" (ISS-096)",
+      "commit": "c979031"
+    },
+    "CHG-089": {
+      "id": "CHG-089",
+      "type": "change",
+      "status": "active",
+      "version": 2,
+      "created_at": "2026-08-29T01:59:22+00:00",
+      "updated_at": "2026-08-29T02:01:45+00:00",
+      "touched_round": 15,
+      "label": "dynamic host/destination column width (ISS-094)",
+      "commit": "c979031"
+    },
+    "CHG-090": {
+      "id": "CHG-090",
+      "type": "change",
+      "status": "active",
+      "version": 2,
+      "created_at": "2026-08-29T01:59:22+00:00",
+      "updated_at": "2026-08-29T02:01:45+00:00",
+      "touched_round": 15,
+      "label": "ANSI-strip column-stability regression test (ISS-097)",
+      "commit": "c979031"
     }
   },
   "edges": [
@@ -7831,6 +7934,84 @@
       "to": "COMP-report",
       "type": "located_in",
       "created_at": "2026-08-28T23:27:38+00:00"
+    },
+    {
+      "from": "DEC-080",
+      "to": "DEC-079",
+      "type": "supersedes",
+      "created_at": "2026-08-29T00:44:29+00:00"
+    },
+    {
+      "from": "TASK-090",
+      "to": "ISS-095",
+      "type": "addresses",
+      "created_at": "2026-08-29T01:10:37+00:00"
+    },
+    {
+      "from": "TASK-091",
+      "to": "ISS-096",
+      "type": "addresses",
+      "created_at": "2026-08-29T01:10:37+00:00"
+    },
+    {
+      "from": "TASK-092",
+      "to": "ISS-094",
+      "type": "addresses",
+      "created_at": "2026-08-29T01:10:37+00:00"
+    },
+    {
+      "from": "TASK-093",
+      "to": "ISS-097",
+      "type": "addresses",
+      "created_at": "2026-08-29T01:10:38+00:00"
+    },
+    {
+      "from": "CHG-087",
+      "to": "ISS-095",
+      "type": "resolves",
+      "created_at": "2026-08-29T02:01:45+00:00"
+    },
+    {
+      "from": "CHG-088",
+      "to": "ISS-096",
+      "type": "resolves",
+      "created_at": "2026-08-29T02:01:45+00:00"
+    },
+    {
+      "from": "CHG-089",
+      "to": "ISS-094",
+      "type": "resolves",
+      "created_at": "2026-08-29T02:01:45+00:00"
+    },
+    {
+      "from": "CHG-090",
+      "to": "ISS-097",
+      "type": "resolves",
+      "created_at": "2026-08-29T02:01:45+00:00"
+    },
+    {
+      "from": "CHG-087",
+      "to": "TASK-090",
+      "type": "implements",
+      "created_at": "2026-08-29T02:01:45+00:00"
+    },
+    {
+      "from": "CHG-088",
+      "to": "TASK-091",
+      "type": "implements",
+      "created_at": "2026-08-29T02:01:45+00:00"
+    },
+    {
+      "from": "CHG-089",
+      "to": "TASK-092",
+      "type": "implements",
+      "created_at": "2026-08-29T02:01:45+00:00"
+    },
+    {
+      "from": "CHG-090",
+      "to": "TASK-093",
+      "type": "implements",
+      "created_at": "2026-08-29T02:01:45+00:00"
     }
   ]
 }
