@@ -872,6 +872,19 @@ where
         }
     };
     let single = targets.len() == 1;
+    // `--output-body` writes one file per probe, so a multi-target sweep would
+    // race every host's body onto the same path (last finisher wins, silently).
+    // That is a caller mistake, not a meaningful request — reject it up front
+    // like the other contradictory flag combinations.
+    if let Some(path) = sub_m.try_get_one::<String>("output-body").ok().flatten() {
+        if targets.len() > 1 {
+            eprintln!(
+                "Error: --output-body with {} targets would race all bodies into one file ({path}); use a single target or drop the flag",
+                targets.len()
+            );
+            return ExitCode::FAILURE;
+        }
+    }
 
     // Probe targets concurrently (bounded by `--concurrency`; 1 keeps the
     // per-host sequential behavior), re-sorting back to the given target order

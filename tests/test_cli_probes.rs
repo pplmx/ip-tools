@@ -359,6 +359,30 @@ fn probe_cli_rejects_zero_timeout() {
 }
 
 #[test]
+fn http_cli_rejects_output_body_across_a_multi_target_sweep() {
+    // `--output-body` writes one file per probe; a multi-target sweep would
+    // race every host's body onto the same path (last finisher wins), so it
+    // must fail up front like other contradictory flag combinations instead
+    // of silently writing whichever host finished last.
+    let tmp = std::env::temp_dir().join(format!("ip-tools-multi-output-{}.html", std::process::id()));
+    let _ = std::fs::remove_file(&tmp);
+    cmd()
+        .args([
+            "http",
+            "127.0.0.1",
+            "127.0.0.2",
+            "--output-body",
+            tmp.to_str().unwrap(),
+            "--timeout",
+            "800",
+        ])
+        .assert()
+        .failure()
+        .stderr(contains("--output-body").and(contains("single target")));
+    let _ = std::fs::remove_file(&tmp);
+}
+
+#[test]
 fn probe_cli_expect_rate_passes_at_or_above_threshold() {
     // Every connect to a live local listener succeeds (aggregate success rate
     // 1.0), so a reliability threshold at or below 1.0 must pass and exit 0.
