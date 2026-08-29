@@ -1228,6 +1228,26 @@ mod tests {
     use std::net::UdpSocket;
     use std::sync::Arc;
 
+    #[test]
+    fn build_query_accepts_a_single_trailing_root_dot() {
+        // `example.com.` is a legal fully-qualified form (RFC 1034); the wire
+        // query must equal the bare-name query (the loop-back suffix `A`
+        // records the same question). A double dot stays an invalid label.
+        let bare = build_query("example.com", DnsRecordType::A).unwrap();
+        let trailing = build_query("example.com.", DnsRecordType::A).unwrap();
+        assert_eq!(bare, trailing, "a trailing root dot must not change the question");
+        assert!(build_query("example.com..", DnsRecordType::A).is_err());
+        assert!(build_query(".", DnsRecordType::A).is_err());
+        // The question name on the wire for both forms is the same
+        // (after the 12-byte header): 7example3com then the root terminator.
+        let mut expected = vec![7];
+        expected.extend_from_slice(b"example");
+        expected.push(3);
+        expected.extend_from_slice(b"com");
+        expected.push(0);
+        assert!(trailing[12..].starts_with(&expected));
+    }
+
     /// Wrap an IP string as an address record (A/AAAA).
     fn addr_rec(ip: &str) -> DnsRecord {
         match ip.parse::<IpAddr>().unwrap() {
