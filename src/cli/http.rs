@@ -275,6 +275,7 @@ mod tests {
             location: Some("/moved".into()),
             headers: vec![("server".into(), "fixture".into())],
             body_bytes: Some(2),
+            body_capped: false,
             body_snippet: Some("ok".into()),
             latency_ms: Some(7),
             ttfb_ms: Some(3),

@@ -34,10 +34,17 @@ pub struct HttpObservation {
     /// hostile server cannot balloon the observation. Empty when no response
     /// headers were seen.
     pub headers: Vec<(String, String)>,
-    /// Response body bytes read, capped at 1 MiB. `None` when headers were
-    /// received but the body did not complete within the probe timeout (a
-    /// stalled or truncated response), for every protocol.
+    /// Response body bytes read, capped at `max-body-bytes` (1 MiB without an
+    /// override). `None` when headers were received but the body did not
+    /// complete within the probe timeout (a stalled or truncated response),
+    /// for every protocol.
     pub body_bytes: Option<u64>,
+    /// Whether `body_bytes` hit the `max-body-bytes` cap rather than the
+    /// response ending there — distinct from `body_bytes == Some(MAX)`: a body
+    /// could genuinely end at exactly the cap, and an operator override moves
+    /// the cap. Carries the honesty fact so a report never presents the cap
+    /// count as the true response size.
+    pub body_capped: bool,
     /// A bounded, lossy-UTF8 textual snippet of the response body (first
     /// `http_common::BODY_SNIPPET_BYTES` bytes, with an explicit `…` when the
     /// body continued past the cap). `None` when no response body bytes were
@@ -69,6 +76,7 @@ impl HttpObservation {
             location: None,
             headers: Vec::new(),
             body_bytes: None,
+            body_capped: false,
             body_snippet: None,
             latency_ms: None,
             ttfb_ms: None,

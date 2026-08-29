@@ -509,6 +509,7 @@ where
     let mut body = response.into_body();
     let mut bytes_read: u64 = 0;
     let mut ended = false;
+    let mut body_capped = false;
     let mut snippet: Vec<u8> = Vec::with_capacity(BODY_SNIPPET_BYTES);
     // When `--output-body` is requested, also retain the bounded full body so
     // it can be written verbatim to the file after the probe completes (the
@@ -540,6 +541,7 @@ where
             );
             if capped {
                 ended = true;
+                body_capped = true;
                 break;
             }
         }
@@ -561,6 +563,7 @@ where
         location,
         headers,
         body_bytes,
+        body_capped,
         body_snippet,
         latency_ms: Some(start.elapsed().as_millis() as u64),
         ttfb_ms,

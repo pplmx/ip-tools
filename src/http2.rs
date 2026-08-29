@@ -344,6 +344,7 @@ async fn probe_impl(
     let mut body = response.into_body();
     let mut bytes_read: u64 = 0;
     let mut ended = false;
+    let mut body_capped = false;
     let mut snippet: Vec<u8> = Vec::with_capacity(BODY_SNIPPET_BYTES);
     let mut full_body: Vec<u8> = Vec::new();
     // Whole-body-deadline: a slow-dripping body cannot stall past --timeout.
@@ -370,6 +371,7 @@ async fn probe_impl(
         let _ = body.flow_control().release_capacity(chunk.len());
         if capped {
             ended = true;
+            body_capped = true;
             break;
         }
     }
@@ -387,6 +389,7 @@ async fn probe_impl(
         location,
         headers,
         body_bytes: ended.then_some(bytes_read),
+        body_capped,
         body_snippet,
         latency_ms: Some(start.elapsed().as_millis() as u64),
         ttfb_ms,

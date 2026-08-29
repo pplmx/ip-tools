@@ -175,6 +175,7 @@ mod tests {
             location: None,
             headers: Vec::new(),
             body_bytes: None,
+            body_capped: false,
             body_snippet: None,
             ttfb_ms: None,
             latency_ms: Some(1),

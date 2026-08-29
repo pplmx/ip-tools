@@ -495,7 +495,15 @@ fn render_http_impl(style: Style, plain: bool, observations: &[HttpObservation])
             }
         }
         if let Some(bytes) = obs.body_bytes {
-            out.push_str(&format!("    body: {bytes} bytes\n"));
+            // A body that hit the `max-body-bytes` cap is not the response's
+            // true size — a download endpoint that sent more than the cap
+            // would otherwise be reported as ending exactly at the cap count,
+            // which reads as its real length. Mark it explicitly.
+            if obs.body_capped {
+                out.push_str(&format!("    {}: {bytes} bytes\n", style.warn("body (capped)")));
+            } else {
+                out.push_str(&format!("    body: {bytes} bytes\n"));
+            }
         } else if obs.status.is_some() {
             // Headers were received but the body never completed within the
             // probe bound: the response is visibly truncated/stalled.
@@ -1136,6 +1144,7 @@ mod tests {
             location: Some("https://example.com/login".into()),
             headers: Vec::new(),
             body_bytes: Some(1234),
+            body_capped: false,
             body_snippet: None,
             ttfb_ms: None,
             latency_ms: Some(30),
@@ -1152,6 +1161,7 @@ mod tests {
             location: None,
             headers: Vec::new(),
             body_bytes: None,
+            body_capped: false,
             body_snippet: None,
             ttfb_ms: None,
             latency_ms: None,
@@ -1171,6 +1181,7 @@ mod tests {
             location: None,
             headers: Vec::new(),
             body_bytes: None,
+            body_capped: false,
             body_snippet: None,
             ttfb_ms: None,
             latency_ms: Some(1),
@@ -1189,6 +1200,7 @@ mod tests {
             location: None,
             headers: Vec::new(),
             body_bytes: None,
+            body_capped: false,
             body_snippet: None,
             ttfb_ms: None,
             latency_ms: None,
@@ -1238,6 +1250,7 @@ mod tests {
             location: None,
             headers: Vec::new(),
             body_bytes: Some(2),
+            body_capped: false,
             body_snippet: Some("ok".into()),
             ttfb_ms: None,
             latency_ms: Some(10),
@@ -1300,6 +1313,7 @@ mod tests {
             location: None,
             headers: Vec::new(),
             body_bytes: Some(2),
+            body_capped: false,
             body_snippet: Some("ok".into()),
             ttfb_ms: None,
             latency_ms: Some(10),
@@ -1322,6 +1336,7 @@ mod tests {
             location: None,
             headers: Vec::new(),
             body_bytes: Some(2048),
+            body_capped: false,
             body_snippet: Some("xxxx…".into()),
             ttfb_ms: None,
             latency_ms: Some(10),
@@ -1331,6 +1346,49 @@ mod tests {
         assert!(
             out.contains("body content: xxxx…"),
             "truncated snippet with … must be visible: {out}"
+        );
+    }
+
+    #[test]
+    fn render_http_marks_a_capped_body_as_not_the_true_size() {
+        // The same byte count is read differently depending on why the read
+        // stopped: a body that hit the `max-body-bytes` cap is *not* known to
+        // be that size (the response may continue past it), so it must be
+        // marked capped instead of reading as `body: N bytes` — which a user
+        // would take to be the true response length.
+        let capped = HttpObservation {
+            destination: "1.1.1.1:443".parse().unwrap(),
+            host: "example.com".into(),
+            method: "GET".into(),
+            path: "/".into(),
+            tls: None,
+            protocol: Some("HTTP/1.1".into()),
+            status: Some(200),
+            location: None,
+            headers: Vec::new(),
+            body_bytes: Some(1024 * 1024),
+            body_capped: true,
+            body_snippet: Some("0000…".into()),
+            ttfb_ms: None,
+            latency_ms: Some(10),
+            failure: None,
+        };
+        let out = render_http(&Style::plain(), std::slice::from_ref(&capped));
+        assert!(
+            out.contains("body (capped): 1048576 bytes"),
+            "capped body must be marked, not presented as the true size: {out}"
+        );
+        assert!(
+            !out.contains("\n    body: 1048576 bytes"),
+            "a capped body must not read as `body: N bytes`: {out}"
+        );
+        // The same byte count with body_capped unset is the genuine size.
+        let mut complete = capped;
+        complete.body_capped = false;
+        let out = render_http(&Style::plain(), &[complete]);
+        assert!(
+            out.contains("\n    body: 1048576 bytes"),
+            "an uncapped body at the same count stays the true size: {out}"
         );
     }
 
@@ -1846,6 +1904,7 @@ mod tests {
             location: None,
             headers: Vec::new(),
             body_bytes: None,
+            body_capped: false,
             body_snippet: None,
             ttfb_ms: None,
             latency_ms: None,
@@ -1958,6 +2017,7 @@ mod tests {
             location: None,
             headers: Vec::new(),
             body_bytes: None,
+            body_capped: false,
             body_snippet: None,
             ttfb_ms: None,
             latency_ms: Some(9),

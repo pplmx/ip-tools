@@ -402,6 +402,7 @@ mod tests {
             location: None,
             headers: Vec::new(),
             body_bytes: None, // headers arrived, then the stream stalled
+            body_capped: false,
             body_snippet: None,
             latency_ms: Some(latency_ms), // the full wall-clock wait
             ttfb_ms: Some(0),             // headers answered immediately
