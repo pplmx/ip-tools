@@ -204,9 +204,21 @@ pub(crate) async fn connect_to(
         Ok(Ok(s)) => s,
         Ok(Err(e)) => {
             let kind = classify_tls_error(&e);
+            // The most common TLS caller error is pointing the TLS path at a
+            // plaintext (e.g. HTTP) port. rustls refuses the non-TLS bytes with
+            // an opaque record-parse error ("received corrupt message of type
+            // InvalidContentType") that says nothing about the real mistake;
+            // name the failure with an actionable hint. Only message-parse
+            // failures — where the peer genuinely answered in cleartext —
+            // carry it, so every other handshake error is unchanged.
+            let message = format!("tls handshake to {destination} with SNI {sni} failed: {e}");
+            let hint = plaintext_hint(&e.to_string(), sni);
             return Err(ProbeError {
                 kind,
-                message: format!("tls handshake to {destination} with SNI {sni} failed: {e}"),
+                message: match hint {
+                    Some(h) => format!("{message} — {h}"),
+                    None => message,
+                },
             });
         }
         Err(_elapsed) => {
@@ -338,6 +350,23 @@ fn classify_tls_error(e: &std::io::Error) -> FailureKind {
         FailureKind::Certificate
     } else {
         FailureKind::TlsHandshake
+    }
+}
+
+/// An actionable hint for the common "TLS path against a cleartext server"
+/// mistake, drawn from the rustls failure message. A handshake that received
+/// non-TLS bytes fails with a record-parse error (`received corrupt message of
+/// type InvalidContentType`); only that class of failure carries the hint, so
+/// every other TLS error (alert, timeout, bad certificate, …) is unchanged.
+fn plaintext_hint(err: &str, sni: &str) -> Option<String> {
+    let looks_non_tls = err.contains("received corrupt message") || err.contains("invalid content type");
+    if looks_non_tls {
+        Some(format!(
+            "the server {sni:?} answered in cleartext (HTTP?) instead of TLS — \
+             this is usually a plaintext port; for an HTTP probe use --plain ({sni:?} probes with the TLS path)"
+        ))
+    } else {
+        None
     }
 }
 
@@ -475,5 +504,27 @@ mod tests {
         // 2026-07-29T22:10:08Z
         assert!(format_utc(1_785_500_000).is_some());
         assert_eq!(format_utc(-1), None);
+    }
+
+    #[test]
+    fn plaintext_hint_fires_only_on_a_non_tls_record_parse_failure() {
+        // The rustls failure message for a plaintext HTTP answer parsed as a
+        // TLS record is the trigger for the hint.
+        assert!(plaintext_hint("received corrupt message of type InvalidContentType", "localhost").is_some());
+        assert!(plaintext_hint("received corrupt message of type Unknown", "localhost").is_some());
+        // Every other TLS failure — an alert, a timeout, a bad certificate —
+        // must pass through unchanged with no hint.
+        assert!(
+            plaintext_hint("received fatal alert: UnknownCa", "localhost").is_none(),
+            "a TLS alert is not a cleartext answer"
+        );
+        assert!(
+            plaintext_hint("certificate verify failed", "localhost").is_none(),
+            "a verification failure is a different mistake"
+        );
+        // The hint names the presented identity and points at --plain.
+        let hint = plaintext_hint("received corrupt message", "vhost.example").unwrap();
+        assert!(hint.contains("cleartext") && hint.contains("--plain"), "{hint}");
+        assert!(hint.contains("vhost.example"), "{hint}");
     }
 }

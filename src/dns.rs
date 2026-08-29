@@ -491,7 +491,20 @@ pub async fn doh_query(
     let limited = Limited::new(body, DOH_MAX_BODY);
     let bytes = match tokio::time::timeout(timeout, limited.collect()).await {
         Ok(Ok(collected)) => collected.to_bytes(),
-        Ok(Err(e)) => return fail(FailureKind::Dns, format!("DoH body read failed: {e}")),
+        Ok(Err(e)) => {
+            // http-body-util's `Limited` reports an overrun as a "length limit
+            // exceeded" io error; name the cap so an oversized (but well-formed
+            // on the wire) answer isn't misread as a transport failure.
+            let why = if e.to_string().contains("length limit exceeded") {
+                format!(
+                    "the DoH response exceeded the {} KiB wire-response cap ({DOH_MAX_BODY} bytes)",
+                    DOH_MAX_BODY / 1024
+                )
+            } else {
+                format!("DoH body read failed: {e}")
+            };
+            return fail(FailureKind::Dns, why);
+        }
         Err(_) => {
             return fail(
                 FailureKind::Timeout,
@@ -882,7 +895,12 @@ fn build_query(host: &str, record_type: DnsRecordType) -> Result<Vec<u8>, String
     out.extend_from_slice(&0x0100u16.to_be_bytes()); // flags: RD
     out.extend_from_slice(&1u16.to_be_bytes()); // QDCOUNT
     out.extend_from_slice(&[0, 0, 0, 0, 0, 0]); // AN/NS/ARCOUNT
-    for label in host.split('.') {
+                                                // A single trailing root dot (`example.com.`) is a legal fully-qualified
+                                                // form that the system-resolver path accepts; strip one so the DoH/DoT
+                                                // wire path resolves it identically instead of rejecting it as an invalid
+                                                // empty label. A double dot (`example.com..`) stays invalid below.
+    let name = host.strip_suffix('.').unwrap_or(host);
+    for label in name.split('.') {
         if label.is_empty() || label.len() > 63 {
             return Err(format!("hostname {host:?} has an invalid DNS label"));
         }

@@ -1126,6 +1126,41 @@ async fn tls_and_http_probe_time_out_when_server_never_responds() {
     held.abort();
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn tls_probe_against_a_cleartext_http_port_names_the_plaintext_hint() {
+    // The most common TLS caller error is pointing the TLS path at a
+    // cleartext HTTP port. The server answers an HTTP/1.1 response
+    // immediately; the probe must name that the peer answered in cleartext
+    // and point at `--plain` instead of leaking an opaque rustls
+    // record-parse error ("received corrupt message of type InvalidContentType").
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind listener");
+    let addr = listener.local_addr().expect("listener addr");
+    let server = tokio::spawn(async move {
+        use tokio::io::AsyncWriteExt;
+        if let Ok((mut stream, _peer)) = listener.accept().await {
+            let _ = stream
+                .write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\nok")
+                .await;
+        }
+    });
+
+    let obs = tls::probe(addr, "localhost", Duration::from_secs(2)).await;
+    assert!(!obs.success, "a plaintext server cannot complete TLS: {obs:?}");
+    let message = obs.failure.as_ref().map(|f| f.message.clone()).unwrap_or_default();
+    assert!(
+        message.contains("cleartext") && message.contains("--plain"),
+        "the failure must say the server answered in cleartext and point at --plain: {message}"
+    );
+    assert_eq!(
+        obs.failure.as_ref().map(|f| f.kind),
+        Some(ip_tools::FailureKind::TlsHandshake),
+        "a cleartext peer is a TLS-layer failure: {obs:?}"
+    );
+    server.abort();
+}
+
 #[test]
 fn dns_cli_queries_doh_fixture_endpoint() {
     // End-to-end DNS-over-HTTPS: `dns --doh <fixture>/dns-query --insecure`

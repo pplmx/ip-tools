@@ -33,6 +33,11 @@ use std::time::Duration;
 const DEFAULT_TIMEOUT_MS: u64 = 5000;
 /// Hard upper bound on concurrency to avoid resource exhaustion.
 const MAX_CONCURRENCY: usize = 256;
+/// Cap on the response-body snippet the library keeps in each observation
+/// (mirrors `http_common::BODY_SNIPPET_BYTES` — the library module is crate
+/// private, so the CLI names the same bound for its `--expect-contains`
+/// caveat rather than importing it).
+const SNIPPET_BODY_BYTES: u64 = 1024;
 /// Default port for `tcp` (and later TLS/HTTP) probes when none is given.
 const DEFAULT_PORT: u16 = 443;
 
@@ -58,7 +63,7 @@ fn parser() -> ArgMatches {
                 .long("no-color")
                 .global(true)
                 .action(ArgAction::SetTrue)
-                .help("disable colored human output (color is on only for a TTY unless NO_COLOR is set)"),
+                .help("disable colored human output, and the live TTY progress counter, on a terminal (also set by the NO_COLOR env var)"),
         )
         .subcommand(Command::new("get").about("get the local IP address"))
         .subcommand(Command::new("list").about("list all network interfaces"))
@@ -433,7 +438,9 @@ fn route_count_arg() -> Arg {
 fn protocol_arg() -> Arg {
     Arg::new("protocol")
         .long("protocol")
-        .value_name("TCP|TLS|HTTP|HTTP2|HTTP3")
+        // Lowercase to match the accepted values exactly — an uppercase value
+        // name (TCP|TLS|…) invited the uppercase spelling the parser rejects.
+        .value_name("tcp|tls|http|http2|http3")
         .value_parser(["tcp", "tls", "http", "http2", "http3"])
         .default_value("tcp")
         .help("protocol to repeatedly probe (tcp, tls, http, http2 or http3)")
@@ -708,6 +715,7 @@ impl Expectation {
         destination: &std::net::SocketAddr,
         status: Option<u16>,
         body: Option<&str>,
+        body_bytes: Option<u64>,
         failed: bool,
     ) -> Option<String> {
         if failed {
@@ -726,7 +734,15 @@ impl Expectation {
         if let Some(needle) = &self.contains {
             let found = body.is_some_and(|b| b.contains(needle.as_str()));
             if !found {
-                reasons.push(format!("body missing {needle:?} (snippet {})", body.unwrap_or("none")));
+                let mut reason = format!("body missing {needle:?} (snippet {})", body.unwrap_or("none"));
+                // The needle is matched against the bounded first-1-KiB snippet,
+                // so a "missing" needle on a larger body only means "not in the
+                // prefix". Say so, or a needle past the cap would be
+                // indistinguishable from a genuinely absent one.
+                if body_bytes.is_some_and(|n| n > SNIPPET_BODY_BYTES) {
+                    reason.push_str(" (the needle may lie beyond the 1 KiB snippet)");
+                }
+                reasons.push(reason);
             }
         }
         if reasons.is_empty() {
@@ -1648,7 +1664,7 @@ mod tests {
             contains: Some("ok".into()),
         };
         let dest: SocketAddr = "192.0.2.1:443".parse().unwrap();
-        assert!(e.violation(&dest, Some(200), Some("ok"), false).is_none());
+        assert!(e.violation(&dest, Some(200), Some("ok"), None, false).is_none());
     }
 
     #[test]
@@ -1658,7 +1674,7 @@ mod tests {
             contains: Some("ready".into()),
         };
         let dest: SocketAddr = "192.0.2.1:443".parse().unwrap();
-        let reason = e.violation(&dest, Some(503), Some("ok"), false).unwrap();
+        let reason = e.violation(&dest, Some(503), Some("ok"), None, false).unwrap();
         assert!(
             reason.contains("status 503 (expected 200)") && reason.contains("body missing \"ready\""),
             "both reasons must be named: {reason}"
@@ -1673,7 +1689,7 @@ mod tests {
             contains: None,
         };
         let dest: SocketAddr = "192.0.2.1:443".parse().unwrap();
-        let reason = e.violation(&dest, None, None, true).unwrap();
+        let reason = e.violation(&dest, None, None, None, true).unwrap();
         assert!(reason.contains("failed to complete"), "{reason}");
     }
 
@@ -1685,9 +1701,9 @@ mod tests {
         };
         let dest: SocketAddr = "192.0.2.1:443".parse().unwrap();
         // Status irrelevant (not asserted), body satisfies the needle.
-        assert!(e.violation(&dest, Some(503), Some("it is ok"), false).is_none());
+        assert!(e.violation(&dest, Some(503), Some("it is ok"), None, false).is_none());
         // Missing needle is the only violation.
-        let reason = e.violation(&dest, Some(200), Some("nope"), false).unwrap();
+        let reason = e.violation(&dest, Some(200), Some("nope"), None, false).unwrap();
         assert!(reason.contains("body missing \"ok\""), "{reason}");
     }
 
@@ -1698,8 +1714,36 @@ mod tests {
             contains: None,
         };
         let dest: SocketAddr = "192.0.2.1:443".parse().unwrap();
-        let reason = e.violation(&dest, None, None, false).unwrap();
+        let reason = e.violation(&dest, None, None, None, false).unwrap();
         assert!(reason.contains("no status observed (expected 200)"), "{reason}");
+    }
+
+    #[test]
+    fn expectation_missing_needle_names_when_the_body_was_larger_than_the_snippet() {
+        // The `--expect-contains` needle is matched against the bounded
+        // first-1-KiB snippet, so a "missing" needle on a larger body only
+        // means "not in the prefix" — the reason must say so, or a needle past
+        // the cap would be indistinguishable from a genuinely absent one. A
+        // body within the snippet cap carries no caveat.
+        let dest: SocketAddr = "192.0.2.1:443".parse().unwrap();
+        let e = Expectation {
+            status: None,
+            contains: Some("needle".into()),
+        };
+        let reason = e.violation(&dest, Some(200), Some("small"), Some(5), false).unwrap();
+        assert!(reason.contains("body missing \"needle\""), "{reason}");
+        assert!(!reason.contains("beyond the 1 KiB snippet"), "{reason}");
+
+        let reason = e
+            .violation(&dest, Some(200), Some("prefix"), Some(2048), false)
+            .unwrap();
+        assert!(
+            reason.contains("the needle may lie beyond the 1 KiB snippet"),
+            "a body past the snippet cap must not claim the needle is truly absent: {reason}"
+        );
+        // No body bytes observed (a bodyless response): no caveat either.
+        let reason = e.violation(&dest, Some(200), None, None, false).unwrap();
+        assert!(!reason.contains("beyond the 1 KiB snippet"), "{reason}");
     }
 
     #[test]

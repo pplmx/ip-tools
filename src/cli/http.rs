@@ -123,6 +123,7 @@ pub(super) fn expect_check(expectation: Option<super::Expectation>) -> Option<su
             &obs.destination,
             obs.status,
             obs.body_snippet.as_deref(),
+            obs.body_bytes,
             obs.failure.is_some(),
         )
     }) as super::ExpectCheck<HttpObservation>)

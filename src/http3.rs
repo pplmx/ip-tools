@@ -231,9 +231,16 @@ async fn probe_impl(
         Ok(Ok(c)) => c,
         Ok(Err(e)) => return base.with_failure(failure(FailureKind::Quic, format!("quic handshake failed: {e}"))),
         Err(_) => {
+            // A QUIC handshake timeout is almost always "the endpoint does not
+            // speak HTTP/3" or "UDP/443 is filtered" (both silent), while TCP/
+            // TLS may be fine — say so, or the operator cannot tell a missing
+            // h3 deployment from a blocked UDP path.
             return base.with_failure(failure(
                 FailureKind::Timeout,
-                format!("quic handshake to {destination} timed out after {timeout:?}"),
+                format!(
+                    "quic handshake to {destination} timed out after {timeout:?} \
+                     (the endpoint may not support HTTP/3, or UDP/443 may be filtered)"
+                ),
             ));
         }
     };
