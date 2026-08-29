@@ -285,11 +285,16 @@ fn probe_command(name: &'static str, about: &'static str, extras: &[Arg]) -> Com
 }
 
 /// Common `--timeout` argument (milliseconds).
+///
+/// Zero is rejected up front (`0` renders as a nonsense "timed out after 0ns"
+/// and can never mean "no timeout" — every consumer converts it straight into
+/// a `Duration` bound), matching the `--count 0` fail-fast across the probe
+/// commands.
 fn timeout_arg(default_ms: &'static str) -> Arg {
     Arg::new("timeout")
         .long("timeout")
         .value_name("MILLIS")
-        .value_parser(clap::value_parser!(u64))
+        .value_parser(clap::value_parser!(u64).range(1..))
         .default_value(default_ms)
         .help("per-operation timeout in milliseconds")
 }

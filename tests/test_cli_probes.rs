@@ -337,6 +337,28 @@ fn probe_cli_rejects_zero_count() {
 }
 
 #[test]
+fn probe_cli_rejects_zero_timeout() {
+    // `--timeout 0` can never mean "no timeout" — every consumer converts it
+    // straight into a `Duration` bound, so a zero renders a nonsense "timed
+    // out after 0ns" report and exits 0. Like `--count 0`, it is a caller
+    // mistake and must fail at argument parse instead of producing a report
+    // that looks like a real measurement.
+    let addr = local_tcp_listener();
+    cmd()
+        .args(["probe", &addr.to_string(), "--count", "2", "--timeout", "0"])
+        .assert()
+        .failure()
+        .stderr(contains("--timeout"));
+    // The prior behavior produced a clean "TCP connect" report and exited 0.
+    // A zero timeout stays rejected even where a real probe would be instant.
+    cmd()
+        .args(["tcp", &addr.to_string(), "--timeout", "0"])
+        .assert()
+        .failure()
+        .stderr(contains("--timeout"));
+}
+
+#[test]
 fn probe_cli_expect_rate_passes_at_or_above_threshold() {
     // Every connect to a live local listener succeeds (aggregate success rate
     // 1.0), so a reliability threshold at or below 1.0 must pass and exit 0.

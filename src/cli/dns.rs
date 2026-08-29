@@ -261,6 +261,14 @@ async fn dns_compute(
                 results: Vec::new(),
             };
         }
+        // An IP literal with `--count N` (N>1) is re-queried only in the
+        // reverse-PTR branch above; for a forward record type `--count` has no
+        // aggregation to apply (there is nothing to resolve repeatedly), so it
+        // would silently degrade to a single shot. Warn instead of pretending
+        // the count was honored, matching the fail-fast spirit of `--count 0`.
+        if count > 1 {
+            eprintln!("Note: --count {count} is ignored for an IP-literal target (no repeat aggregation applies); use --record-type PTR <ip> to repeat a reverse lookup");
+        }
         return TargetDns {
             host: target.host.clone(),
             repeat: false,

@@ -387,21 +387,23 @@ pub(super) fn certificate_lifetime_rules(input: &DiagnosticInput, out: &mut Vec<
                 },
             );
         } else if days <= crate::report::RENDER_CERT_EXPIRY_WINDOW_DAYS {
+            // Phrase a 0-day expiry as "today" to match the human TLS report's
+            // `render_cert` (which renders `days == 0` as `expires today`), so
+            // `diagnose` and `tls` agree on the same certificate's lifetime.
+            let when = if days == 0 {
+                "today"
+            } else {
+                &format!("in {days} day(s)")
+            };
             push(
-                format!(
-                    "Certificate for {} expires in {days} day(s) (subject {})",
-                    t.sni, cert.subject
-                ),
+                format!("Certificate for {} expires {when} (subject {})", t.sni, cert.subject),
                 Diagnosis {
                     severity: Severity::Low,
                     category: DiagnosticCategory::Certificate,
                     confidence: Confidence::Medium,
-                    summary: format!(
-                        "Certificate for {} expires in {days} day(s) (subject {})",
-                        t.sni, cert.subject
-                    ),
+                    summary: format!("Certificate for {} expires {when} (subject {})", t.sni, cert.subject),
                     evidence: vec![Evidence {
-                        detail: format!("peer certificate notAfter is in {days} day(s): {not_after}"),
+                        detail: format!("peer certificate notAfter is {when}: {not_after}"),
                     }],
                     possible_causes: vec!["certificate approaching its renewal date".into()],
                 },
@@ -1494,6 +1496,27 @@ mod tests {
             .expect("near verdict");
         assert_eq!(d.severity, Severity::Low);
         assert!(d.summary.contains("expires in"), "summary names expiry: {}", d.summary);
+
+        // A cert expiring today is phrased "today" (parity with the human TLS
+        // report's `render_cert`), not the awkward "expires in 0 day(s)".
+        let today = [tls_with_cert(&crate::report::rfc3339_days_from_now(0))];
+        let mut out = Vec::new();
+        certificate_lifetime_rules(&input(&today, &[], &[]), &mut out);
+        let d = out
+            .iter()
+            .find(|d| d.category == DiagnosticCategory::Certificate)
+            .expect("today verdict");
+        assert!(
+            d.summary.contains("expires today"),
+            "today phrased clearly: {}",
+            d.summary
+        );
+        assert!(
+            !d.summary.contains("0 day"),
+            "no awkward '0 day(s)' phrasing: {}",
+            d.summary
+        );
+        assert!(d.evidence.first().is_some_and(|e| e.detail.contains("today")));
 
         // A comfortably-far cert does not raise a verdict.
         let far = [tls_with_cert(&crate::report::rfc3339_days_from_now(400))];

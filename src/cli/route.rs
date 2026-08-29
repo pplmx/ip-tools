@@ -29,9 +29,19 @@ pub(super) async fn run_route(sub_m: &ArgMatches, style: Style) -> ExitCode {
     let timeout_ms = *sub_m.get_one::<u64>("timeout").expect("timeout has default");
 
     // A 0-repeat request is a caller mistake, and silently running a single
-    // trace would hide it (probe's `--count` rejects 0 the same way).
+    // trace would hide it (probe's `--count` rejects 0 the same way). The
+    // same holds for `--max-hops 0` / `--probes-per-hop 0`, which previously
+    // clamped to 1 without saying so.
     if count == 0 {
         eprintln!("Error: --count must be at least 1");
+        return ExitCode::FAILURE;
+    }
+    if max_hops == 0 {
+        eprintln!("Error: --max-hops must be at least 1");
+        return ExitCode::FAILURE;
+    }
+    if probes_per_hop == 0 {
+        eprintln!("Error: --probes-per-hop must be at least 1");
         return ExitCode::FAILURE;
     }
 
