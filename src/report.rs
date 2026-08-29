@@ -151,11 +151,20 @@ const ALL_DNS_RECORD_TYPES: [DnsRecordType; 10] = [
 #[must_use]
 pub fn render_tcp(style: &Style, observations: &[TcpObservation]) -> String {
     let mut out = String::from("TCP connect\n");
+    // Share a column width across all rows so a long destination (a long
+    // hostname, or an IPv6 literal) doesn't leave the status column ragged
+    // where shorter rows keep the historical 24-wide column.
+    let dest_w = observations
+        .iter()
+        .map(|o| o.destination.to_string().len())
+        .max()
+        .unwrap_or(24)
+        .max(24);
     for obs in observations {
         // The padded status token is painted as a whole so the fixed 10-wide
         // column survives coloring; a plain style is byte-identical.
         let status = if obs.success {
-            style.pass(format!("PASS      {} ms", obs.latency_ms.unwrap_or(0)))
+            style.pass(format!("PASS      {}", ms_or_dash(obs.latency_ms)))
         } else {
             let err = obs
                 .failure
@@ -163,9 +172,18 @@ pub fn render_tcp(style: &Style, observations: &[TcpObservation]) -> String {
                 .map_or_else(|| "failed".to_string(), |e| e.kind.to_string());
             style.fail(format!("{err:10}"))
         };
-        out.push_str(&format!("  {:24} {status}\n", obs.destination));
+        out.push_str(&format!("  {:<dest_w$} {status}\n", obs.destination));
     }
     out
+}
+
+/// Render an optional millisecond latency for the human report: `N ms` when
+/// measured, or a bare `-` when unmeasured. A `None` latency is present only
+/// by model construction (probe paths always record `Some`), but rendering it
+/// as a literal `0 ms` would fabricate a measured value; `-` is the honest
+/// placeholder.
+fn ms_or_dash(ms: Option<u64>) -> String {
+    ms.map_or_else(|| "-".to_string(), |n| format!("{n} ms"))
 }
 
 /// Render TLS observations as human text.
@@ -205,7 +223,7 @@ pub fn render_tls(style: &Style, observations: &[TlsObservation]) -> String {
             };
             out.push_str(&format!("    covers {}: {covers}\n", obs.sni));
         }
-        out.push_str(&format!("    latency: {} ms\n", obs.latency_ms.unwrap_or(0)));
+        out.push_str(&format!("    latency: {}\n", ms_or_dash(obs.latency_ms)));
     }
     out
 }
@@ -238,10 +256,11 @@ pub fn cert_covers_hostname(sni: &str, sans: &[String]) -> bool {
 }
 
 /// Render a certificate summary compactly for the terminal, annotated with
-/// the remaining lifetime when it is actionable: `expired`, `expires in N
-/// day(s)` within [`RENDER_CERT_EXPIRY_WINDOW_DAYS`], or nothing for a
-/// comfortably-far expiry. The actionable lifetime annotation is painted —
-/// red when expired, yellow when expiring — so a terminal scan finds it.
+/// the remaining lifetime when it is actionable: `expired`, `expires today`
+/// for a certificate running out today, or `expires in N day(s)` within
+/// [`RENDER_CERT_EXPIRY_WINDOW_DAYS`], or nothing for a comfortably-far
+/// expiry. The actionable lifetime annotation is painted — red when expired,
+/// yellow when expiring — so a terminal scan finds it.
 fn render_cert(style: Style, cert: &CertificateSummary) -> String {
     let valid = match (&cert.not_after_utc, &cert.not_before_utc) {
         (Some(a), Some(b)) => format!("valid {}..{}", b.trim_end_matches('Z'), a.trim_end_matches('Z')),
@@ -259,6 +278,8 @@ fn render_cert(style: Style, cert: &CertificateSummary) -> String {
         .map_or_else(String::new, move |days| {
             if days < 0 {
                 style.fail(" (expired)")
+            } else if days == 0 {
+                style.warn(" (expires today)")
             } else if days <= RENDER_CERT_EXPIRY_WINDOW_DAYS {
                 style.warn(format!(" (expires in {days} day{})", if days == 1 { "" } else { "s" }))
             } else {
@@ -485,7 +506,7 @@ fn render_http_impl(style: Style, plain: bool, observations: &[HttpObservation])
             out.push_str(&sanitize_snippet(snippet));
             out.push('\n');
         }
-        out.push_str(&format!("    latency: {} ms\n", obs.latency_ms.unwrap_or(0)));
+        out.push_str(&format!("    latency: {}\n", ms_or_dash(obs.latency_ms)));
         if let Some(ttfb) = obs.ttfb_ms {
             out.push_str(&format!("    ttfb:    {ttfb} ms\n"));
         }
@@ -534,12 +555,12 @@ pub fn render_dns_repeat(style: &Style, host: &str, results: &[DnsRepeatResult])
         }
         if r.latency.count > 0 {
             out.push_str("    latency:\n");
-            out.push_str(&format!("      min:  {} ms\n", r.latency.min.unwrap_or(0)));
-            out.push_str(&format!("      p50:  {} ms\n", r.latency.p50.unwrap_or(0)));
-            out.push_str(&format!("      p95:  {} ms\n", r.latency.p95.unwrap_or(0)));
-            out.push_str(&format!("      p99:  {} ms\n", r.latency.p99.unwrap_or(0)));
-            out.push_str(&format!("      max:  {} ms\n", r.latency.max.unwrap_or(0)));
-            out.push_str(&format!("      jitter: {} ms\n", r.latency.jitter.unwrap_or(0)));
+            out.push_str(&format!("      min:  {}\n", ms_or_dash(r.latency.min)));
+            out.push_str(&format!("      p50:  {}\n", ms_or_dash(r.latency.p50)));
+            out.push_str(&format!("      p95:  {}\n", ms_or_dash(r.latency.p95)));
+            out.push_str(&format!("      p99:  {}\n", ms_or_dash(r.latency.p99)));
+            out.push_str(&format!("      max:  {}\n", ms_or_dash(r.latency.max)));
+            out.push_str(&format!("      jitter: {}\n", ms_or_dash(r.latency.jitter)));
         }
     }
     out
@@ -639,23 +660,56 @@ fn fmt(v: Option<u64>) -> String {
 }
 
 /// Render traceroute hops as human text.
+#[must_use]
 pub fn render_route(style: &Style, hops: &[RouteHop]) -> String {
     let mut out = String::from("Traceroute\n");
+    // Column width shared across rows: the historical 40-wide host column
+    // stays so short rows are byte-identical, but a longer hostname / IPv6
+    // literal widens the column so the rtt column never lands ragged.
+    let host_w = hops
+        .iter()
+        .map(|h| {
+            if h.lost || h.addr.is_none() {
+                0
+            } else {
+                route_host_cell(h).len()
+            }
+        })
+        .max()
+        .unwrap_or(0)
+        .max(40);
     for hop in hops {
         if hop.lost || hop.addr.is_none() {
             out.push_str(&format!("  {:>2}  {}\n", hop.ttl, style.fail("*")));
             continue;
         }
-        let addr = hop.addr.map_or_else(String::new, |a| a.to_string());
-        let name = hop.hostname.as_deref().filter(|n| !n.is_empty());
-        let host = match name {
-            Some(n) => format!("{n} ({addr})"),
-            None => addr,
-        };
+        let host = route_host_cell(hop);
         let rtt = hop.rtt_ms.map_or_else(|| "-".to_string(), |ms| format!("{ms} ms"));
-        out.push_str(&format!("  {:>2}  {host:40} {rtt}\n", hop.ttl));
+        out.push_str(&format!("  {:>2}  {host:<host_w$} {rtt}\n", hop.ttl));
     }
     out
+}
+
+/// The host cell shown for an answered traceroute hop: `name (addr)` when a
+/// hostname is known, the bare address otherwise.
+fn route_host_cell(hop: &RouteHop) -> String {
+    let addr = hop.addr.map_or_else(String::new, |a| a.to_string());
+    let hostname = hop.hostname.as_deref().filter(|n| !n.is_empty());
+    match hostname {
+        Some(n) => format!("{n} ({addr})"),
+        None => addr,
+    }
+}
+
+/// The host cell shown for an answered repeated-traceroute hop (may list
+/// several distinct addresses across runs).
+fn route_repeat_host_cell(hop: &crate::RouteHopStats) -> String {
+    let addrs = hop.addrs.iter().map(ToString::to_string).collect::<Vec<_>>().join(", ");
+    let hostname = hop.hostname.as_deref().filter(|n| !n.is_empty());
+    match hostname {
+        Some(n) => format!("{n} ({addrs})"),
+        None => addrs,
+    }
 }
 
 /// Render a repeated-traceroute aggregation as human text.
@@ -665,6 +719,16 @@ pub fn render_route(style: &Style, hops: &[RouteHop]) -> String {
 #[must_use]
 pub fn render_route_repeat(style: &Style, repeat: &RouteRepeat) -> String {
     let mut out = format!("Traceroute ({} runs)\n", repeat.runs);
+    // Shared host column width like `render_route`: 40 when all hosts fit,
+    // widened to the longest host so the answered/lost columns stay aligned.
+    let host_w = repeat
+        .hops
+        .iter()
+        .filter(|h| h.answered > 0)
+        .map(|h| route_repeat_host_cell(h).len())
+        .max()
+        .unwrap_or(0)
+        .max(40);
     for hop in &repeat.hops {
         if hop.answered == 0 {
             out.push_str(&format!(
@@ -676,13 +740,11 @@ pub fn render_route_repeat(style: &Style, repeat: &RouteRepeat) -> String {
             ));
             continue;
         }
-        let addrs = hop.addrs.iter().map(ToString::to_string).collect::<Vec<_>>().join(", ");
-        let name = hop.hostname.as_deref().filter(|n| !n.is_empty());
-        let host = match name {
-            Some(n) => format!("{n} ({addrs})"),
-            None => addrs,
-        };
-        let mut line = format!("  {:>2}  {host:40} {}/{} answered", hop.ttl, hop.answered, repeat.runs);
+        let host = route_repeat_host_cell(hop);
+        let mut line = format!(
+            "  {:>2}  {host:<host_w$} {}/{} answered",
+            hop.ttl, hop.answered, repeat.runs
+        );
         let mut tail: Vec<String> = Vec::new();
         if let Some(ms) = hop.rtt.min {
             tail.push(format!("min {ms} ms"));
@@ -1580,6 +1642,9 @@ mod tests {
         // Near expiry: annotated.
         let near = render_cert(Style::plain(), &cert(5));
         assert!(near.contains("expires in 5 days"), "near expiry annotated: {near}");
+        // Expiring today: the clearer terminal phrasing, not "0 days".
+        let today = render_cert(Style::plain(), &cert(0));
+        assert!(today.contains("expires today"), "today expiry phrased clearly: {today}");
         // Already expired: annotated.
         let past = render_cert(Style::plain(), &cert(-3));
         assert!(past.contains("expired"), "expired annotated: {past}");
@@ -1739,6 +1804,195 @@ mod tests {
         );
         assert_eq!(render_severity_badge(colored, Severity::Info), "\x1b[36mINFO\x1b[0m");
         assert_eq!(render_severity_badge(colored, Severity::Low), "LOW");
+    }
+
+    #[test]
+    fn unmeasured_latency_renders_dash_not_fabricated_zero() {
+        // A success row whose latency is absent (possible only by model
+        // construction — probe paths always record `Some`) must not present a
+        // fabricated "0 ms" as a measured value; `-` is the honest placeholder.
+        let tcp = [TcpObservation {
+            destination: "1.1.1.1:443".parse().unwrap(),
+            success: true,
+            latency_ms: None,
+            failure: None,
+        }];
+        let out = render_tcp(&Style::plain(), &tcp);
+        assert!(out.contains("PASS      -"), "unmeasured PASS shows '-' not 0 ms: {out}");
+        assert!(!out.contains("0 ms"), "no fabricated 0 ms: {out}");
+
+        let tls = TlsObservation {
+            destination: "1.1.1.1:443".parse().unwrap(),
+            sni: "example.com".into(),
+            success: true,
+            version: Some("TLSv1.3".into()),
+            cipher: None,
+            alpn: None,
+            certificate: None,
+            latency_ms: None,
+            failure: None,
+        };
+        let tlso = render_tls(&Style::plain(), &[tls]);
+        assert!(tlso.contains("latency: -"), "TLS latency is '-' not 0 ms: {tlso}");
+
+        let http = HttpObservation {
+            destination: "1.1.1.1:443".parse().unwrap(),
+            host: "example.com".into(),
+            method: "GET".into(),
+            path: "/".into(),
+            tls: None,
+            protocol: Some("HTTP/1.1".into()),
+            status: Some(200),
+            location: None,
+            headers: Vec::new(),
+            body_bytes: None,
+            body_snippet: None,
+            ttfb_ms: None,
+            latency_ms: None,
+            failure: None,
+        };
+        let hout = render_http(&Style::plain(), &[http]);
+        assert!(hout.contains("latency: -"), "HTTP latency is '-' not 0 ms: {hout}");
+    }
+
+    #[test]
+    fn long_host_widens_column_so_status_aligns() {
+        // A destination longer than the historical fixed 24-wide column must
+        // not shove its status token past where the shorter rows put theirs:
+        // the column widens to the longest destination, keeping the rows
+        // aligned. Short-only output stays byte-identical.
+        let short = [TcpObservation {
+            destination: "1.1.1.1:443".parse().unwrap(),
+            success: true,
+            latency_ms: Some(5),
+            failure: None,
+        }];
+        let short_out = render_tcp(&Style::plain(), &short);
+        assert!(
+            short_out.contains("PASS      5 ms"),
+            "short stays 24-wide: {short_out:?}"
+        );
+
+        let long = [
+            TcpObservation {
+                destination: "[2001:0db8:85a3:0000:0000:8a2e:0370:7334]:443".parse().unwrap(),
+                success: true,
+                latency_ms: Some(5),
+                failure: None,
+            },
+            TcpObservation {
+                destination: "[2001:db8::1]:443".parse().unwrap(),
+                success: true,
+                latency_ms: Some(6),
+                failure: None,
+            },
+        ];
+        let long_out = render_tcp(&Style::plain(), &long);
+        // Both rows must place the PASS status token at the same column: the
+        // widest destination (the long hostname) sets the shared width.
+        let col = |line: &str| line.find("PASS").expect("row has PASS");
+        let mut lines = long_out.lines().filter(|l| l.contains("PASS"));
+        let first = lines.next().expect("first PASS row");
+        let second = lines.next().expect("second PASS row");
+        assert_eq!(
+            col(first),
+            col(second),
+            "PASS column must align under a long host:\n{long_out}"
+        );
+        // And the historical 24-wide shape is preserved when all hosts fit.
+        assert_ne!(short_out, long_out);
+    }
+
+    #[test]
+    fn colored_render_equals_plain_after_stripping_escape_bytes() {
+        // The column-alignment hazard that ANSI would otherwise introduce: if
+        // any renderer padded a *colored* token (so the escape bytes counted
+        // toward the width), the columns under a colored style would drift
+        // from the plain style. Every padded token is painted whole, so
+        // removing SGR escape sequences reproduces the plain text exactly.
+        let colored = colored();
+        let plain = Style::plain();
+
+        let tcp = [TcpObservation {
+            destination: "1.1.1.1:443".parse().unwrap(),
+            success: true,
+            latency_ms: Some(12),
+            failure: None,
+        }];
+        let colored_tcp = render_tcp(&colored, &tcp);
+        let plain_tcp = render_tcp(&plain, &tcp);
+        assert_eq!(
+            strip_sgr(&colored_tcp),
+            plain_tcp,
+            "TCP columns stable: {colored_tcp:?}"
+        );
+
+        // Capture the failure row too (its `{err:10}` pad must be painted whole).
+        let tcp_fail = [TcpObservation {
+            destination: "2.2.2.2:443".parse().unwrap(),
+            success: false,
+            latency_ms: None,
+            failure: Some(ProbeError {
+                kind: FailureKind::ConnectionRefused,
+                message: "refused".into(),
+            }),
+        }];
+        let colored_fail = render_tcp(&colored, &tcp_fail);
+        let plain_fail = render_tcp(&plain, &tcp_fail);
+        assert_eq!(
+            strip_sgr(&colored_fail),
+            plain_fail,
+            "fail pad stable: {colored_fail:?}"
+        );
+
+        // HTTP status class colors live at the end of an unpadded row, so they
+        // cannot shift a column either.
+        let http = HttpObservation {
+            destination: "1.1.1.1:443".parse().unwrap(),
+            host: "example.com".into(),
+            method: "GET".into(),
+            path: "/".into(),
+            tls: None,
+            protocol: Some("HTTP/2".into()),
+            status: Some(503),
+            location: None,
+            headers: Vec::new(),
+            body_bytes: None,
+            body_snippet: None,
+            ttfb_ms: None,
+            latency_ms: Some(9),
+            failure: None,
+        };
+        // Render the same observation with both styles; `from_ref` avoids a
+        // clone of the whole observation for the (immutable) colored pass.
+        let colored_http = render_http(&colored, std::slice::from_ref(&http));
+        let plain_http = render_http(&plain, &[http]);
+        assert_eq!(
+            strip_sgr(&colored_http),
+            plain_http,
+            "HTTP columns stable: {colored_http:?}"
+        );
+    }
+
+    /// Remove ANSI SGR escape sequences (`ESC[...m`) from a string, so a
+    /// colored render can be compared with the same render under a plain style
+    /// to prove escape bytes never shift column alignment.
+    fn strip_sgr(s: &str) -> String {
+        let mut out = String::with_capacity(s.len());
+        let mut chars = s.chars().peekable();
+        while let Some(c) = chars.next() {
+            if c == '\u{1b}' && chars.peek() == Some(&'[') {
+                chars.next(); // consume '['
+                for inner in chars.by_ref() {
+                    if ('@'..='~').contains(&inner) {
+                        break;
+                    }
+                }
+            } else {
+                out.push(c);
+            }
+        }
+        out
     }
 
     #[test]
