@@ -82,6 +82,45 @@ pub fn uri_authority(host: &str) -> std::borrow::Cow<'_, str> {
     }
 }
 
+/// Scheme default ports: the port omitted from a wire authority is 443 for
+/// HTTPS and 80 for HTTP (RFC 7230 §5.4).
+pub const HTTPS_DEFAULT_PORT: u16 = 443;
+pub const HTTP_DEFAULT_PORT: u16 = 80;
+
+/// The wire `Host` header / `:authority` value for a target probed at `port`:
+/// the port is appended when it is not the scheme default (`example.com` at
+/// 8080 → `example.com:8080`; at 443 → `example.com`), because an origin
+/// server doing host-based virtual hosting keys on host **and** port — sending
+/// the bare host for a non-default port routes a request to the wrong vhost
+/// or returns 404/421 (RFC 7230 §5.4 / RFC 9113 §8.3.1 / RFC 9114 §4.3.1).
+/// `tls` selects the scheme (443 vs 80). Brackets are stripped from an IPv6
+/// literal, matching [`wire_host`]; `port == 0` (unset) is never named.
+#[must_use]
+pub fn wire_authority(host: &str, port: u16, tls: bool) -> String {
+    let bare = wire_host(host);
+    let default = if tls { HTTPS_DEFAULT_PORT } else { HTTP_DEFAULT_PORT };
+    if port != 0 && port != default {
+        format!("{bare}:{port}")
+    } else {
+        bare.to_string()
+    }
+}
+
+/// The URI-authority form of a wire host at a destination port, for
+/// `https://host[:port]/path`: the IPv6 literal is re-bracketed (RFC 3986
+/// §3.2.2) and the port is appended when it is not the HTTPS default 443 —
+/// so the `:authority` pseudo-header on the h2/h3 wire names the exact port
+/// the probe connects to (RFC 9113 §8.3.1 / RFC 9114 §4.3.1).
+#[must_use]
+pub fn uri_authority_at(host: &str, port: u16) -> std::borrow::Cow<'_, str> {
+    let mut base = uri_authority(host).into_owned();
+    if port != 0 && port != HTTPS_DEFAULT_PORT {
+        base.push(':');
+        base.push_str(&port.to_string());
+    }
+    std::borrow::Cow::Owned(base)
+}
+
 /// Append up to [`BODY_SNIPPET_BYTES`] of `data` to the running snippet,
 /// stopping once the cap is reached.
 pub fn push_body_snippet(snippet: &mut Vec<u8>, data: &[u8]) {
@@ -143,7 +182,7 @@ pub fn write_body_to_file(path: &std::path::Path, body: &[u8]) -> std::io::Resul
 
 #[cfg(test)]
 mod tests {
-    use super::{push_bounded_body, uri_authority, wire_host};
+    use super::{push_bounded_body, uri_authority, uri_authority_at, wire_authority, wire_host};
 
     #[test]
     fn wire_host_strips_brackets_only() {
@@ -164,6 +203,39 @@ mod tests {
         assert_eq!(uri_authority("::1"), "[::1]");
         assert_eq!(uri_authority("vhost.example"), "vhost.example");
         assert_eq!(uri_authority("1.2.3.4"), "1.2.3.4");
+    }
+
+    #[test]
+    fn wire_authority_appends_only_a_non_default_port() {
+        // The scheme default (443 for TLS / 80 for plain) is omitted; any
+        // other port is named so vhost-by-host:port routing still works.
+        assert_eq!(wire_authority("example.com", 443, true), "example.com");
+        assert_eq!(wire_authority("example.com", 80, false), "example.com");
+        assert_eq!(wire_authority("example.com", 8080, true), "example.com:8080");
+        assert_eq!(wire_authority("example.com", 8080, false), "example.com:8080");
+        // A port that is default for one scheme is non-default for the other:
+        // plain HTTP on 443 (or HTTPS on 80) must still be named.
+        assert_eq!(wire_authority("example.com", 443, false), "example.com:443");
+        assert_eq!(wire_authority("example.com", 80, true), "example.com:80");
+        // IPv4 and IPv6 literals (brackets stripped) behave the same.
+        assert_eq!(wire_authority("1.2.3.4", 443, true), "1.2.3.4");
+        assert_eq!(wire_authority("1.2.3.4", 8443, true), "1.2.3.4:8443");
+        assert_eq!(wire_authority("[2001:db8::1]", 8443, true), "2001:db8::1:8443");
+        assert_eq!(wire_authority("[::1]", 443, true), "::1");
+        // An unset port (0) is treated as "not named".
+        assert_eq!(wire_authority("example.com", 0, true), "example.com");
+    }
+
+    #[test]
+    fn uri_authority_at_appends_only_a_non_443_port() {
+        // The h2/h3 `:authority` must name the exact port the probe connects
+        // to, unless it is the https default 443.
+        assert_eq!(uri_authority_at("example.com", 443), "example.com");
+        assert_eq!(uri_authority_at("example.com", 8080), "example.com:8080");
+        assert_eq!(uri_authority_at("::1", 443), "[::1]");
+        assert_eq!(uri_authority_at("::1", 8443), "[::1]:8443");
+        assert_eq!(uri_authority_at("[::1]", 8443), "[::1]:8443");
+        assert_eq!(uri_authority_at("1.2.3.4", 8443), "1.2.3.4:8443");
     }
 
     #[test]

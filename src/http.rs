@@ -439,13 +439,13 @@ where
     // put the unbracketed `::1` on the wire (RFC 7230 §5.4 requires the host
     // without brackets).
     let mut custom_host: Option<&str> = None;
-    let default_host = match headers.iter().find(|(n, _)| n.eq_ignore_ascii_case("host")) {
+    let default_host: String = match headers.iter().find(|(n, _)| n.eq_ignore_ascii_case("host")) {
         Some((_, v)) => {
             let v = crate::http_common::wire_host(v);
             custom_host = Some(v);
-            v
+            v.to_string()
         }
-        None => crate::http_common::wire_host(host),
+        None => crate::http_common::wire_authority(host, destination.port(), tls.is_some()),
     };
     let mut builder = hyper::Request::builder()
         .method(method)

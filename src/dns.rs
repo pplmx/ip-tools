@@ -463,7 +463,10 @@ pub async fn doh_query(
     let request = match hyper::Request::builder()
         .method("GET")
         .uri(uri)
-        .header("host", &ehost)
+        // The endpoint's `host` header carries the port when it is not 443
+        // (RFC 7230 §5.4): a DoH endpoint on a non-default port is otherwise
+        // mistargeted by host-and-port vhosting on the far side.
+        .header("host", crate::http_common::wire_authority(&ehost, eport, true))
         .header("accept", "application/dns-message")
         .header("user-agent", "ip-tools")
         .body(Empty::<hyper::body::Bytes>::new())

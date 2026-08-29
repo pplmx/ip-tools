@@ -266,12 +266,19 @@ async fn probe_impl(
     // The URI authority is bracketed for an IPv6 literal (`https://[::1]/`),
     // while the `host` header value is bracket-stripped — so `:authority`
     // (driven by the URI) and `host` agree on the unbracketed form, matching
-    // the h2 handling (RFC 9114 §4.3.1 requires them to match).
-    let uri = format!("https://{}{path}", crate::http_common::uri_authority(effective_host));
+    // the h2 handling (RFC 9114 §4.3.1 requires them to match). Both name the
+    // destination port when it is not 443, so host+port vhosting routes.
+    let uri = format!(
+        "https://{}{path}",
+        crate::http_common::uri_authority_at(effective_host, destination.port())
+    );
     let mut builder = hyper::Request::builder()
         .method(method)
         .uri(uri)
-        .header("host", crate::http_common::wire_host(effective_host))
+        .header(
+            "host",
+            crate::http_common::wire_authority(effective_host, destination.port(), true),
+        )
         .header("user-agent", "ip-tools")
         .header("accept", "*/*");
     for (name, value) in headers {

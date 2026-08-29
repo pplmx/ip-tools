@@ -210,6 +210,28 @@ static SLOWFLAP_COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::Atomi
 /// Separate counter for the QUIC slow-flap arm.
 static QUIC_SLOWFLAP_COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
+/// Strip the port (and any IPv6 brackets) from a `Host` header value, so the
+/// host-keyed routes match whether or not the probe named its non-default
+/// port: `localhost:8080` → `localhost`, `[::1]:8443` → `::1`, while a bare
+/// `host` or `::1` passes through. Mirrors [`hyper::uri::Authority::host`]
+/// (which the `:authority` branch already uses) and how a real vhost router
+/// typically keys on the host name alone.
+fn host_header_bare(value: &str) -> &str {
+    if let Some(rest) = value.strip_prefix('[') {
+        // Bracket form `[addr]:port` or `[addr]`: strip through the closing
+        // bracket; `:port` after it is naturally dropped too.
+        return rest.split_once(']').map_or(rest, |(addr, _)| addr);
+    }
+    // A single trailing `:port` on a hostname/IPv4 is dropped; a bare IPv6
+    // literal (multiple colons) passes through untouched.
+    if let Some((host, port)) = value.rsplit_once(':') {
+        if !host.contains(':') && port.chars().all(|c| c.is_ascii_digit()) {
+            return host;
+        }
+    }
+    value
+}
+
 /// Classify a request by its host (URI authority first, then `Host` header,
 /// which covers HTTP/2/3's `:authority` and HTTP/1.1's `Host` alike).
 fn route_for(req: &hyper::Request<impl Sized>) -> FixtureRoute {
@@ -224,7 +246,12 @@ fn route_for(req: &hyper::Request<impl Sized>) -> FixtureRoute {
         .uri()
         .authority()
         .map(hyper::http::uri::Authority::host)
-        .or_else(|| req.headers().get("host").and_then(|v| v.to_str().ok()))
+        .or_else(|| {
+            req.headers()
+                .get("host")
+                .and_then(|v| v.to_str().ok())
+                .map(host_header_bare)
+        })
         .unwrap_or("");
     match host {
         "redirect.invalid" => FixtureRoute::Redirect,

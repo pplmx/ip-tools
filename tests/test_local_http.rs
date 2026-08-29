@@ -1033,6 +1033,56 @@ async fn explicit_host_header_overrides_the_default_on_the_wire() {
     server.abort();
 }
 
+/// A probe to a NON-default port must put `host:port` on the wire (RFC 7230
+/// §5.4): an origin server doing host-based vhosting keys on host **and**
+/// port, so a bare `Host: host` would route a `:8080` probe to the wrong
+/// vhost or a 404/421. Verified against a raw socket so the request bytes are
+/// asserted.
+#[tokio::test(flavor = "current_thread")]
+async fn default_host_header_carries_a_non_default_port_on_the_wire() {
+    use tokio::io::AsyncReadExt;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind listener");
+    let addr = listener.local_addr().expect("listener addr");
+    // An ephemeral port can never be a scheme default (80/443), so this also
+    // proves the wire path cannot be exercised by a default-port host.
+    assert_ne!(addr.port(), 443, "test precondition: non-default port");
+    let (sent_tx, mut sent_rx) = tokio::sync::mpsc::channel(1);
+    let server = tokio::spawn(async move {
+        use tokio::io::AsyncWriteExt;
+        if let Ok((mut stream, _peer)) = listener.accept().await {
+            let mut buf = [0u8; 4096];
+            let n = tokio::time::timeout(Duration::from_secs(3), stream.read(&mut buf))
+                .await
+                .map_or(0, |r| r.unwrap_or(0));
+            let _ = sent_tx.send(String::from_utf8_lossy(&buf[..n]).into_owned()).await;
+            let _ = stream
+                .write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\nok")
+                .await;
+        }
+    });
+
+    // Plain HTTP on an ephemeral port: the default Host must name the port.
+    let obs = http::probe_plain(addr, "default.example", "GET", "/", &[], None, Duration::from_secs(2)).await;
+    assert_eq!(obs.status, Some(200), "probe should complete: {obs:?}");
+    let request = tokio::time::timeout(Duration::from_secs(3), sent_rx.recv())
+        .await
+        .expect("server should report the request")
+        .expect("channel open");
+    let host_line = request
+        .lines()
+        .find(|l| l.to_ascii_lowercase().starts_with("host:"))
+        .expect("a Host header must be present")
+        .to_ascii_lowercase();
+    assert_eq!(
+        host_line,
+        format!("host: default.example:{}", addr.port()),
+        "the non-default port must be on the wire Host: request was:\n{request}"
+    );
+    server.abort();
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn tls_and_http_probe_time_out_when_server_never_responds() {
     // A TCP listener that accepts connections but never sends TLS bytes: the

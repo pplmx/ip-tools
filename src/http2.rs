@@ -272,8 +272,13 @@ async fn probe_impl(
     // The URI authority drives hyper's `:authority`. A bracketed IPv6-literal
     // host stays bracketed (`https://[::1]/` is a valid authority); a bare
     // IPv6 override (e.g. a user `host` header written without brackets) is
-    // re-bracketed so the URI stays valid (RFC 3986 §3.2.2).
-    let uri = format!("https://{}{path}", crate::http_common::uri_authority(effective_host));
+    // re-bracketed so the URI stays valid (RFC 3986 §3.2.2). The destination
+    // port is appended when it is not 443, so `:authority` names the exact
+    // port probed (RFC 9113 §8.3.1) and host+port vhosting still routes.
+    let uri = format!(
+        "https://{}{path}",
+        crate::http_common::uri_authority_at(effective_host, destination.port())
+    );
     let mut builder = hyper::Request::builder()
         .method(method)
         .uri(uri)
