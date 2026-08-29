@@ -179,3 +179,73 @@ fn test_json_and_csv_output_never_carry_ansi_escapes() {
         );
     }
 }
+
+#[test]
+fn completions_subcommand_generates_for_each_supported_shell() {
+    // `completions <shell>` must emit a real script that names every
+    // subcommand — the generated output is the user-visible contract, and it
+    // is driven off the live clap tree so a new flag/subcommand shows up
+    // automatically. Missing or unknown shells are clean errors.
+    for shell in ["bash", "zsh", "fish", "elvish", "powershell"] {
+        let out = Command::cargo_bin("ip-tools")
+            .unwrap()
+            .args(["completions", shell])
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "{shell} completions must succeed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let text = String::from_utf8_lossy(&out.stdout).into_owned();
+        assert!(
+            text.len() > 200,
+            "{shell} completions look empty ({len} bytes)",
+            len = text.len()
+        );
+        for sub in ["dns", "tcp", "tls", "http", "probe", "route", "diagnose"] {
+            assert!(text.contains(sub), "{shell} completions must name the {sub} subcommand");
+        }
+    }
+    Command::cargo_bin("ip-tools")
+        .unwrap()
+        .arg("completions")
+        .assert()
+        .failure();
+    Command::cargo_bin("ip-tools")
+        .unwrap()
+        .args(["completions", "tcsh"])
+        .assert()
+        .failure();
+}
+
+#[test]
+fn completions_output_survives_an_early_closing_pipe() {
+    // A `completions zsh | head` (a pager, a preview) closes stdout early;
+    // that must not panic with a BrokenPipe backtrace — the script is
+    // disposable output. Close the read end mid-stream while the child may
+    // still be writing, then require a clean exit.
+    use std::io::Read;
+    // powershell generates the largest script (~38 KiB), keeping the child
+    // likely to still be writing when the read end is closed.
+    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_ip-tools"))
+        .args(["completions", "powershell"])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("spawn completions");
+    let mut buf = [0u8; 1];
+    {
+        let mut out = child.stdout.take().expect("piped stdout");
+        // Read a little of the script, then drop the pipe while the child is
+        // (very likely) still writing — the pre-BrokenPipe behavior panicked.
+        let _ = out.read(&mut buf);
+        drop(out);
+    }
+    let status = child.wait().expect("wait for completions");
+    assert_eq!(
+        status.code(),
+        Some(0),
+        "an early-closing pipe must leave completions exit 0, not panic: {status}"
+    );
+}

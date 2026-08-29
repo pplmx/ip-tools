@@ -46,8 +46,11 @@ pub fn ip_tools_cli() -> ExitCode {
     handler(&matches)
 }
 
+/// Build the clap [`Command`] tree. Factored out of [`parser`] so the
+/// `completions` subcommand can hand the same live tree to `clap_complete` —
+/// the generated scripts can never drift from the real argument surface.
 #[allow(clippy::too_many_lines)] // clap subcommand declarations
-fn parser() -> ArgMatches {
+fn build_command() -> Command {
     command!()
         .arg_required_else_help(true)
         .author(crate_authors!("\n"))
@@ -237,7 +240,63 @@ fn parser() -> ArgMatches {
                 plain_arg(),
             ],
         ))
-        .get_matches()
+        .subcommand(completions_subcommand())
+}
+
+/// Parse the CLI arguments (dispatch is in [`handler`]; the argument tree is
+/// built by [`build_command`] so the `completions` generator and the real
+/// parser can never drift).
+fn parser() -> ArgMatches {
+    build_command().get_matches()
+}
+
+/// The `completions` subcommand: emit a shell tab-completion script. Generation
+/// is driven off the live [`build_command`] tree, so a flag added to any
+/// subcommand automatically appears in the scripts. The accepted shells are
+/// `clap_complete`'s own `Shell` set (bash, zsh, fish, elvish, powershell).
+fn completions_subcommand() -> Command {
+    Command::new("completions")
+        .about("generate a tab-completion script for your shell (bash, zsh, fish, elvish or powershell)")
+        .arg(
+            Arg::new("shell")
+                .value_name("SHELL")
+                .required(true)
+                .value_parser(clap::value_parser!(clap_complete::Shell))
+                .help("which shell to generate completions for"),
+        )
+}
+
+/// An `io::Write` that treats a closed pipe (`completions zsh | head`, a pager)
+/// as success. Rust ignores `SIGPIPE` and surfaces `EPIPE` as an error, and
+/// panicking on a downstream consumer closing early is the worst exit for
+/// output that is, by definition, disposable shell script.
+struct PipeTolerant(std::io::Stdout);
+
+impl std::io::Write for PipeTolerant {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        match self.0.write(buf) {
+            Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => Ok(buf.len()),
+            other => other,
+        }
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        match self.0.flush() {
+            Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => Ok(()),
+            other => other,
+        }
+    }
+}
+
+/// Render the `completions` output to stdout from the live [`build_command`]
+/// tree (the same one the parser uses).
+fn handle_completions(sub_m: &ArgMatches) -> ExitCode {
+    let Some(&shell) = sub_m.get_one::<clap_complete::Shell>("shell") else {
+        eprintln!("Error: completions requires a shell (bash, zsh, fish, elvish or powershell)");
+        return ExitCode::FAILURE;
+    };
+    let mut cmd = build_command();
+    clap_complete::generate(shell, &mut cmd, "ip-tools", &mut PipeTolerant(std::io::stdout()));
+    ExitCode::SUCCESS
 }
 
 /// Common repeatable `--server` DNS-server argument.
@@ -806,6 +865,7 @@ fn handler(app_m: &ArgMatches) -> ExitCode {
     match app_m.subcommand() {
         Some(("get", sub_m)) => handle_get(sub_m),
         Some(("list", sub_m)) => handle_list(sub_m),
+        Some(("completions", sub_m)) => handle_completions(sub_m),
         Some((name @ ("dns" | "tcp" | "tls" | "http" | "http2" | "http3" | "probe" | "route" | "diagnose"), sub_m)) => {
             run_tokio(name, sub_m, style)
         }

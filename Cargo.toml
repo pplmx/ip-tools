@@ -29,6 +29,7 @@ test-server = ["dep:rcgen", "hyper/server"]
 [dependencies]
 bytes = "1"
 clap = { version = "~4.6.6", features = ["cargo"] }
+clap_complete = "4.5"
 h2 = "0.4.18"
 h3 = "0.0.8"
 h3-quinn = "0.0.10"

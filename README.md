@@ -803,6 +803,20 @@ ip-tools list     # network interfaces
 ip-tools get --json
 ```
 
+### Shell tab-completion
+
+Every command, flag and value can be tab-completed by generating a script once
+for your shell (the scripts are driven off the live argument tree, so a future
+flag appears automatically — regenerate to refresh):
+
+```shell
+ip-tools completions bash > /etc/bash_completion.d/ip-tools   # or your user dir
+ip-tools completions zsh   > "${fpath[1]}/_ip-tools"          # then: compinit
+ip-tools completions fish  > ~/.config/fish/completions/ip-tools.fish
+ip-tools completions elvish
+ip-tools completions powershell
+```
+
 ## Diagnostics model
 
 `ip-tools` separates measurement from diagnosis:
