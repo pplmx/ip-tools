@@ -1,8 +1,8 @@
 {
   "ril_version": 1,
-  "round": 15,
+  "round": 16,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-29T04:16:23+00:00",
+  "updated_at": "2026-08-29T05:46:52+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -4708,20 +4708,20 @@
     "ISS-098": {
       "id": "ISS-098",
       "type": "issue",
-      "status": "active",
-      "version": 1,
+      "status": "resolved",
+      "version": 2,
       "created_at": "2026-08-29T02:31:34+00:00",
-      "updated_at": "2026-08-29T02:31:34+00:00",
+      "updated_at": "2026-08-29T05:44:57+00:00",
       "touched_round": 15,
       "desc": "CLI interaction edge: `--timeout 0` is accepted (no fail-fast) and renders a nonsensical \"timed out after 0ns\" (Duration Debug prints sub-ms as nanos); `--count 0` already fails fast with a clear message, so a zero timeout is an inconsistent, silent caller mistake. Confirmed: `tls 1.1.1.1 --timeout 0` shows \"timed out after 0ns\" and exits 0."
     },
     "ISS-099": {
       "id": "ISS-099",
       "type": "issue",
-      "status": "active",
-      "version": 1,
+      "status": "resolved",
+      "version": 2,
       "created_at": "2026-08-29T02:35:19+00:00",
-      "updated_at": "2026-08-29T02:35:19+00:00",
+      "updated_at": "2026-08-29T05:44:57+00:00",
       "touched_round": 15,
       "desc": "Consistency gap from the round-15 ISS-096 fix: the human `render_cert` now phrases a 0-day expiry as \"expires today\", but the diagnostics engine (src/diagnostics/layer.rs, cert_lifetime rule) still writes \"expires in 0 day(s)\" in its summary/evidence for the same fact — a diagnose run and a tls run disagree on the phrasing of identical evidence."
     },
@@ -4750,10 +4750,10 @@
     "TASK-094": {
       "id": "TASK-094",
       "type": "task",
-      "status": "active",
-      "version": 1,
+      "status": "resolved",
+      "version": 2,
       "created_at": "2026-08-29T04:04:11+00:00",
-      "updated_at": "2026-08-29T04:04:11+00:00",
+      "updated_at": "2026-08-29T04:53:15+00:00",
       "touched_round": 15,
       "category": "interaction",
       "severity": 2.0,
@@ -4762,10 +4762,10 @@
     "TASK-095": {
       "id": "TASK-095",
       "type": "task",
-      "status": "active",
-      "version": 1,
+      "status": "resolved",
+      "version": 2,
       "created_at": "2026-08-29T04:04:11+00:00",
-      "updated_at": "2026-08-29T04:04:11+00:00",
+      "updated_at": "2026-08-29T05:20:46+00:00",
       "touched_round": 15,
       "category": "interaction",
       "severity": 2.0,
@@ -4774,10 +4774,10 @@
     "ISS-100": {
       "id": "ISS-100",
       "type": "issue",
-      "status": "active",
-      "version": 1,
+      "status": "resolved",
+      "version": 2,
       "created_at": "2026-08-29T04:04:11+00:00",
-      "updated_at": "2026-08-29T04:04:11+00:00",
+      "updated_at": "2026-08-29T05:37:00+00:00",
       "touched_round": 15,
       "desc": "(bug-hunt #4) --strict/--expect-* count the hosts own \"network unreachable\" (an address family with no global route) as probe failures while diagnose deliberately excludes all-local-unreachability from destination blame — same observations, contradictory verdicts across subcommands; a v6-less operator CI is red forever. Need a decision on whether --strict should mirror the engine exclusion or document the divergence."
     },
@@ -4826,34 +4826,67 @@
     "ISS-104": {
       "id": "ISS-104",
       "type": "issue",
-      "status": "active",
-      "version": 1,
+      "status": "resolved",
+      "version": 2,
       "created_at": "2026-08-29T04:07:53+00:00",
-      "updated_at": "2026-08-29T04:07:53+00:00",
+      "updated_at": "2026-08-29T04:53:15+00:00",
       "touched_round": 15,
       "desc": "(bug-hunt #1) Repeated-probe runs give near-zero feedback for minutes: probe <host> --count N --timeout T runs N attempts sequentially per address; a blackholed address burns NxT of silence. The TTY progress counter is per-target and advances during resolve only, and a single target never shows anything."
     },
     "ISS-105": {
       "id": "ISS-105",
       "type": "issue",
-      "status": "active",
-      "version": 1,
+      "status": "resolved",
+      "version": 2,
       "created_at": "2026-08-29T04:07:53+00:00",
-      "updated_at": "2026-08-29T04:07:53+00:00",
+      "updated_at": "2026-08-29T05:20:46+00:00",
       "touched_round": 15,
       "desc": "(bug-hunt #3) --output-body on a multi-address/target sweep silently races all observations onto one file (last finisher wins), no warning, no destination association in the report."
     },
     "TASK-097": {
       "id": "TASK-097",
       "type": "task",
-      "status": "active",
-      "version": 1,
+      "status": "resolved",
+      "version": 2,
       "created_at": "2026-08-29T04:11:44+00:00",
-      "updated_at": "2026-08-29T04:11:44+00:00",
+      "updated_at": "2026-08-29T05:37:00+00:00",
       "touched_round": 15,
       "category": "consistency",
       "severity": 2.0,
       "label": "(bug-hunt #4) decide strict/expect-* vs diagnose local-unreachability divergence (see ISS-100): either mirror the engine all-local-unreachability exclusion in --strict/--expect or document the intentional difference"
+    },
+    "CHG-093": {
+      "id": "CHG-093",
+      "type": "change",
+      "status": "active",
+      "version": 2,
+      "created_at": "2026-08-29T04:48:32+00:00",
+      "updated_at": "2026-08-29T04:53:15+00:00",
+      "touched_round": 15,
+      "label": "probe-phase per-destination progress (bug-hunt #1)",
+      "commit": "381cb48"
+    },
+    "CHG-094": {
+      "id": "CHG-094",
+      "type": "change",
+      "status": "active",
+      "version": 2,
+      "created_at": "2026-08-29T05:16:58+00:00",
+      "updated_at": "2026-08-29T05:20:46+00:00",
+      "touched_round": 15,
+      "label": "--output-body rejected for multi-target sweeps (bug-hunt #3)",
+      "commit": "1019bea"
+    },
+    "DEC-081": {
+      "id": "DEC-081",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-29T05:35:29+00:00",
+      "updated_at": "2026-08-29T05:35:29+00:00",
+      "touched_round": 15,
+      "rationale": "--strict/--expect-* on the probe commands count a local \"network unreachable\" (an address family with no global route) as a failed probe, while the diagnose engine excludes all-local-unreachability from destination-blame verdicts (AddressFamily instead). Verified live on a v6-less host: both `tcp example.com --strict` AND `diagnose example.com --strict` exit non-zero for the same facts — so the exit-code contract is NOT contradictory, only the stderr attribution differs (diagnose names AddressFamily; tcp says \"N probes failed to complete\"). Keeping --strict strict is correct: a probe that genuinely could not connect IS a failed probe and the absent route is real signal; silently ignoring it would let `tcp host --strict` pass while v6 probes never completed. The operator scopes with --ipv4/--ipv6 (documented) and reads the human report, which already names each unreachable address. No behavior change.",
+      "alternatives_rejected": "Making --strict skip local-unreachability failures (would hide genuine probe failures and contradict the documented \"exit non-zero when a probe failed to complete\" contract); auto-adding --ipv4 for the operator (would silently change what was probed)"
     }
   },
   "edges": [
@@ -8222,6 +8255,36 @@
       "to": "ISS-101",
       "type": "addresses",
       "created_at": "2026-08-29T04:16:23+00:00"
+    },
+    {
+      "from": "CHG-093",
+      "to": "TASK-094",
+      "type": "implements",
+      "created_at": "2026-08-29T04:53:15+00:00"
+    },
+    {
+      "from": "CHG-093",
+      "to": "ISS-104",
+      "type": "resolves",
+      "created_at": "2026-08-29T04:53:15+00:00"
+    },
+    {
+      "from": "CHG-094",
+      "to": "TASK-095",
+      "type": "implements",
+      "created_at": "2026-08-29T05:20:46+00:00"
+    },
+    {
+      "from": "CHG-094",
+      "to": "ISS-105",
+      "type": "resolves",
+      "created_at": "2026-08-29T05:20:46+00:00"
+    },
+    {
+      "from": "DEC-081",
+      "to": "TASK-097",
+      "type": "governs",
+      "created_at": "2026-08-29T05:37:00+00:00"
     }
   ]
 }
