@@ -1944,18 +1944,21 @@ fn dns_cli_concurrency_parallelizes_and_preserves_target_order() {
         "concurrent dns must preserve input target order: {targets:?}"
     );
 
-    // `--concurrency 0` must clamp to a safe minimum (not deadlock/divide), the
-    // same way the probe commands bound concurrency.
+    // `--concurrency 0` is a caller mistake (it used to silently clamp to 1);
+    // like `--count 0` and `--timeout 0` it must fail at argument parse.
     let out = Command::cargo_bin("ip-tools")
         .expect("ip-tools binary")
         .args(["dns", "1.1.1.1", "8.8.8.8", "--concurrency", "0", "--json"])
         .output()
         .expect("run dns --concurrency 0");
     assert!(
-        out.status.success(),
-        "dns --concurrency 0 should clamp and succeed: {}
-{}",
-        String::from_utf8_lossy(&out.stdout),
+        !out.status.success(),
+        "dns --concurrency 0 must be rejected: {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("must be at least 1"),
+        "a zero concurrency must name the fix: {}",
         String::from_utf8_lossy(&out.stderr)
     );
 }

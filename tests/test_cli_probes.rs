@@ -1170,3 +1170,93 @@ fn diagnose_cli_sni_presents_chosen_hostname_against_listener() {
         "the targeted literal address must remain the destination: {out}"
     );
 }
+
+#[test]
+fn probe_family_cli_rejects_an_empty_target_list() {
+    // An `@file` that parsed to zero entries (empty, or only blank/# lines) is
+    // a caller mistake: probing nothing renders an empty report and would exit
+    // 0 — a silent false-pass for a script/CI sweep. It must fail fast the same
+    // way `--count 0` and the family-scope-empty case do.
+    let tmp = std::env::temp_dir().join(format!("ip-tools-empty-{}.txt", std::process::id()));
+    std::fs::write(&tmp, "# nothing to probe\n\n").expect("write empty target file");
+    for sub in ["tcp", "tls", "http", "probe"] {
+        cmd()
+            .args([sub, &format!("@{}", tmp.display())])
+            .assert()
+            .failure()
+            .stderr(contains("no targets to probe"));
+    }
+    // Empty stdin (`-`) behaves the same.
+    cmd()
+        .args(["tcp", "-"])
+        .write_stdin("")
+        .assert()
+        .failure()
+        .stderr(contains("no targets to probe"));
+    let _ = std::fs::remove_file(&tmp);
+}
+
+#[test]
+fn dns_and_diagnose_cli_reject_an_empty_target_list() {
+    let tmp = std::env::temp_dir().join(format!("ip-tools-empty2-{}.txt", std::process::id()));
+    std::fs::write(&tmp, "").expect("write empty target file");
+    for sub in ["dns", "diagnose"] {
+        cmd()
+            .args([sub, &format!("@{}", tmp.display())])
+            .assert()
+            .failure()
+            .stderr(contains("no targets to probe"));
+    }
+    let _ = std::fs::remove_file(&tmp);
+}
+
+#[test]
+fn probe_family_cli_rejects_json_with_csv() {
+    // `--json` and `--csv` both name the output format; the render chain used
+    // to silently honor CSV and drop the JSON. The README already calls them
+    // mutually exclusive — make the CLI enforce it like the other
+    // contradictory flag combinations.
+    let addr = local_tcp_listener();
+    for sub in ["tcp", "tls", "http", "probe", "dns", "route", "diagnose"] {
+        cmd()
+            .args([sub, &addr.to_string(), "--json", "--csv"])
+            .assert()
+            .failure()
+            .stderr(contains("--json and --csv are mutually exclusive"));
+    }
+}
+
+#[test]
+fn probe_family_cli_rejects_zero_concurrency() {
+    // `--concurrency 0` used to be silently clamped to 1; every sibling
+    // option fails fast on 0, so it must too.
+    let addr = local_tcp_listener();
+    for sub in ["tcp", "http", "probe", "dns", "diagnose"] {
+        cmd()
+            .args([sub, &addr.to_string(), "--concurrency", "0"])
+            .assert()
+            .failure()
+            .stderr(contains("must be at least 1"));
+    }
+}
+
+#[test]
+fn route_cli_rejects_a_run_count_above_u16_max() {
+    // The per-hop `answered` aggregate is a u16; a `--count` above 65535 would
+    // wrap a busy hop to "0 runs answered" (false 100% loss), so it is
+    // rejected up front instead of silently corrupting the aggregate.
+    cmd()
+        .args([
+            "route",
+            "127.0.0.1",
+            "--count",
+            "65536",
+            "--max-hops",
+            "1",
+            "--timeout",
+            "300",
+        ])
+        .assert()
+        .failure()
+        .stderr(contains("at most 65535"));
+}

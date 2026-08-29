@@ -75,6 +75,11 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches, style: Style) -> ExitCode {
     let timeout_ms = *sub_m.get_one::<u64>("timeout").expect("timeout has default");
     let concurrency = *sub_m.get_one::<usize>("concurrency").expect("concurrency has default");
     let timeout = Duration::from_millis(timeout_ms);
+
+    if let Err(e) = super::ensure_single_output_format(sub_m) {
+        eprintln!("Error: {e}");
+        return ExitCode::FAILURE;
+    }
     // `--ipv4`/`--ipv6` scope the whole pipeline to one address family (parity
     // with the per-address probe commands); the two flags conflict at parse.
     let family = FamilyScope::from_flags(sub_m.get_flag("ipv4"), sub_m.get_flag("ipv6"));
@@ -91,6 +96,10 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches, style: Style) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    if targets.is_empty() {
+        eprintln!("Error: no targets to probe (the target list is empty)");
+        return ExitCode::FAILURE;
+    }
 
     // A `--sni` override presents a chosen hostname as SNI (and HTTP `Host`)
     // while the probe pipeline still connects to each target's resolved

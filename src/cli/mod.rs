@@ -290,21 +290,45 @@ fn probe_command(name: &'static str, about: &'static str, extras: &[Arg]) -> Com
 /// and can never mean "no timeout" — every consumer converts it straight into
 /// a `Duration` bound), matching the `--count 0` fail-fast across the probe
 /// commands.
+/// Reject a non-numeric `--timeout` with a clean message, and make `0` fail at
+/// argument parse with the same "at least 1" phrasing the in-code `--count 0`
+/// guards use — instead of leaking the typed range bound (`0 is not in
+/// 1..18446744073709551615`), which is noise for an operator who just passed 0.
+fn nonzero_u64(s: &str) -> Result<u64, String> {
+    let n: u64 = s.parse().map_err(|_| format!("'{s}' is not a valid number"))?;
+    if n == 0 {
+        Err("must be at least 1".to_string())
+    } else {
+        Ok(n)
+    }
+}
+
+/// [`nonzero_u64`] for `usize`-typed options (`--concurrency`).
+fn nonzero_usize(s: &str) -> Result<usize, String> {
+    let n: usize = s.parse().map_err(|_| format!("'{s}' is not a valid number"))?;
+    if n == 0 {
+        Err("must be at least 1".to_string())
+    } else {
+        Ok(n)
+    }
+}
+
 fn timeout_arg(default_ms: &'static str) -> Arg {
     Arg::new("timeout")
         .long("timeout")
         .value_name("MILLIS")
-        .value_parser(clap::value_parser!(u64).range(1..))
+        .value_parser(nonzero_u64)
         .default_value(default_ms)
         .help("per-operation timeout in milliseconds")
 }
 
-/// Common `--concurrency` argument.
+/// Common `--concurrency` argument. `0` is rejected at parse — like every
+/// sibling option's fail-fast — rather than silently clamped to 1.
 fn concurrency_arg() -> Arg {
     Arg::new("concurrency")
         .long("concurrency")
         .value_name("N")
-        .value_parser(clap::value_parser!(usize))
+        .value_parser(nonzero_usize)
         .default_value("32")
         .help("maximum number of parallel probes")
 }
@@ -316,9 +340,28 @@ fn dns_concurrency_arg() -> Arg {
     Arg::new("concurrency")
         .long("concurrency")
         .value_name("N")
-        .value_parser(clap::value_parser!(usize))
+        .value_parser(nonzero_usize)
         .default_value("1")
         .help("maximum number of target hosts to resolve in parallel; 1 runs a sweep sequentially (default)")
+}
+
+/// `--json` and `--csv` are alternate output formats; both select one, so
+/// passing both is a self-contradictory request (today the JSON is silently
+/// dropped by the `if csv { } else if json { }` render chains). Fail fast,
+/// matching the other contradictory-flag guards (`--output-body` races,
+/// `--ipv4`+`--ipv6`). `--json` can be given where `--csv` is not defined, so
+/// the CSV side is read defensively.
+fn ensure_single_output_format(sub_m: &ArgMatches) -> Result<(), String> {
+    let csv = sub_m
+        .try_get_one::<bool>("csv")
+        .ok()
+        .flatten()
+        .copied()
+        .unwrap_or_default();
+    if sub_m.get_flag("json") && csv {
+        return Err("--json and --csv are mutually exclusive (pick one output format)".to_string());
+    }
+    Ok(())
 }
 
 /// `--ipv4` argument: probe only the IPv4 addresses of each target.
@@ -826,6 +869,13 @@ where
         .flatten()
         .copied()
         .unwrap_or_default();
+    // `--json` + `--csv` both name an output format; the render chain would
+    // silently honor CSV and drop the JSON, so reject the contradiction up
+    // front like the other contradictory flag combinations.
+    if let Err(e) = ensure_single_output_format(sub_m) {
+        eprintln!("Error: {e}");
+        return ExitCode::FAILURE;
+    }
     let strict = sub_m.get_flag("strict");
     let timeout_ms = *sub_m.get_one::<u64>("timeout").expect("timeout has default");
     let concurrency = *sub_m.get_one::<usize>("concurrency").expect("concurrency has default");
@@ -872,6 +922,15 @@ where
         }
     };
     let single = targets.len() == 1;
+    // A target list that parsed to zero entries (`@empty-file`, empty stdin,
+    // a file of blank/comment lines) is a caller mistake, not a valid sweep:
+    // probing nothing would render an empty report and exit `0` — a silent
+    // false-pass for a script/CI fleet sweep. Fail fast like `--count 0` and
+    // the family-scope-empty case.
+    if targets.is_empty() {
+        eprintln!("Error: no targets to probe (the target list is empty)");
+        return ExitCode::FAILURE;
+    }
     // `--output-body` writes one file per probe, so a multi-target sweep would
     // race every host's body onto the same path (last finisher wins, silently).
     // That is a caller mistake, not a meaningful request — reject it up front

@@ -23,6 +23,11 @@ pub(super) async fn run_dns(sub_m: &ArgMatches, style: Style) -> ExitCode {
     let timeout_ms = *sub_m.get_one::<u64>("timeout").expect("timeout has default");
     let timeout = Duration::from_millis(timeout_ms);
 
+    if let Err(e) = super::ensure_single_output_format(sub_m) {
+        eprintln!("Error: {e}");
+        return ExitCode::FAILURE;
+    }
+
     let targets = match super::parse_targets(sub_m) {
         Ok(t) => t,
         Err(e) => {
@@ -30,6 +35,10 @@ pub(super) async fn run_dns(sub_m: &ArgMatches, style: Style) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    if targets.is_empty() {
+        eprintln!("Error: no targets to probe (the target list is empty)");
+        return ExitCode::FAILURE;
+    }
 
     let custom: Vec<SocketAddr> = match parse_custom_servers(sub_m) {
         Ok(v) => v,

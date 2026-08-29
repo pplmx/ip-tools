@@ -17,6 +17,7 @@ use std::time::Duration;
 /// traceroute off the async runtime, then reverse-resolves router names.
 /// With `--count N` (>1) the trace is repeated and the per-hop observations
 /// are aggregated across runs (see [`run_route_repeat`]).
+#[allow(clippy::too_many_lines)] // orchestration: parse, guard zero/oversize, trace, render
 pub(super) async fn run_route(sub_m: &ArgMatches, style: Style) -> ExitCode {
     let json = sub_m.get_flag("json");
     let csv = sub_m.get_flag("csv");
@@ -28,12 +29,23 @@ pub(super) async fn run_route(sub_m: &ArgMatches, style: Style) -> ExitCode {
         .expect("probes-per-hop has default");
     let timeout_ms = *sub_m.get_one::<u64>("timeout").expect("timeout has default");
 
+    if let Err(e) = super::ensure_single_output_format(sub_m) {
+        eprintln!("Error: {e}");
+        return ExitCode::FAILURE;
+    }
+
     // A 0-repeat request is a caller mistake, and silently running a single
     // trace would hide it (probe's `--count` rejects 0 the same way). The
     // same holds for `--max-hops 0` / `--probes-per-hop 0`, which previously
-    // clamped to 1 without saying so.
+    // clamped to 1 without saying so. `--count` is also capped at `u16::MAX`
+    // because the per-hop `answered` aggregate is a `u16` — a larger count
+    // would silently wrap a busy hop to "0 runs answered" (false 100% loss).
     if count == 0 {
         eprintln!("Error: --count must be at least 1");
+        return ExitCode::FAILURE;
+    }
+    if count > u16::MAX as usize {
+        eprintln!("Error: --count is at most 65535 for route (the per-hop aggregate is 16-bit)");
         return ExitCode::FAILURE;
     }
     if max_hops == 0 {
