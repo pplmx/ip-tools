@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 15,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-29T02:02:25+00:00",
+  "updated_at": "2026-08-29T04:16:23+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -4704,6 +4704,156 @@
       "touched_round": 15,
       "label": "ANSI-strip column-stability regression test (ISS-097)",
       "commit": "c979031"
+    },
+    "ISS-098": {
+      "id": "ISS-098",
+      "type": "issue",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-29T02:31:34+00:00",
+      "updated_at": "2026-08-29T02:31:34+00:00",
+      "touched_round": 15,
+      "desc": "CLI interaction edge: `--timeout 0` is accepted (no fail-fast) and renders a nonsensical \"timed out after 0ns\" (Duration Debug prints sub-ms as nanos); `--count 0` already fails fast with a clear message, so a zero timeout is an inconsistent, silent caller mistake. Confirmed: `tls 1.1.1.1 --timeout 0` shows \"timed out after 0ns\" and exits 0."
+    },
+    "ISS-099": {
+      "id": "ISS-099",
+      "type": "issue",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-29T02:35:19+00:00",
+      "updated_at": "2026-08-29T02:35:19+00:00",
+      "touched_round": 15,
+      "desc": "Consistency gap from the round-15 ISS-096 fix: the human `render_cert` now phrases a 0-day expiry as \"expires today\", but the diagnostics engine (src/diagnostics/layer.rs, cert_lifetime rule) still writes \"expires in 0 day(s)\" in its summary/evidence for the same fact — a diagnose run and a tls run disagree on the phrasing of identical evidence."
+    },
+    "CHG-091": {
+      "id": "CHG-091",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-29T04:04:11+00:00",
+      "updated_at": "2026-08-29T04:04:11+00:00",
+      "touched_round": 15,
+      "label": "fail-fast on zero run parameters (--timeout/--max-hops/--probes-per-hop), dns literal --count warning, engine expires-today",
+      "commit": "6cf6588"
+    },
+    "CHG-092": {
+      "id": "CHG-092",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-29T04:04:11+00:00",
+      "updated_at": "2026-08-29T04:04:11+00:00",
+      "touched_round": 15,
+      "label": "honest capped-body display (HttpObservation.body_capped)",
+      "commit": "fc01940"
+    },
+    "TASK-094": {
+      "id": "TASK-094",
+      "type": "task",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-29T04:04:11+00:00",
+      "updated_at": "2026-08-29T04:04:11+00:00",
+      "touched_round": 15,
+      "category": "interaction",
+      "severity": 2.0,
+      "label": "(bug-hunt #1) repeated-probe runs give near-zero feedback for minutes on a blackholed address (NxT sequential silence); progress counter is per-target/resolve-only"
+    },
+    "TASK-095": {
+      "id": "TASK-095",
+      "type": "task",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-29T04:04:11+00:00",
+      "updated_at": "2026-08-29T04:04:11+00:00",
+      "touched_round": 15,
+      "category": "interaction",
+      "severity": 2.0,
+      "label": "(bug-hunt #3) --output-body on a multi-address/target sweep silently races all observations onto one file (last finisher wins), no warning, no destination association"
+    },
+    "ISS-100": {
+      "id": "ISS-100",
+      "type": "issue",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-29T04:04:11+00:00",
+      "updated_at": "2026-08-29T04:04:11+00:00",
+      "touched_round": 15,
+      "desc": "(bug-hunt #4) --strict/--expect-* count the hosts own \"network unreachable\" (an address family with no global route) as probe failures while diagnose deliberately excludes all-local-unreachability from destination blame — same observations, contradictory verdicts across subcommands; a v6-less operator CI is red forever. Need a decision on whether --strict should mirror the engine exclusion or document the divergence."
+    },
+    "TASK-096": {
+      "id": "TASK-096",
+      "type": "task",
+      "status": "abandoned",
+      "version": 2,
+      "created_at": "2026-08-29T04:05:07+00:00",
+      "updated_at": "2026-08-29T04:11:44+00:00",
+      "touched_round": 15,
+      "category": "test-quality",
+      "severity": 2.5,
+      "label": "(bug-hunt #2) capped-body honesty — DONE via CHG-092 (body_capped field + render/JSON)"
+    },
+    "ISS-101": {
+      "id": "ISS-101",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-29T04:06:44+00:00",
+      "updated_at": "2026-08-29T04:09:25+00:00",
+      "touched_round": 15,
+      "desc": "(bug-hunt #2) A body capped at --max-body-bytes was reported as the exact final size (body: 1048576 bytes reads as the true response length for a 3MB endpoint); snippet ellipsis only signals the 1KiB snippet cap. Fixed by CHG-092 (HttpObservation.body_capped; human/JSON honest)."
+    },
+    "ISS-102": {
+      "id": "ISS-102",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-29T04:06:44+00:00",
+      "updated_at": "2026-08-29T04:09:25+00:00",
+      "touched_round": 15,
+      "desc": "(bug-hunt #5) dns <ip-literal> --count N silently ignores --count for forward record types (only PTR reverse repeats); user believes they got an N-query aggregate. Fixed by CHG-091 (stderr warning)."
+    },
+    "ISS-103": {
+      "id": "ISS-103",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-29T04:06:44+00:00",
+      "updated_at": "2026-08-29T04:09:26+00:00",
+      "touched_round": 15,
+      "desc": "(bug-hunt #6) route --max-hops 0/--probes-per-hop 0 silently clamp to 1, inconsistent with --count 0 fail-fast. Fixed by CHG-091."
+    },
+    "ISS-104": {
+      "id": "ISS-104",
+      "type": "issue",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-29T04:07:53+00:00",
+      "updated_at": "2026-08-29T04:07:53+00:00",
+      "touched_round": 15,
+      "desc": "(bug-hunt #1) Repeated-probe runs give near-zero feedback for minutes: probe <host> --count N --timeout T runs N attempts sequentially per address; a blackholed address burns NxT of silence. The TTY progress counter is per-target and advances during resolve only, and a single target never shows anything."
+    },
+    "ISS-105": {
+      "id": "ISS-105",
+      "type": "issue",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-29T04:07:53+00:00",
+      "updated_at": "2026-08-29T04:07:53+00:00",
+      "touched_round": 15,
+      "desc": "(bug-hunt #3) --output-body on a multi-address/target sweep silently races all observations onto one file (last finisher wins), no warning, no destination association in the report."
+    },
+    "TASK-097": {
+      "id": "TASK-097",
+      "type": "task",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-29T04:11:44+00:00",
+      "updated_at": "2026-08-29T04:11:44+00:00",
+      "touched_round": 15,
+      "category": "consistency",
+      "severity": 2.0,
+      "label": "(bug-hunt #4) decide strict/expect-* vs diagnose local-unreachability divergence (see ISS-100): either mirror the engine all-local-unreachability exclusion in --strict/--expect or document the intentional difference"
     }
   },
   "edges": [
@@ -8012,6 +8162,66 @@
       "to": "TASK-093",
       "type": "implements",
       "created_at": "2026-08-29T02:01:45+00:00"
+    },
+    {
+      "from": "CHG-091",
+      "to": "ISS-098",
+      "type": "resolves",
+      "created_at": "2026-08-29T04:05:07+00:00"
+    },
+    {
+      "from": "CHG-091",
+      "to": "ISS-099",
+      "type": "resolves",
+      "created_at": "2026-08-29T04:05:07+00:00"
+    },
+    {
+      "from": "CHG-092",
+      "to": "ISS-095",
+      "type": "resolves",
+      "created_at": "2026-08-29T04:05:07+00:00"
+    },
+    {
+      "from": "CHG-091",
+      "to": "ISS-102",
+      "type": "resolves",
+      "created_at": "2026-08-29T04:07:53+00:00"
+    },
+    {
+      "from": "CHG-091",
+      "to": "ISS-103",
+      "type": "resolves",
+      "created_at": "2026-08-29T04:07:53+00:00"
+    },
+    {
+      "from": "CHG-092",
+      "to": "ISS-101",
+      "type": "resolves",
+      "created_at": "2026-08-29T04:07:53+00:00"
+    },
+    {
+      "from": "TASK-094",
+      "to": "ISS-104",
+      "type": "addresses",
+      "created_at": "2026-08-29T04:09:25+00:00"
+    },
+    {
+      "from": "TASK-095",
+      "to": "ISS-105",
+      "type": "addresses",
+      "created_at": "2026-08-29T04:09:25+00:00"
+    },
+    {
+      "from": "TASK-097",
+      "to": "ISS-100",
+      "type": "addresses",
+      "created_at": "2026-08-29T04:13:25+00:00"
+    },
+    {
+      "from": "TASK-096",
+      "to": "ISS-101",
+      "type": "addresses",
+      "created_at": "2026-08-29T04:16:23+00:00"
     }
   ]
 }
