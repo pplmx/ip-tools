@@ -376,9 +376,24 @@ mod tests {
     }
 
     #[test]
+    fn parses_destination_unreachable_as_the_final_hop_reply() {
+        // ICMP type 3 (destination unreachable — the port-unreachable reply
+        // the proxied destination sends) is the branch that terminates the
+        // trace at the final hop (route.rs:226 comment). It must parse like a
+        // time-exceeded hop, carrying the same inner UDP source port, with the
+        // type surfaced so the traceroute recognizes the end.
+        let mut p = build_icmp_time_exceeded(0x1234);
+        p[20] = 3; // type: destination unreachable
+        assert_eq!(parse_icmp_udp_src(&p, p.len()), Some((3, 0x1234)));
+    }
+
+    #[test]
     fn rejects_non_icmp_types() {
         let mut p = build_icmp_time_exceeded(0x1234);
         p[20] = 0; // echo reply
+        assert_eq!(parse_icmp_udp_src(&p, p.len()), None);
+        // A redirect (type 5) also carries no offending datagram to act on.
+        p[20] = 5;
         assert_eq!(parse_icmp_udp_src(&p, p.len()), None);
     }
 

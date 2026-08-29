@@ -1260,3 +1260,67 @@ fn route_cli_rejects_a_run_count_above_u16_max() {
         .failure()
         .stderr(contains("at most 65535"));
 }
+
+#[test]
+fn tcp_failure_json_contract_serializes_the_failure_object() {
+    // A failed probe's `--json` must serialize the classified failure as
+    // `"failure": {"kind": "<snake_case>", "message": ...}` — the most
+    // scripting-critical surface of the JSON output. Every other JSON test
+    // parses into an untyped Value and never pins this, so this is the
+    // contract test that catches a future kind rename or field change.
+    let addr = {
+        let l = TcpListener::bind("127.0.0.1:0").expect("bind listener");
+        let addr = l.local_addr().expect("listener addr");
+        drop(l); // nothing listens now: connect => ECONNREFUSED
+        addr
+    };
+    let out = cmd()
+        .args(["tcp", &addr.to_string(), "--json", "--timeout", "800"])
+        .assert()
+        .success();
+    let stdout = stdout(&out);
+    let value: serde_json::Value = serde_json::from_str(&stdout).expect("tcp --json must parse");
+    let obs = value.as_array().and_then(|a| a.first()).expect("single observation");
+    let failure = obs.get("failure").expect("a refused probe must carry a failure object");
+    assert_eq!(
+        failure.get("kind").and_then(serde_json::Value::as_str),
+        Some("connection_refused"),
+        "FailureKind must serialize snake_case: {failure}"
+    );
+    assert!(
+        failure
+            .get("message")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|m| !m.is_empty()),
+        "the failure message must be present and non-empty: {failure}"
+    );
+}
+
+#[test]
+fn diagnose_and_route_cli_reject_zero_run_parameters() {
+    // `diagnose --count 0` and route's `--count 0` / `--max-hops 0` /
+    // `--probes-per-hop 0` fail fast exactly like the probe/dns `--count 0`
+    // guards (which already have tests) — a zero repeat would render a
+    // vacuous report.
+    let addr = local_tcp_listener();
+    cmd()
+        .args(["diagnose", &addr.to_string(), "--count", "0", "--timeout", "800"])
+        .assert()
+        .failure()
+        .stderr(contains("--count must be at least 1"));
+    cmd()
+        .args(["route", "127.0.0.1", "--count", "0", "--timeout", "300"])
+        .assert()
+        .failure()
+        .stderr(contains("must be at least 1"));
+    cmd()
+        .args(["route", "127.0.0.1", "--max-hops", "0", "--timeout", "300"])
+        .assert()
+        .failure()
+        .stderr(contains("--max-hops must be at least 1"));
+    cmd()
+        .args(["route", "127.0.0.1", "--probes-per-hop", "0", "--timeout", "300"])
+        .assert()
+        .failure()
+        .stderr(contains("--probes-per-hop must be at least 1"));
+}

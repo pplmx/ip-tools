@@ -1123,6 +1123,22 @@ async fn tls_and_http_probe_time_out_when_server_never_responds() {
         "an h1-over-TLS handshake stall must not read as an HTTP-layer timeout: {obs:?}"
     );
 
+    // The base `http2::probe` variant (system roots, protocol auto) is the one
+    // single-shot h2 path with no direct caller — `probe_with_version` /
+    // `probe_with_roots` subsume it. It must behave like `tls::probe` /
+    // `http::probe` on the same black-holed peer: a TLS-layer timeout, not an
+    // HTTP-layer error, keeping it exercised (parity with the siblings' tests).
+    let obs = http2::probe(addr, "localhost", "GET", "/", &[], None, Duration::from_millis(500)).await;
+    assert_eq!(
+        obs.failure.as_ref().map(|f| f.kind),
+        Some(ip_tools::FailureKind::TlsHandshake),
+        "an h2-over-TLS handshake stall must read as a TLS-layer timeout: {obs:?}"
+    );
+    assert!(
+        obs.failure.as_ref().expect("failure").message.contains("timed out"),
+        "the h2 stall must be spelled out: {obs:?}"
+    );
+
     held.abort();
 }
 

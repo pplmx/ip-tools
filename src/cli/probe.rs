@@ -307,9 +307,10 @@ pub(super) async fn run_probe(sub_m: &ArgMatches, style: Style) -> ExitCode {
 }
 
 /// Render every repeated-probe result as CSV: a header then one
-/// `host,destination,attempts,success_rate,latency_p50_ms,latency_p95_ms,latency_max_ms,jitter_ms,failures,statuses`
+/// `host,destination,attempts,success_rate,latency_p50_ms,latency_p95_ms,latency_max_ms,jitter_ms,ttfb_p50_ms,ttfb_p95_ms,ttfb_max_ms,failures,statuses`
 /// row per destination across every target. Latency statistics come from the
-/// `--count` aggregation (only successful attempts).
+/// `--count` aggregation (only successful attempts); the `ttfb_*` columns
+/// carry the server-response latency on HTTP repeats (empty for `tcp`/`tls`).
 fn render_probe_csv(per_target: &[(String, Vec<ProbeResult>)]) -> String {
     use std::fmt::Write as _;
     let mut out = String::from(
