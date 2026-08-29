@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 17,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-29T20:06:54+00:00",
+  "updated_at": "2026-08-29T21:17:17+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -5083,10 +5083,10 @@
     "ISS-122": {
       "id": "ISS-122",
       "type": "issue",
-      "status": "stale",
-      "version": 2,
+      "status": "resolved",
+      "version": 3,
       "created_at": "2026-08-29T17:37:26+00:00",
-      "updated_at": "2026-08-29T20:06:54+00:00",
+      "updated_at": "2026-08-29T21:16:35+00:00",
       "touched_round": 17,
       "title": "no shell tab-completion scripts for the 12-subcommand / 40-flag CLI",
       "severity": "low",
@@ -5201,6 +5201,28 @@
       "touched_round": 17,
       "rationale": "Round-17 closure (operator goal: detail-fix/polish/usability). All 4 selected mainlines delivered (TASK-098..101 resolve ISS-106..121); full gate green (tests/clippy PEDANTIC+NURSERY/fmt/docs -D warnings/api-baseline diff empty). Three findings are consciously deferred rather than executed now: (1) ISS-122 shell tab-completions — a genuine 'ease-of-use' feature but it needs a new dependency (clap_complete) with cargo-deny/MSRV review and is a feature-level addition, so it is parked for a dedicated feature round rather than bolted onto this bug-fix convergence round; (2) the unused pub IpVersion enum (consistency-agent finding #5) — public API, removal is a minor-bump breaking change with no user-visible value; it stays as dead public API until a semver-minor release can drop it; (3) DEC-077's uniform --json root shape stays deferred (documented, would be a JSON-contract break; re-confirmed not in scope).",
       "alternatives_rejected": "Adding clap_complete now without a dependency audit (would race this round's convergence for a feature); removing IpVersion in a patch (breaking public API); reopening DEC-077 (breaks the documented single-target JSON shape)"
+    },
+    "CHG-100": {
+      "id": "CHG-100",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-29T21:16:34+00:00",
+      "updated_at": "2026-08-29T21:16:34+00:00",
+      "touched_round": 17,
+      "commit": "e8f8e55",
+      "title": "completions subcommand (clap_complete; build_command()/parser split; PipeTolerant)"
+    },
+    "DEC-083": {
+      "id": "DEC-083",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-29T21:17:17+00:00",
+      "updated_at": "2026-08-29T21:17:17+00:00",
+      "touched_round": 17,
+      "rationale": "Round-17 capstone: ISS-122 shell completions was deferred in DEC-082 (dependency + feature scope), but the operator goal explicitly targets ease-of-use (易用性) and clap_complete makes it a near-free, self-contained slice driven off the live clap tree. Implemented in-round (e8f8e55): completions bash|zsh|fish|elvish|powershell, MSRV-1.88 verified, api-baseline unchanged, EPIPE-tolerant generation (a generated pipe must never panic). DEC-082 remains in force for the other two deferrals (dead pub IpVersion enum; DEC-077 uniform --json shape).",
+      "alternatives_rejected": "Keeping the ISS-122 deferral (would leave the goalmost-completion-friendly CLI without tab-completion while the goal names ease-of-use); hand-written completion files (they would drift from the clap tree); committed scripts instead of a generator (same drift)."
     }
   },
   "edges": [
@@ -8941,6 +8963,18 @@
       "to": "DEC-080",
       "type": "supersedes",
       "created_at": "2026-08-29T20:06:54+00:00"
+    },
+    {
+      "from": "CHG-100",
+      "to": "ISS-122",
+      "type": "resolves",
+      "created_at": "2026-08-29T21:16:35+00:00"
+    },
+    {
+      "from": "DEC-083",
+      "to": "DEC-082",
+      "type": "supersedes",
+      "created_at": "2026-08-29T21:17:17+00:00"
     }
   ]
 }
