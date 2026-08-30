@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 18,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-30T04:36:17+00:00",
+  "updated_at": "2026-08-30T05:19:15+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -5251,10 +5251,10 @@
     "ISS-125": {
       "id": "ISS-125",
       "type": "issue",
-      "status": "active",
-      "version": 1,
+      "status": "resolved",
+      "version": 2,
       "created_at": "2026-08-30T03:40:57+00:00",
-      "updated_at": "2026-08-30T03:40:57+00:00",
+      "updated_at": "2026-08-30T05:19:15+00:00",
       "touched_round": 18,
       "desc": "probe --protocol http3 --tls-version silently ignored (http3 arm drops tls_protocol) while http3 subcommand rejects the flag at parse - same flag, one exit 0 no-op, other exit 2",
       "severity": "medium",
@@ -5263,10 +5263,10 @@
     "ISS-126": {
       "id": "ISS-126",
       "type": "issue",
-      "status": "active",
-      "version": 1,
+      "status": "resolved",
+      "version": 2,
       "created_at": "2026-08-30T03:40:57+00:00",
-      "updated_at": "2026-08-30T03:40:57+00:00",
+      "updated_at": "2026-08-30T05:19:15+00:00",
       "touched_round": 18,
       "desc": "--method help lies ('GET or HEAD') and a garbage token fails deep inside a probe with exit 0 (looks like a network failure, README documents POST) - no value_parser",
       "severity": "medium",
@@ -5275,10 +5275,10 @@
     "ISS-127": {
       "id": "ISS-127",
       "type": "issue",
-      "status": "active",
-      "version": 1,
+      "status": "resolved",
+      "version": 2,
       "created_at": "2026-08-30T03:42:06+00:00",
-      "updated_at": "2026-08-30T03:42:06+00:00",
+      "updated_at": "2026-08-30T05:19:15+00:00",
       "touched_round": 18,
       "desc": "diagnose --max-body-bytes help text advertises 'and any --output-body write' but diagnose defines no --output-body - following the hint yields unexpected-argument exit 2",
       "severity": "low",
@@ -5385,10 +5385,10 @@
     "TASK-103": {
       "id": "TASK-103",
       "type": "task",
-      "status": "active",
-      "version": 1,
+      "status": "resolved",
+      "version": 2,
       "created_at": "2026-08-30T03:46:22+00:00",
-      "updated_at": "2026-08-30T03:46:22+00:00",
+      "updated_at": "2026-08-30T05:19:15+00:00",
       "touched_round": 18,
       "category": "dx",
       "severity": 0.5,
@@ -5414,12 +5414,23 @@
       "id": "CHG-101",
       "type": "change",
       "status": "active",
-      "version": 1,
+      "version": 2,
       "created_at": "2026-08-30T04:34:19+00:00",
-      "updated_at": "2026-08-30T04:34:19+00:00",
+      "updated_at": "2026-08-30T04:40:51+00:00",
+      "touched_round": 18,
+      "commit": "f9b0d81",
+      "title": "HTTP-family wire correctness: custom Host carries the port; content-length dedup; h3 wire SNI + handshake latency"
+    },
+    "CHG-102": {
+      "id": "CHG-102",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-30T05:18:01+00:00",
+      "updated_at": "2026-08-30T05:18:01+00:00",
       "touched_round": 18,
       "commit": "PENDING",
-      "title": "HTTP-family wire correctness: custom Host carries the port; content-length dedup; h3 wire SNI + handshake latency"
+      "title": "CLI honesty: --method token validation, http3 --tls-version rejected, diagnose max-body-bytes help"
     }
   },
   "edges": [
@@ -9322,6 +9333,24 @@
       "to": "ISS-132",
       "type": "resolves",
       "created_at": "2026-08-30T04:36:16+00:00"
+    },
+    {
+      "from": "CHG-102",
+      "to": "ISS-125",
+      "type": "resolves",
+      "created_at": "2026-08-30T05:19:15+00:00"
+    },
+    {
+      "from": "CHG-102",
+      "to": "ISS-126",
+      "type": "resolves",
+      "created_at": "2026-08-30T05:19:15+00:00"
+    },
+    {
+      "from": "CHG-102",
+      "to": "ISS-127",
+      "type": "resolves",
+      "created_at": "2026-08-30T05:19:15+00:00"
     }
   ]
 }

@@ -323,6 +323,59 @@ fn probe_cli_rejects_http_request_flags_for_non_http_protocols() {
 }
 
 #[test]
+fn probe_cli_rejects_tls_version_for_http3() {
+    // QUIC is always TLS 1.3, so `--tls-version` on the http3 repeat is
+    // meaningless: it would otherwise run silently as 1.3 while the operator
+    // believes they pinned 1.2 (the standalone `http3` subcommand does not
+    // even define the flag). It must fail fast with a clear scope error.
+    let addr = local_tcp_listener();
+    for value in ["1.2", "1.3", "auto"] {
+        let assert = cmd()
+            .args([
+                "probe",
+                &addr.to_string(),
+                "--protocol",
+                "http3",
+                "--count",
+                "2",
+                "--timeout",
+                "800",
+                "--tls-version",
+                value,
+            ])
+            .assert()
+            .failure();
+        let err = stderr(&assert);
+        assert!(
+            err.contains("--tls-version does not apply to --protocol http3"),
+            "--tls-version {value} with --protocol http3 must be rejected: {err}"
+        );
+    }
+}
+
+#[test]
+fn http_cli_rejects_an_invalid_method_at_parse() {
+    // An HTTP method is a `token` (RFC 9110 §9.1): a value with a space is a
+    // paste/quoting accident that must fail at argument parse — not deep
+    // inside the probe, where it would surface as a bogus "could not build
+    // http request" observation and exit 0 like a network failure.
+    let addr = local_tcp_listener();
+    cmd()
+        .args(["http", &addr.to_string(), "--method", "FOO BAR"])
+        .assert()
+        .failure()
+        .stderr(contains("'FOO BAR' is not a valid HTTP method"));
+    // Valid methods still parse (the local plaintext listener makes the TLS
+    // probe fail as an observation, which is exit 0 without --strict — the
+    // point is that the method itself is accepted at parse).
+    cmd()
+        .args(["http", &addr.to_string(), "--method", "PATCH"])
+        .assert()
+        .success()
+        .stderr(contains("not a valid HTTP method").not());
+}
+
+#[test]
 fn probe_cli_rejects_zero_count() {
     // `--count 0` would probe nothing yet render a vacuous "0 attempts, 0.0%
     // success" report and exit 0; a count of zero is a caller mistake and must

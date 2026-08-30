@@ -118,7 +118,7 @@ fn build_command() -> Command {
                 header_arg(),
                 body_arg(),
                 output_body_arg(),
-                max_body_bytes_arg(),
+                max_body_bytes_arg(true),
                 expect_status_arg(),
                 expect_contains_arg(),
                 ipv4_arg(),
@@ -161,7 +161,7 @@ fn build_command() -> Command {
                 header_arg(),
                 body_arg(),
                 output_body_arg(),
-                max_body_bytes_arg(),
+                max_body_bytes_arg(true),
                 expect_status_arg(),
                 expect_contains_arg(),
                 ipv4_arg(),
@@ -182,7 +182,7 @@ fn build_command() -> Command {
                 header_arg(),
                 body_arg(),
                 output_body_arg(),
-                max_body_bytes_arg(),
+                max_body_bytes_arg(true),
                 expect_status_arg(),
                 expect_contains_arg(),
                 ipv4_arg(),
@@ -235,7 +235,7 @@ fn build_command() -> Command {
                 ipv4_arg(),
                 ipv6_arg(),
                 tls_version_arg(),
-                max_body_bytes_arg(),
+                max_body_bytes_arg(false),
                 reverse_arg(),
                 plain_arg(),
             ],
@@ -506,12 +506,40 @@ fn protocol_arg() -> Arg {
 }
 
 /// Shared `--method` argument.
+///
+/// Any valid HTTP method token is accepted (GET, HEAD, POST, PUT, DELETE,
+/// PATCH, OPTIONS, TRACE, CONNECT or a custom extension method), consistent
+/// with the README's POST-with-body and HEAD examples.
 fn method_arg() -> Arg {
     Arg::new("method")
         .long("method")
         .value_name("METHOD")
         .default_value("GET")
-        .help("HTTP method to use (GET or HEAD)")
+        .value_parser(http_method_token)
+        .help("HTTP method to send (any valid method: GET, HEAD, POST, PUT, DELETE, PATCH, ...)")
+}
+
+/// Parse and validate an HTTP method: methods are `token`s (RFC 9110 §9.1), so
+/// a value with spaces/control characters — a paste accident, a shell-quote
+/// slip — is rejected here at argument parse instead of failing deep inside
+/// the probe (where it would surface as a bogus "could not build http request"
+/// observation and exit 0, looking like a network failure).
+fn http_method_token(s: &str) -> Result<String, String> {
+    if s.is_empty() {
+        return Err("must be a non-empty HTTP method".to_string());
+    }
+    if !s.bytes().all(|b| {
+        b.is_ascii_alphanumeric()
+            || matches!(
+                b,
+                b'!' | b'#' | b'$' | b'%' | b'&' | b'\'' | b'*' | b'+' | b'-' | b'.' | b'^' | b'_' | b'`' | b'|' | b'~'
+            )
+    }) {
+        return Err(format!(
+            "'{s}' is not a valid HTTP method (methods are tokens: letters, digits, or ! # $ % & ' * + - . ^ _ ` | ~)"
+        ));
+    }
+    Ok(s.to_string())
 }
 
 /// `--sni` argument: present a chosen hostname as SNI (and HTTP `Host`
@@ -589,14 +617,23 @@ fn output_body_arg() -> Arg {
 }
 
 /// `--max-body-bytes` argument: bound the HTTP response-body read (and the
-/// `--output-body` write). Defaults to the crate's 1 MiB cap.
-fn max_body_bytes_arg() -> Arg {
+/// `--output-body` write, when the command defines it). Defaults to the
+/// crate's 1 MiB cap. `with_output_body` names whether the command also
+/// accepts `--output-body`, so the help text only advertises the coupling
+/// where the flag actually exists (diagnose bounds the read but has no
+/// `--output-body`; http/http2/http3 have both).
+fn max_body_bytes_arg(with_output_body: bool) -> Arg {
+    let help = if with_output_body {
+        "bound the HTTP response-body read (default 1048576) and any --output-body write"
+    } else {
+        "bound the HTTP response-body read (default 1048576)"
+    };
     Arg::new("max-body-bytes")
         .long("max-body-bytes")
         .value_name("BYTES")
         .value_parser(clap::value_parser!(u64))
         .default_value("1048576")
-        .help("bound the HTTP response-body read (default 1048576) and any --output-body write")
+        .help(help)
 }
 
 /// `--csv` argument for `diagnose`: emit per-diagnosis rows in CSV.

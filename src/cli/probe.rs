@@ -192,6 +192,19 @@ pub(super) async fn run_probe(sub_m: &ArgMatches, style: Style) -> ExitCode {
             return ExitCode::FAILURE;
         }
     }
+    // QUIC is always TLS 1.3 (rustls on quinn offers 1.3 only), so a
+    // `--tls-version 1.2` request on the http3 repeat is meaningless and would
+    // otherwise run silently as 1.3 — reject it up front, matching the
+    // standalone `http3` subcommand which does not even define the flag.
+    if protocol.as_str() == "http3"
+        && matches!(
+            sub_m.value_source("tls-version"),
+            Some(clap::parser::ValueSource::CommandLine)
+        )
+    {
+        eprintln!("Error: --tls-version does not apply to --protocol http3 (QUIC is always TLS 1.3)");
+        return ExitCode::FAILURE;
+    }
     let headers = match super::parse_custom_headers(sub_m) {
         Ok(v) => v,
         Err(e) => {
