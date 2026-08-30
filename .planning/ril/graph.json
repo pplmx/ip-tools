@@ -1,8 +1,8 @@
 {
   "ril_version": 1,
-  "round": 22,
+  "round": 23,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-30T17:45:37+00:00",
+  "updated_at": "2026-08-30T19:19:05+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -11,7 +11,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:45+00:00",
       "updated_at": "2026-08-21T17:36:45+00:00",
-      "touched_round": 19,
+      "touched_round": 22,
       "desc": "DNS probes: system resolver, --server custom, --doh RFC8484 (hand-rolled wire), literal short-circuit, RCODE surfacing"
     },
     "COMP-tcp": {
@@ -101,7 +101,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 21,
+      "touched_round": 22,
       "desc": "clap arg tree + dispatch; --strict/--json/--timeout/--concurrency/--server/--insecure/--method/--count flags"
     },
     "COMP-model": {
@@ -5993,6 +5993,104 @@
       "source": "test_local_http http_repeat_against_fixture_aggregates_all_protocols x2 full-suite (-all-features) runs on 2026-08-31",
       "summary": "observed successes:2 failures:1 kind=Http latency=[2,3] on the http3 repeat leg under a heavy parallel full-suite run; the synthetic header resets/setup errors make 3/3 all-success the strict assert; clean HEAD full run passed, 3 consecutive full test_local_http runs passed after -- rare fixture-scheduling flake, not reproduced on demand",
       "confidence": 0.9
+    },
+    "TASK-114": {
+      "id": "TASK-114",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T19:17:47+00:00",
+      "updated_at": "2026-08-30T19:18:28+00:00",
+      "touched_round": 22,
+      "category": "correctness",
+      "severity": 0.7,
+      "confidence": 1.0,
+      "effort": 0.5,
+      "unlock_factor": 0.5,
+      "summary": "DoH/DoT wire path must not report a CNAME-only answer as NODATA: track saw_cname in parse_dns_response and name the unfollowed alias at the empty-records gates"
+    },
+    "TASK-115": {
+      "id": "TASK-115",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T19:17:48+00:00",
+      "updated_at": "2026-08-30T19:18:28+00:00",
+      "touched_round": 22,
+      "category": "correctness",
+      "severity": 0.6,
+      "confidence": 1.0,
+      "effort": 0.5,
+      "unlock_factor": 0.5,
+      "summary": "h3 quic_tls_summary must surface the peer certificate so the report shows the cert + covers verdict the README promises and --insecure needs as its only wrong-host detector"
+    },
+    "TASK-116": {
+      "id": "TASK-116",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T19:17:48+00:00",
+      "updated_at": "2026-08-30T19:18:28+00:00",
+      "touched_round": 22,
+      "category": "dx",
+      "severity": 0.4,
+      "confidence": 1.0,
+      "effort": 0.2,
+      "unlock_factor": 0.3,
+      "summary": "dns IP-literal forward lookup silently drops --server/--doh/--dot (the PTR branch uses them): note the ignore like the --count/port notes"
+    },
+    "ISS-159": {
+      "id": "ISS-159",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T19:17:48+00:00",
+      "updated_at": "2026-08-30T19:18:28+00:00",
+      "touched_round": 22,
+      "summary": "DoH/DoT answer that is only a CNAME for the queried A/AAAA name is reported \"no X records found\" (false NODATA) when the responder did not chase; hickory follows the chain, fabricating a resolver disagreement on the same data"
+    },
+    "ISS-160": {
+      "id": "ISS-160",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T19:17:48+00:00",
+      "updated_at": "2026-08-30T19:18:28+00:00",
+      "touched_round": 22,
+      "summary": "h3 success rows never show the cert or covers verdict (quic_tls_summary hardcodes certificate: None) though README promises h1/h2/h3 parity; under --insecure the covers verdict is the only wrong-host/wildcard mismatch signal and it is silently absent on the QUIC path"
+    },
+    "ISS-161": {
+      "id": "ISS-161",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T19:17:48+00:00",
+      "updated_at": "2026-08-30T19:18:28+00:00",
+      "touched_round": 22,
+      "summary": "dns <IP> --server/--doh/--dot on a forward record type is silently ignored (the literal is reported directly) while the PTR branch uses the resolver - same flags, opposite behavior by record type, no signal"
+    },
+    "CHG-109": {
+      "id": "CHG-109",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-30T19:17:48+00:00",
+      "updated_at": "2026-08-30T19:17:48+00:00",
+      "touched_round": 22,
+      "commit": "f999fa2",
+      "summary": "Round-24 fixes: saw_cname CNAME-only honesty in parse_dns_response + doh/dot gates; h3 peer_identity cert_summary (tls::cert_summary -> pub(crate)); dns literal resolver-ignore Note; 4 tests"
+    },
+    "EVID-strict-noroute-consistency": {
+      "id": "EVID-strict-noroute-consistency",
+      "type": "evidence",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-30T19:17:49+00:00",
+      "updated_at": "2026-08-30T19:17:49+00:00",
+      "touched_round": 22,
+      "source": "live run 2026-08-31 on a v6-less host (tcp/diagnose/http --strict/--expect-status vs 2001:db8::1)",
+      "summary": "Re-verified DEC-081 after the round-24 hunt re-claimed diagnose --strict stays green: tcp 2001:db8::1 --strict exits 1, diagnose 2001:db8::1 --strict exits 1, http 2001:db8::1 --expect-status 2xx exits 1 - the exit-code contract is consistent across entry points (only stderr attribution differs), exactly as DEC-081 documented",
+      "confidence": 1.0
     }
   },
   "edges": [
@@ -10321,6 +10419,78 @@
       "to": "HYP-2",
       "type": "validates",
       "created_at": "2026-08-30T17:45:37+00:00"
+    },
+    {
+      "from": "TASK-114",
+      "to": "ISS-159",
+      "type": "addresses",
+      "created_at": "2026-08-30T19:17:48+00:00"
+    },
+    {
+      "from": "TASK-115",
+      "to": "ISS-160",
+      "type": "addresses",
+      "created_at": "2026-08-30T19:17:48+00:00"
+    },
+    {
+      "from": "TASK-116",
+      "to": "ISS-161",
+      "type": "addresses",
+      "created_at": "2026-08-30T19:17:48+00:00"
+    },
+    {
+      "from": "ISS-159",
+      "to": "COMP-dns",
+      "type": "located_in",
+      "created_at": "2026-08-30T19:17:48+00:00"
+    },
+    {
+      "from": "ISS-160",
+      "to": "COMP-http3",
+      "type": "located_in",
+      "created_at": "2026-08-30T19:17:48+00:00"
+    },
+    {
+      "from": "ISS-161",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-30T19:17:48+00:00"
+    },
+    {
+      "from": "CHG-109",
+      "to": "TASK-114",
+      "type": "implements",
+      "created_at": "2026-08-30T19:17:48+00:00"
+    },
+    {
+      "from": "CHG-109",
+      "to": "TASK-115",
+      "type": "implements",
+      "created_at": "2026-08-30T19:17:48+00:00"
+    },
+    {
+      "from": "CHG-109",
+      "to": "TASK-116",
+      "type": "implements",
+      "created_at": "2026-08-30T19:17:48+00:00"
+    },
+    {
+      "from": "CHG-109",
+      "to": "ISS-159",
+      "type": "resolves",
+      "created_at": "2026-08-30T19:17:48+00:00"
+    },
+    {
+      "from": "CHG-109",
+      "to": "ISS-160",
+      "type": "resolves",
+      "created_at": "2026-08-30T19:17:48+00:00"
+    },
+    {
+      "from": "CHG-109",
+      "to": "ISS-161",
+      "type": "resolves",
+      "created_at": "2026-08-30T19:17:49+00:00"
     }
   ]
 }
