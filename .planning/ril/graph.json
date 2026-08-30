@@ -1,8 +1,8 @@
 {
   "ril_version": 1,
-  "round": 21,
+  "round": 22,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-30T16:46:50+00:00",
+  "updated_at": "2026-08-30T17:14:01+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -5858,10 +5858,10 @@
     "TASK-111": {
       "id": "TASK-111",
       "type": "task",
-      "status": "active",
-      "version": 1,
+      "status": "resolved",
+      "version": 2,
       "created_at": "2026-08-30T16:46:04+00:00",
-      "updated_at": "2026-08-30T16:46:04+00:00",
+      "updated_at": "2026-08-30T17:10:09+00:00",
       "touched_round": 21,
       "category": "dx",
       "severity": 0.8,
@@ -5873,10 +5873,10 @@
     "TASK-112": {
       "id": "TASK-112",
       "type": "task",
-      "status": "active",
-      "version": 1,
+      "status": "resolved",
+      "version": 2,
       "created_at": "2026-08-30T16:46:05+00:00",
-      "updated_at": "2026-08-30T16:46:05+00:00",
+      "updated_at": "2026-08-30T17:10:09+00:00",
       "touched_round": 21,
       "category": "correctness",
       "severity": 0.85,
@@ -5888,10 +5888,10 @@
     "TASK-113": {
       "id": "TASK-113",
       "type": "task",
-      "status": "active",
-      "version": 1,
+      "status": "resolved",
+      "version": 2,
       "created_at": "2026-08-30T16:46:05+00:00",
-      "updated_at": "2026-08-30T16:46:05+00:00",
+      "updated_at": "2026-08-30T17:10:10+00:00",
       "touched_round": 21,
       "category": "dx",
       "severity": 0.7,
@@ -5903,52 +5903,63 @@
     "ISS-153": {
       "id": "ISS-153",
       "type": "issue",
-      "status": "active",
-      "version": 1,
+      "status": "resolved",
+      "version": 2,
       "created_at": "2026-08-30T16:46:05+00:00",
-      "updated_at": "2026-08-30T16:46:05+00:00",
+      "updated_at": "2026-08-30T17:10:10+00:00",
       "touched_round": 21,
       "summary": "http/http2/http3/probe/diagnose accept an empty or whitespace --path; the request is never built, yet the run renders a per-address \"could not build http request\" observation and exits 0 (false green)"
     },
     "ISS-154": {
       "id": "ISS-154",
       "type": "issue",
-      "status": "active",
-      "version": 1,
+      "status": "resolved",
+      "version": 2,
       "created_at": "2026-08-30T16:46:05+00:00",
-      "updated_at": "2026-08-30T16:46:05+00:00",
+      "updated_at": "2026-08-30T17:10:10+00:00",
       "touched_round": 21,
       "summary": "--output-body guard counts targets; a single dual-stack hostname resolving to v4+v6 races both addresses into one file (last finisher wins silently)"
     },
     "ISS-155": {
       "id": "ISS-155",
       "type": "issue",
-      "status": "active",
-      "version": 1,
+      "status": "resolved",
+      "version": 2,
       "created_at": "2026-08-30T16:46:05+00:00",
-      "updated_at": "2026-08-30T16:46:05+00:00",
+      "updated_at": "2026-08-30T17:10:10+00:00",
       "touched_round": 21,
       "summary": "--output-body to an unwritable path only Warns on stderr and exits 0; README advertises the write unconditionally, so a capture-enabled health check silently loses its file"
     },
     "ISS-156": {
       "id": "ISS-156",
       "type": "issue",
-      "status": "active",
-      "version": 1,
+      "status": "resolved",
+      "version": 2,
       "created_at": "2026-08-30T16:46:05+00:00",
-      "updated_at": "2026-08-30T16:46:05+00:00",
+      "updated_at": "2026-08-30T17:10:10+00:00",
       "touched_round": 21,
       "summary": "probe --protocol tcp --sni NAME is silently accepted and ignored (exit 0) while standalone tcp rejects --sni at parse -- the same silent-swallow the method/path/header/body honest guards fixed"
     },
     "ISS-157": {
       "id": "ISS-157",
       "type": "issue",
-      "status": "active",
-      "version": 1,
+      "status": "resolved",
+      "version": 2,
       "created_at": "2026-08-30T16:46:05+00:00",
-      "updated_at": "2026-08-30T16:46:05+00:00",
+      "updated_at": "2026-08-30T17:10:10+00:00",
       "touched_round": 21,
       "summary": "route --timeout only bounds the trace, not target DNS resolution (resolve_for_tcp hardcodes 5s per lookup, A+AAAA) despite --help describing --timeout as a per-operation timeout"
+    },
+    "CHG-108": {
+      "id": "CHG-108",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-30T17:10:09+00:00",
+      "updated_at": "2026-08-30T17:10:09+00:00",
+      "touched_round": 21,
+      "commit": "36d815e",
+      "summary": "Round-23 CLI honesty fixes: http_path_token parse validation; output-body destination-count + pre-flight write guards; probe tcp --sni fail-fast; route --timeout bounds DNS resolution; 4 CLI tests"
     }
   },
   "edges": [
@@ -10217,6 +10228,54 @@
       "to": "COMP-route",
       "type": "located_in",
       "created_at": "2026-08-30T16:46:50+00:00"
+    },
+    {
+      "from": "CHG-108",
+      "to": "TASK-111",
+      "type": "implements",
+      "created_at": "2026-08-30T17:10:09+00:00"
+    },
+    {
+      "from": "CHG-108",
+      "to": "TASK-112",
+      "type": "implements",
+      "created_at": "2026-08-30T17:10:09+00:00"
+    },
+    {
+      "from": "CHG-108",
+      "to": "TASK-113",
+      "type": "implements",
+      "created_at": "2026-08-30T17:10:09+00:00"
+    },
+    {
+      "from": "CHG-108",
+      "to": "ISS-153",
+      "type": "resolves",
+      "created_at": "2026-08-30T17:10:09+00:00"
+    },
+    {
+      "from": "CHG-108",
+      "to": "ISS-154",
+      "type": "resolves",
+      "created_at": "2026-08-30T17:10:09+00:00"
+    },
+    {
+      "from": "CHG-108",
+      "to": "ISS-155",
+      "type": "resolves",
+      "created_at": "2026-08-30T17:10:09+00:00"
+    },
+    {
+      "from": "CHG-108",
+      "to": "ISS-156",
+      "type": "resolves",
+      "created_at": "2026-08-30T17:10:09+00:00"
+    },
+    {
+      "from": "CHG-108",
+      "to": "ISS-157",
+      "type": "resolves",
+      "created_at": "2026-08-30T17:10:09+00:00"
     }
   ]
 }
