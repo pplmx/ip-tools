@@ -1,8 +1,8 @@
 {
   "ril_version": 1,
-  "round": 23,
+  "round": 24,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-30T19:19:05+00:00",
+  "updated_at": "2026-08-30T20:54:03+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -111,7 +111,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 17,
+      "touched_round": 23,
       "desc": "typed observation model: DNS/TCP/TLS/HTTP/latency/probe/diagnosis; serde Serialize"
     },
     "COMP-report": {
@@ -6091,6 +6091,66 @@
       "source": "live run 2026-08-31 on a v6-less host (tcp/diagnose/http --strict/--expect-status vs 2001:db8::1)",
       "summary": "Re-verified DEC-081 after the round-24 hunt re-claimed diagnose --strict stays green: tcp 2001:db8::1 --strict exits 1, diagnose 2001:db8::1 --strict exits 1, http 2001:db8::1 --expect-status 2xx exits 1 - the exit-code contract is consistent across entry points (only stderr attribution differs), exactly as DEC-081 documented",
       "confidence": 1.0
+    },
+    "TASK-117": {
+      "id": "TASK-117",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T20:52:57+00:00",
+      "updated_at": "2026-08-30T20:52:57+00:00",
+      "touched_round": 23,
+      "category": "correctness",
+      "severity": 0.7,
+      "confidence": 1.0,
+      "effort": 0.5,
+      "unlock_factor": 0.5,
+      "summary": "ResolverKind JSON must be one stable string across variants: the derived tagged shape type-swapped (\"System\" vs {\"Custom\":...}) within one document and broke jq joins against the lowercase human/CSV labels"
+    },
+    "ISS-162": {
+      "id": "ISS-162",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T20:52:57+00:00",
+      "updated_at": "2026-08-30T20:52:57+00:00",
+      "touched_round": 23,
+      "summary": "--json resolver field is type-unstable (string on System rows, object on Custom/Doh/Dot rows) and contradicts the lowercase human/CSV labels - no single jq filter or join survives; three spellings for one logical value"
+    },
+    "CHG-110": {
+      "id": "CHG-110",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-30T20:52:57+00:00",
+      "updated_at": "2026-08-30T20:52:57+00:00",
+      "touched_round": 23,
+      "commit": "a2cd801",
+      "summary": "Manual Serialize for ResolverKind emits the single label spelling (system / addr / DoH endpoint / host (DoT)); pub ResolverKind::label() as the one source of truth; renderer fns delegate; api-baseline regenerated"
+    },
+    "EVID-covers-unicode-unreachable": {
+      "id": "EVID-covers-unicode-unreachable",
+      "type": "evidence",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-30T20:52:57+00:00",
+      "updated_at": "2026-08-30T20:52:57+00:00",
+      "touched_round": 23,
+      "source": "src/tls.rs:192 + rustls-pki-types server_name validate(ascii)",
+      "summary": "Round-25 finding LOW/MEDIUM-4 (cert_covers_hostname lacks IDNA/punycode normalization) verified NOT reachable end-to-end: ServerName::try_from rejects non-ASCII DNS names (validate is ASCII-only), so tls.rs:192 fails with a clean \"cannot use ... as a server name\" Protocol error before any handshake; covers only ever sees ASCII SNI from a successful session (and --plain http has no TLS/cert row). The hunt verified cert_covers_hostname in isolation, not the real path. No idna dependency added - the gap is unreachable.",
+      "confidence": 1.0
+    },
+    "EVID-route-json-count-swap": {
+      "id": "EVID-route-json-count-swap",
+      "type": "evidence",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-30T20:52:57+00:00",
+      "updated_at": "2026-08-30T20:52:57+00:00",
+      "touched_round": 23,
+      "source": "src/cli/route.rs:135-139 vs 186-192, live run",
+      "summary": "Round-25 enumerated the concrete DEC-077 cases: tcp/tls/http/http2/http3/probe/dns --json swap bare-array (single target) vs [{target,results}] (multi); route --json additionally renames fields by --count (addr/rtt_ms single array vs addrs/rtt-with-distribution object for --count 2). Both are the documented DEC-077 uniform-JSON deferral (top-level shape by input), not regressions; recorded so DEC-077 execution covers the route count rename explicitly.",
+      "confidence": 1.0
     }
   },
   "edges": [
@@ -10491,6 +10551,30 @@
       "to": "ISS-161",
       "type": "resolves",
       "created_at": "2026-08-30T19:17:49+00:00"
+    },
+    {
+      "from": "TASK-117",
+      "to": "ISS-162",
+      "type": "addresses",
+      "created_at": "2026-08-30T20:52:57+00:00"
+    },
+    {
+      "from": "ISS-162",
+      "to": "COMP-model",
+      "type": "located_in",
+      "created_at": "2026-08-30T20:52:57+00:00"
+    },
+    {
+      "from": "CHG-110",
+      "to": "TASK-117",
+      "type": "implements",
+      "created_at": "2026-08-30T20:52:57+00:00"
+    },
+    {
+      "from": "CHG-110",
+      "to": "ISS-162",
+      "type": "resolves",
+      "created_at": "2026-08-30T20:52:57+00:00"
     }
   ]
 }
