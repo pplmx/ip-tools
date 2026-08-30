@@ -81,6 +81,7 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches, style: Style) -> ExitCode {
         .expect("max-body-bytes has default");
     let timeout_ms = *sub_m.get_one::<u64>("timeout").expect("timeout has default");
     let concurrency = *sub_m.get_one::<usize>("concurrency").expect("concurrency has default");
+    super::note_concurrency_cap(sub_m);
     let timeout = Duration::from_millis(timeout_ms);
 
     if let Err(e) = super::ensure_single_output_format(sub_m) {

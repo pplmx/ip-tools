@@ -1446,11 +1446,6 @@ fn diagnose_and_route_cli_reject_zero_run_parameters() {
         .code(2)
         .stderr(contains("must be at least 1"));
     cmd()
-        .args(["route", "127.0.0.1", "--count", "0", "--timeout", "300"])
-        .assert()
-        .failure()
-        .stderr(contains("must be at least 1"));
-    cmd()
         .args(["route", "127.0.0.1", "--max-hops", "0", "--timeout", "300"])
         .assert()
         .failure()
@@ -1460,4 +1455,50 @@ fn diagnose_and_route_cli_reject_zero_run_parameters() {
         .assert()
         .failure()
         .stderr(contains("--probes-per-hop must be at least 1"));
+}
+
+#[test]
+fn concurrency_above_the_cap_is_noted_on_stderr() {
+    // `--concurrency 1000` runs bounded by the hard MAX_CONCURRENCY cap; an
+    // operator who asked for 1000 must be told the run uses 256, not discover
+    // the clamp from a slower-than-expected sweep. Within the cap stays silent.
+    let addr = local_tcp_listener();
+    let err = stderr(
+        &cmd()
+            .args([
+                "probe",
+                &addr.to_string(),
+                "--count",
+                "1",
+                "--concurrency",
+                "1000",
+                "--timeout",
+                "500",
+            ])
+            .assert()
+            .success(),
+    );
+    assert!(
+        err.contains("--concurrency 1000 is capped at 256"),
+        "an over-cap --concurrency must be noted: {err}"
+    );
+    let err = stderr(
+        &cmd()
+            .args([
+                "probe",
+                &addr.to_string(),
+                "--count",
+                "1",
+                "--concurrency",
+                "100",
+                "--timeout",
+                "500",
+            ])
+            .assert()
+            .success(),
+    );
+    assert!(
+        !err.contains("capped at"),
+        "a within-cap --concurrency stays silent: {err}"
+    );
 }

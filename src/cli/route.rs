@@ -75,9 +75,11 @@ pub(super) async fn run_route(sub_m: &ArgMatches, style: Style) -> ExitCode {
     };
 
     let cfg = TracerouteConfig {
-        max_hops: max_hops.max(1),
+        // `--max-hops 0` / `--probes-per-hop 0` were rejected up front, so no
+        // clamp is needed here (a `.max(1)` would be unreachable dead code).
+        max_hops,
         timeout: Duration::from_millis(timeout_ms),
-        probes_per_hop: probes_per_hop.max(1),
+        probes_per_hop,
     };
 
     if count > 1 {

@@ -998,6 +998,7 @@ where
     let strict = sub_m.get_flag("strict");
     let timeout_ms = *sub_m.get_one::<u64>("timeout").expect("timeout has default");
     let concurrency = *sub_m.get_one::<usize>("concurrency").expect("concurrency has default");
+    note_concurrency_cap(sub_m);
     let timeout = Duration::from_millis(timeout_ms);
     // `--ipv4`/`--ipv6` restrict a sweep to one address family; with neither,
     // every resolved address is probed (the default).
@@ -1306,6 +1307,21 @@ fn handle_list(sub_m: &ArgMatches) -> ExitCode {
         Err(e) => {
             eprintln!("Error: {e}");
             ExitCode::FAILURE
+        }
+    }
+}
+
+/// Print a stderr `Note:` when `--concurrency` exceeds the [`MAX_CONCURRENCY`]
+/// cap, so an operator who asked for parallelism 1000 is told the run actually
+/// uses 256 instead of discovering the clamp from a slower-than-expected
+/// sweep. Reads the value from `sub_m`; silent when the flag is absent or
+/// within the cap.
+pub fn note_concurrency_cap(sub_m: &ArgMatches) {
+    if let Some(concurrency) = sub_m.get_one::<usize>("concurrency") {
+        if *concurrency > MAX_CONCURRENCY {
+            eprintln!(
+                "Note: --concurrency {concurrency} is capped at {MAX_CONCURRENCY} (a hard bound against socket exhaustion)"
+            );
         }
     }
 }

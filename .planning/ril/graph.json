@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 19,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-30T09:37:20+00:00",
+  "updated_at": "2026-08-30T10:40:09+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -5533,12 +5533,35 @@
       "id": "CHG-106",
       "type": "change",
       "status": "active",
-      "version": 1,
+      "version": 2,
       "created_at": "2026-08-30T09:35:32+00:00",
-      "updated_at": "2026-08-30T09:35:32+00:00",
+      "updated_at": "2026-08-30T09:41:49+00:00",
+      "touched_round": 19,
+      "commit": "411b35f",
+      "title": "DoH: strip query/fragment from the endpoint path so ?dns= is its own param"
+    },
+    "ISS-138": {
+      "id": "ISS-138",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T10:36:55+00:00",
+      "updated_at": "2026-08-30T10:40:09+00:00",
+      "touched_round": 19,
+      "desc": "--concurrency above MAX_CONCURRENCY (256) silently clamps with no indication; route --max-hops/--probes-per-hop .max(1) clamps are unreachable dead code after the zero-guards",
+      "severity": "low",
+      "src": "cli/mod.rs:35,1079"
+    },
+    "CHG-107": {
+      "id": "CHG-107",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-30T10:36:55+00:00",
+      "updated_at": "2026-08-30T10:36:55+00:00",
       "touched_round": 19,
       "commit": "PENDING",
-      "title": "DoH: strip query/fragment from the endpoint path so ?dns= is its own param"
+      "title": "concurrency cap note; remove route vestigial .max(1) clamps"
     }
   },
   "edges": [
@@ -9543,6 +9566,18 @@
       "to": "COMP-dns",
       "type": "located_in",
       "created_at": "2026-08-30T09:37:20+00:00"
+    },
+    {
+      "from": "CHG-107",
+      "to": "ISS-138",
+      "type": "resolves",
+      "created_at": "2026-08-30T10:40:09+00:00"
+    },
+    {
+      "from": "ISS-138",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-30T10:40:09+00:00"
     }
   ]
 }

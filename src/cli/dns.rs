@@ -77,6 +77,7 @@ pub(super) async fn run_dns(sub_m: &ArgMatches, style: Style) -> ExitCode {
     // `--concurrency` parallelizes a multi-target DNS health sweep (default 1
     // preserves the original sequential ordering/semantics).
     let concurrency = *sub_m.get_one::<usize>("concurrency").expect("concurrency has default");
+    super::note_concurrency_cap(sub_m);
 
     // `--record-type` requests one specific type; `--ipv4`/`--ipv6` restrict
     // to A-only / AAAA-only; else both A and AAAA (the historical default).
