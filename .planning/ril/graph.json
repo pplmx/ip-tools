@@ -1,8 +1,8 @@
 {
   "ril_version": 1,
-  "round": 19,
+  "round": 21,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-30T10:40:09+00:00",
+  "updated_at": "2026-08-30T13:30:24+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -5556,12 +5556,292 @@
       "id": "CHG-107",
       "type": "change",
       "status": "active",
-      "version": 1,
+      "version": 2,
       "created_at": "2026-08-30T10:36:55+00:00",
-      "updated_at": "2026-08-30T10:36:55+00:00",
+      "updated_at": "2026-08-30T10:42:28+00:00",
       "touched_round": 19,
-      "commit": "PENDING",
+      "commit": "299d67e",
       "title": "concurrency cap note; remove route vestigial .max(1) clamps"
+    },
+    "ISS-139": {
+      "id": "ISS-139",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T12:06:00+00:00",
+      "updated_at": "2026-08-30T13:30:23+00:00",
+      "touched_round": 21,
+      "title": "wire_authority re-appends the port onto an override that already carries one (h1/h3 Host, h2/h3 :authority)",
+      "detail": "--header host: vhost.example:8443 against dest 8443 yields Host: vhost.example:8443:8443 (and the IPv6 case corrupts further) because wire_host never parses a port out and uri_authority_at appends unconditionally.",
+      "found_by": "round20-hunt-transport"
+    },
+    "ISS-140": {
+      "id": "ISS-140",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T12:06:01+00:00",
+      "updated_at": "2026-08-30T13:30:23+00:00",
+      "touched_round": 21,
+      "title": "Host header for an IPv6-literal target is emitted unbracketed (2001:db8::1:8443), malformed per RFC 7230/3986",
+      "detail": "wire_authority strips brackets and appends :port without re-bracketing; h1 Host, h3 host and DoH Host invalid for IPv6+port, while h2/h3 :authority (uri_authority_at) are fine. Unit test at http_common.rs:230 pins the wrong output.",
+      "found_by": "round20-hunt-transport"
+    },
+    "ISS-141": {
+      "id": "ISS-141",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T12:06:01+00:00",
+      "updated_at": "2026-08-30T13:30:23+00:00",
+      "touched_round": 21,
+      "title": "Single-family all-local-unreachable input falls through to a false Healthy verdict",
+      "detail": "diagnose --ipv6 <v6> from a v4-only host: every TCP obs fails NetworkUnreachable; connectivity_rules early-returns and family_rules needs both families, so no rule fires and the engine pushes Healthy.",
+      "found_by": "round20-hunt-diagnostics"
+    },
+    "ISS-142": {
+      "id": "ISS-142",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T12:06:01+00:00",
+      "updated_at": "2026-08-30T13:30:23+00:00",
+      "touched_round": 21,
+      "title": "QUIC-only filtering signal fires even when HTTP/3 succeeds on another address of the same host",
+      "detail": "has_quic_only = any H3 failure AND any non-H3 success; never verifies no H3 succeeded. Multi-address host where H3 fails on one IP but 200s on another yields a false protocol-selective (QUIC only) evidence line.",
+      "found_by": "round20-hunt-diagnostics"
+    },
+    "ISS-143": {
+      "id": "ISS-143",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T12:06:01+00:00",
+      "updated_at": "2026-08-30T13:30:23+00:00",
+      "touched_round": 21,
+      "title": "http_status_flapping_rules fires with transport failures present and duplicates intermittent_rules",
+      "detail": "Rule only checks status spans 2xx/non-2xx, never p.failures==0; evidence claims transport succeeded on every attempt when it did not, and one flaky dest yields two Intermittent rows.",
+      "found_by": "round20-hunt-diagnostics"
+    },
+    "ISS-144": {
+      "id": "ISS-144",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T12:06:28+00:00",
+      "updated_at": "2026-08-30T13:30:23+00:00",
+      "touched_round": 21,
+      "title": "certificate that already expired earlier today reads expires today (yellow) and never expired",
+      "detail": "days_until_from_rfc3339 compares calendar dates, so a cert whose notAfter was 06:00 today probed at 18:00 shows days==0 -> render_cert yellow \"expires today\" and certificate_lifetime_rules Low instead of the expired Medium/High verdict.",
+      "found_by": "round20-hunt-diagnostics"
+    },
+    "ISS-145": {
+      "id": "ISS-145",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T12:06:28+00:00",
+      "updated_at": "2026-08-30T13:30:23+00:00",
+      "touched_round": 21,
+      "title": "render_dns_repeat latency block omits p90 that render_probe prints for the identical type",
+      "detail": "same LatencySummary renders different columns per command; p90 present in JSON is silently absent from the dns repeat human view.",
+      "found_by": "round20-hunt-diagnostics"
+    },
+    "ISS-146": {
+      "id": "ISS-146",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T12:06:28+00:00",
+      "updated_at": "2026-08-30T13:30:23+00:00",
+      "touched_round": 21,
+      "title": "render_route_repeat lost rows are not padded to the shared host column",
+      "detail": "answered rows anchor N/N answered at host_w, the lost row emits \"{*}\" with no {:<host_w$}, so the rate column does not line up between the two kinds of rows.",
+      "found_by": "round20-hunt-diagnostics"
+    },
+    "ISS-147": {
+      "id": "ISS-147",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T12:06:28+00:00",
+      "updated_at": "2026-08-30T13:30:23+00:00",
+      "touched_round": 21,
+      "title": "recorded SNI for a bracketed IPv6 target keeps the brackets, unlike the wire-presented name",
+      "detail": "tls::probe_impl and build_tls_observation record sni \"[::1]\" / host.to_string() while the wire ServerName is \"::1\"; http3 already records wire_host, so the surfaces disagree.",
+      "found_by": "round20-hunt-transport"
+    },
+    "ISS-148": {
+      "id": "ISS-148",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T12:06:28+00:00",
+      "updated_at": "2026-08-30T13:30:23+00:00",
+      "touched_round": 21,
+      "title": "classify_io_error errno table lists 134 (bogus) and omits macOS ENETUNREACH 64",
+      "detail": "ENETUNREACH=101 (Linux) / 64 (macOS); the 134 arm matches nothing and macOS 64 falls through to Other.",
+      "found_by": "round20-hunt-transport"
+    },
+    "ISS-149": {
+      "id": "ISS-149",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T12:06:28+00:00",
+      "updated_at": "2026-08-30T13:30:23+00:00",
+      "touched_round": 21,
+      "title": "jitter is computed about the integer-truncated mean, biasing the variance estimate",
+      "detail": "samples [0,1]: mean truncated to 0, jitter 0 vs true std dev 0.5. Center-of-mass error compounds sub-ms rounding.",
+      "found_by": "round20-hunt-transport"
+    },
+    "ISS-150": {
+      "id": "ISS-150",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T12:06:28+00:00",
+      "updated_at": "2026-08-30T13:30:23+00:00",
+      "touched_round": 21,
+      "title": "cipher_name omits the TLS1.2 CBC-SHA256/SHA384 suites rustls can negotiate",
+      "detail": "map covers AES-*_CBC_SHA but not ECDHE_RSA/ECDSA_WITH_AES_128_CBC_SHA256 / AES_256_CBC_SHA384, so a legacy server negotiating one reports \"unknown\".",
+      "found_by": "round20-hunt-transport"
+    },
+    "ISS-151": {
+      "id": "ISS-151",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T12:06:29+00:00",
+      "updated_at": "2026-08-30T13:30:23+00:00",
+      "touched_round": 21,
+      "title": "parse_icmp_udp_src never validates the quoted datagram is IPv4/UDP before reading its UDP source port",
+      "detail": "inner version and protocol fields are unchecked; an unrelated ICMP quoting a coincidental first-two-bytes could misattribute a router address/RTT to a hop.",
+      "found_by": "round20-hunt-transport"
+    },
+    "TASK-107": {
+      "id": "TASK-107",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T12:07:45+00:00",
+      "updated_at": "2026-08-30T13:30:23+00:00",
+      "touched_round": 21,
+      "category": "correctness",
+      "title": "wire authority: honor an explicit port override verbatim and re-bracket IPv6 in the Host header",
+      "detail": "rewrite wire_authority, uri_authority and uri_authority_at so an override already naming a port is emitted verbatim and a bare IPv6 literal is always bracketed; fix the wrong http_common.rs:230 assertion.",
+      "severity": 0.5
+    },
+    "TASK-108": {
+      "id": "TASK-108",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T12:08:08+00:00",
+      "updated_at": "2026-08-30T13:30:24+00:00",
+      "touched_round": 21,
+      "category": "correctness",
+      "title": "diagnostics honesty: no false Healthy on single-family local-unreachable, no false QUIC-only, flapping needs clean transport plus dedup, cert expired-today",
+      "detail": "connectivity family_rules single-family branch; filtering has_quic_only requires no H3 success; http_status_flapping requires failures==0 plus per-dest dedup; certificate_lifetime_rules and render_cert in-past boundary.",
+      "severity": 0.5
+    },
+    "TASK-109": {
+      "id": "TASK-109",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T12:08:27+00:00",
+      "updated_at": "2026-08-30T13:30:24+00:00",
+      "touched_round": 21,
+      "category": "correctness",
+      "title": "transport edge: errno table, jitter mean, CBC-SHA256/384 cipher names, ICMP inner validation, SNI wire form",
+      "detail": "classify_io_error 101|64; latency variance on f64 mean; cipher_name add CBC-SHA256/SHA384 suites; parse_icmp_udp_src check inner IPv4+UDP; record bracket-stripped sni.",
+      "severity": 0.4
+    },
+    "TASK-110": {
+      "id": "TASK-110",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T12:08:27+00:00",
+      "updated_at": "2026-08-30T13:30:24+00:00",
+      "touched_round": 21,
+      "category": "maintainability",
+      "title": "report polish: dns-repeat p90 column and route-repeat lost-row column alignment",
+      "detail": "render_dns_repeat add p90; render_route_repeat pad the lost row to the shared host_w column.",
+      "severity": 0.3
+    },
+    "ISS-152": {
+      "id": "ISS-152",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T13:26:32+00:00",
+      "updated_at": "2026-08-30T13:30:23+00:00",
+      "touched_round": 21,
+      "title": "total-connectivity-loss claims High confidence from a single observation",
+      "detail": "total-loss branch pushes Confidence::High unconditionally; with one probed address that is a single observation type, violating the model doc plus mirroring the partial branch which withholds High below two failing addresses.",
+      "found_by": "round20-hunt-diagnostics"
+    },
+    "CHG-24662ce5": {
+      "id": "CHG-24662ce5",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-30T13:29:03+00:00",
+      "updated_at": "2026-08-30T13:29:03+00:00",
+      "touched_round": 21,
+      "commit": "4662ce5",
+      "round": 22,
+      "linked_task": "TASK-107"
+    },
+    "CHG-2e2f3576": {
+      "id": "CHG-2e2f3576",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-30T13:29:04+00:00",
+      "updated_at": "2026-08-30T13:29:04+00:00",
+      "touched_round": 21,
+      "commit": "e2f3576",
+      "round": 22,
+      "linked_task": "TASK-108"
+    },
+    "CHG-3f25aa63": {
+      "id": "CHG-3f25aa63",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-30T13:29:04+00:00",
+      "updated_at": "2026-08-30T13:29:04+00:00",
+      "touched_round": 21,
+      "commit": "f25aa63",
+      "round": 22,
+      "linked_task": "TASK-109"
+    },
+    "CHG-4d04b335": {
+      "id": "CHG-4d04b335",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-30T13:29:04+00:00",
+      "updated_at": "2026-08-30T13:29:04+00:00",
+      "touched_round": 21,
+      "commit": "d04b335",
+      "round": 22,
+      "linked_task": "TASK-110"
+    },
+    "CHG-53a62588": {
+      "id": "CHG-53a62588",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-30T13:29:04+00:00",
+      "updated_at": "2026-08-30T13:29:04+00:00",
+      "touched_round": 21,
+      "commit": "3a62588",
+      "round": 22,
+      "linked_task": "TASK-108"
     }
   },
   "edges": [
@@ -9578,6 +9858,198 @@
       "to": "COMP-cli",
       "type": "located_in",
       "created_at": "2026-08-30T10:40:09+00:00"
+    },
+    {
+      "from": "TASK-107",
+      "to": "ISS-139",
+      "type": "addresses",
+      "created_at": "2026-08-30T12:08:45+00:00"
+    },
+    {
+      "from": "TASK-107",
+      "to": "ISS-140",
+      "type": "addresses",
+      "created_at": "2026-08-30T12:08:45+00:00"
+    },
+    {
+      "from": "TASK-108",
+      "to": "ISS-141",
+      "type": "addresses",
+      "created_at": "2026-08-30T12:08:45+00:00"
+    },
+    {
+      "from": "TASK-108",
+      "to": "ISS-142",
+      "type": "addresses",
+      "created_at": "2026-08-30T12:08:45+00:00"
+    },
+    {
+      "from": "TASK-108",
+      "to": "ISS-143",
+      "type": "addresses",
+      "created_at": "2026-08-30T12:08:45+00:00"
+    },
+    {
+      "from": "TASK-108",
+      "to": "ISS-144",
+      "type": "addresses",
+      "created_at": "2026-08-30T12:08:45+00:00"
+    },
+    {
+      "from": "TASK-109",
+      "to": "ISS-147",
+      "type": "addresses",
+      "created_at": "2026-08-30T12:08:45+00:00"
+    },
+    {
+      "from": "TASK-109",
+      "to": "ISS-148",
+      "type": "addresses",
+      "created_at": "2026-08-30T12:08:45+00:00"
+    },
+    {
+      "from": "TASK-109",
+      "to": "ISS-149",
+      "type": "addresses",
+      "created_at": "2026-08-30T12:08:45+00:00"
+    },
+    {
+      "from": "TASK-109",
+      "to": "ISS-150",
+      "type": "addresses",
+      "created_at": "2026-08-30T12:08:45+00:00"
+    },
+    {
+      "from": "TASK-109",
+      "to": "ISS-151",
+      "type": "addresses",
+      "created_at": "2026-08-30T12:08:45+00:00"
+    },
+    {
+      "from": "TASK-110",
+      "to": "ISS-145",
+      "type": "addresses",
+      "created_at": "2026-08-30T12:08:45+00:00"
+    },
+    {
+      "from": "TASK-110",
+      "to": "ISS-146",
+      "type": "addresses",
+      "created_at": "2026-08-30T12:08:45+00:00"
+    },
+    {
+      "from": "CHG-24662ce5",
+      "to": "ISS-139",
+      "type": "resolves",
+      "created_at": "2026-08-30T13:30:22+00:00"
+    },
+    {
+      "from": "CHG-24662ce5",
+      "to": "ISS-140",
+      "type": "resolves",
+      "created_at": "2026-08-30T13:30:22+00:00"
+    },
+    {
+      "from": "CHG-2e2f3576",
+      "to": "ISS-141",
+      "type": "resolves",
+      "created_at": "2026-08-30T13:30:22+00:00"
+    },
+    {
+      "from": "CHG-2e2f3576",
+      "to": "ISS-142",
+      "type": "resolves",
+      "created_at": "2026-08-30T13:30:22+00:00"
+    },
+    {
+      "from": "CHG-2e2f3576",
+      "to": "ISS-143",
+      "type": "resolves",
+      "created_at": "2026-08-30T13:30:22+00:00"
+    },
+    {
+      "from": "CHG-2e2f3576",
+      "to": "ISS-144",
+      "type": "resolves",
+      "created_at": "2026-08-30T13:30:22+00:00"
+    },
+    {
+      "from": "CHG-3f25aa63",
+      "to": "ISS-147",
+      "type": "resolves",
+      "created_at": "2026-08-30T13:30:22+00:00"
+    },
+    {
+      "from": "CHG-3f25aa63",
+      "to": "ISS-148",
+      "type": "resolves",
+      "created_at": "2026-08-30T13:30:22+00:00"
+    },
+    {
+      "from": "CHG-3f25aa63",
+      "to": "ISS-149",
+      "type": "resolves",
+      "created_at": "2026-08-30T13:30:22+00:00"
+    },
+    {
+      "from": "CHG-3f25aa63",
+      "to": "ISS-150",
+      "type": "resolves",
+      "created_at": "2026-08-30T13:30:22+00:00"
+    },
+    {
+      "from": "CHG-3f25aa63",
+      "to": "ISS-151",
+      "type": "resolves",
+      "created_at": "2026-08-30T13:30:22+00:00"
+    },
+    {
+      "from": "CHG-4d04b335",
+      "to": "ISS-145",
+      "type": "resolves",
+      "created_at": "2026-08-30T13:30:22+00:00"
+    },
+    {
+      "from": "CHG-4d04b335",
+      "to": "ISS-146",
+      "type": "resolves",
+      "created_at": "2026-08-30T13:30:22+00:00"
+    },
+    {
+      "from": "CHG-53a62588",
+      "to": "ISS-152",
+      "type": "resolves",
+      "created_at": "2026-08-30T13:30:22+00:00"
+    },
+    {
+      "from": "CHG-24662ce5",
+      "to": "TASK-107",
+      "type": "implements",
+      "created_at": "2026-08-30T13:30:22+00:00"
+    },
+    {
+      "from": "CHG-2e2f3576",
+      "to": "TASK-108",
+      "type": "implements",
+      "created_at": "2026-08-30T13:30:22+00:00"
+    },
+    {
+      "from": "CHG-53a62588",
+      "to": "TASK-108",
+      "type": "implements",
+      "created_at": "2026-08-30T13:30:22+00:00"
+    },
+    {
+      "from": "CHG-3f25aa63",
+      "to": "TASK-109",
+      "type": "implements",
+      "created_at": "2026-08-30T13:30:23+00:00"
+    },
+    {
+      "from": "CHG-4d04b335",
+      "to": "TASK-110",
+      "type": "implements",
+      "created_at": "2026-08-30T13:30:23+00:00"
     }
   ]
 }
