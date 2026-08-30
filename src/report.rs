@@ -631,6 +631,7 @@ pub fn render_dns_repeat(style: &Style, host: &str, results: &[DnsRepeatResult])
             out.push_str("    latency:\n");
             out.push_str(&format!("      min:  {}\n", ms_or_dash(r.latency.min)));
             out.push_str(&format!("      p50:  {}\n", ms_or_dash(r.latency.p50)));
+            out.push_str(&format!("      p90:  {}\n", ms_or_dash(r.latency.p90)));
             out.push_str(&format!("      p95:  {}\n", ms_or_dash(r.latency.p95)));
             out.push_str(&format!("      p99:  {}\n", ms_or_dash(r.latency.p99)));
             out.push_str(&format!("      max:  {}\n", ms_or_dash(r.latency.max)));
@@ -805,10 +806,15 @@ pub fn render_route_repeat(style: &Style, repeat: &RouteRepeat) -> String {
         .max(40);
     for hop in &repeat.hops {
         if hop.answered == 0 {
+            let star = style.fail("*");
+            // Anchor the answer-rate column at the same `host_w` as answered
+            // rows, using the same single-space separator (`*` is 1 plain
+            // char; pad by its width, not the ANSI-wrapped length, so coloured
+            // and plain rows align).
+            let pad = " ".repeat(host_w - 1);
             out.push_str(&format!(
-                "  {:>2}  {}  {}/{}\n",
+                "  {:>2}  {star}{pad} {}/{}\n",
                 hop.ttl,
-                style.fail("*"),
                 0,
                 style.fail(format!("{} (lost)", repeat.runs))
             ));
@@ -1530,6 +1536,13 @@ mod tests {
         assert!(out.contains("dns: 1"));
         assert!(out.contains("ttl: 300 s"));
         assert!(out.contains("p50:"));
+        // The latency block must report the same percentiles as `render_probe`
+        // (min/p50/p90/p95/p99/max/jitter) — p90 is present in `--json` and
+        // must not silently vanish from the human repeat view.
+        assert!(
+            out.contains("p90:"),
+            "dns-repeat human view shows the p90 column:\n{out}"
+        );
         assert!(out.contains("jitter:"));
     }
 
@@ -1618,6 +1631,17 @@ mod tests {
         assert!(out.contains("max 4 ms"), "max latency missing: {out}");
         assert!(out.contains("path changed"), "divergent hop must be flagged: {out}");
         assert!(out.contains("0/2 (lost)"), "fully-lost hop must render as lost: {out}");
+        // Lost hops must anchor their answer-rate column at the same `host_w`
+        // as answered hops — the `0/2 (lost)` token must align with `2/2
+        // answered`. (The shared host column is 40 wide here.)
+        let answered_line = out.lines().find(|l| l.contains("2/2 answered")).expect("answered row");
+        let lost_line = out.lines().find(|l| l.contains("(lost)")).expect("lost row");
+        let answered_rate = answered_line.find("2/2 answered").expect("rate col in answered row");
+        let lost_rate = lost_line.find("0/2").expect("rate col in lost row");
+        assert_eq!(
+            answered_rate, lost_rate,
+            "the answer-rate columns must align across answered and lost rows:\n{out}"
+        );
     }
 
     #[test]
