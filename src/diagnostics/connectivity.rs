@@ -91,7 +91,8 @@ pub(super) fn connectivity_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosi
     }
 }
 
-/// IPv4 vs IPv6 asymmetry.
+/// IPv4 vs IPv6 asymmetry, plus the single-family local-unreachability note.
+#[allow(clippy::too_many_lines)] // two verdict blocks mirrored in one rule
 pub(super) fn family_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosis>) {
     if input.tcp.is_empty() {
         return;
@@ -141,6 +142,47 @@ pub(super) fn family_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosis>) {
                     "routing problem for one family".into(),
                 ],
             });
+        }
+    }
+    // A single-family probe (e.g. `--ipv6` scoping, or a name that only has
+    // AAAA records) has no cross-family asymmetry to compare. When its lone
+    // family is entirely locally unreachable (`network unreachable` / `host
+    // unreachable` — the host reports no route before any packet is sent),
+    // `connectivity_rules` deliberately stays quiet (that is the exclusion the
+    // two-family case relies on here), so without this branch the engine would
+    // fall through to a false Healthy. Name the local condition instead.
+    let single = match (v4, v6) {
+        (Some(ok), None) => Some((true, ok)),
+        (None, Some(ok)) => Some((false, ok)),
+        _ => None,
+    };
+    if let Some((ipv4, ok)) = single {
+        if !ok {
+            let bad: Vec<&TcpObservation> = input
+                .tcp
+                .iter()
+                .filter(|o| o.destination.is_ipv4() == ipv4 && !o.success)
+                .collect();
+            if all_local_unreachability(&bad) {
+                let fam = if ipv4 { "IPv4" } else { "IPv6" };
+                out.push(Diagnosis {
+                    severity: Severity::Low,
+                    category: DiagnosticCategory::AddressFamily,
+                    confidence: Confidence::Medium,
+                    summary: format!(
+                        "{fam} connectivity is locally unreachable (no route) for {}",
+                        input.hostname
+                    ),
+                    evidence: vec![Evidence {
+                        detail: format!("{fam}: every address locally unreachable (network/host unreachable)"),
+                    }],
+                    possible_causes: vec![
+                        format!("no {fam} route / global address on the probing host"),
+                        format!("{fam} disabled on the destination or its network"),
+                        format!("firewall or policy blocking {fam} traffic locally"),
+                    ],
+                });
+            }
         }
     }
 }

@@ -196,13 +196,29 @@ pub(super) fn intermittent_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosi
 /// capacity / rate-limit cycling) is otherwise silent even though it is
 /// genuinely unhealthy for users.
 pub(super) fn http_status_flapping_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosis>) {
+    // `diagnose` feeds one repeat per transport AND per HTTP protocol into
+    // `input.probes` on the same destination; both can observe the same
+    // flapping endpoint. One flapping destination yields one verdict, not a
+    // stacked pair of identical rows — the same dedup the sibling
+    // same-category rules apply.
+    let mut reported: Vec<std::net::SocketAddr> = Vec::new();
     for p in input.probes {
         if p.attempts < 2 || p.status_counts.is_empty() {
+            continue;
+        }
+        // The transport must have succeeded on every classified attempt: an
+        // endpoint whose attempts actually fail is `intermittent_rules`'
+        // verdict (Severity Medium, its own evidence), and counting both here
+        // would stack two Intermittent rows for one destination while making
+        // the status rule's "transport succeeded on every attempt" evidence a
+        // lie (the exact failure `latency_instability_rules` also excludes).
+        if p.failures > 0 || reported.contains(&p.destination) {
             continue;
         }
         let content = p.status_counts.iter().any(|s| (200..300).contains(&s.status));
         let non_content = p.status_counts.iter().any(|s| !(200..300).contains(&s.status));
         if content && non_content {
+            reported.push(p.destination);
             let distribution = p
                 .status_counts
                 .iter()
@@ -363,20 +379,25 @@ pub(super) fn certificate_lifetime_rules(input: &DiagnosticInput, out: &mut Vec<
         let Some(days) = crate::report::days_until_from_rfc3339(not_after) else {
             continue;
         };
-        if days < 0 {
+        // `days == 0` spans the whole expiry day; a notAfter that is already
+        // in the past (the certificate expired earlier today) is an actual
+        // expiry with the harsher Medium/High verdict — not the Low "expires
+        // today" the calendar-day diff alone would phrase it as. Matches
+        // `render_cert`, which the human report uses for the same certificate.
+        let expired = days < 0 || (days == 0 && crate::report::rfc3339_is_in_past(not_after));
+        if expired {
+            let ago = if days == 0 {
+                "today".to_string()
+            } else {
+                format!("{} day(s) ago", -days)
+            };
             push(
-                format!(
-                    "Certificate for {} expired {} day(s) ago (subject {})",
-                    t.sni, -days, cert.subject
-                ),
+                format!("Certificate for {} expired {ago} (subject {})", t.sni, cert.subject),
                 Diagnosis {
                     severity: Severity::Medium,
                     category: DiagnosticCategory::Certificate,
                     confidence: Confidence::High,
-                    summary: format!(
-                        "Certificate for {} expired {} day(s) ago (subject {})",
-                        t.sni, -days, cert.subject
-                    ),
+                    summary: format!("Certificate for {} expired {ago} (subject {})", t.sni, cert.subject),
                     evidence: vec![Evidence {
                         detail: format!("peer certificate notAfter is in the past: {not_after}"),
                     }],
@@ -1404,6 +1425,50 @@ mod tests {
     }
 
     #[test]
+    fn http_status_flapping_silent_when_transport_attempts_fail() {
+        // When the same flapping statuses come with failed attempts, the
+        // failure is `intermittent_rules`' verdict (Severity Medium, evidence
+        // of the transport flake) — status flapping must not re-fire on a
+        // broken transport, or one destination stacks two Intermittent rows
+        // and this rule's "transport succeeded on every attempt" evidence is
+        // a lie.
+        let mut flap = probe_flapping(&[(200, 8), (503, 2)]);
+        flap.failures = 2;
+        flap.successes = 8;
+        flap.success_rate = 8.0 / 10.0;
+        flap.failure_counts = vec![crate::model::FailureCount {
+            kind: FailureKind::Timeout,
+            count: 2,
+        }];
+        let mut out = Vec::new();
+        http_status_flapping_rules(&input(&[], &[], &[flap]), &mut out);
+        assert!(
+            out.iter()
+                .all(|d| d.category != DiagnosticCategory::Intermittent || !d.summary.contains("flapping")),
+            "transport failures must not be re-claimed as status flapping: {out:?}"
+        );
+    }
+
+    #[test]
+    fn http_status_flapping_deduped_per_destination() {
+        // `diagnose` feeds one repeat per transport AND per HTTP protocol on
+        // the same destination; both observe the same flapping endpoint. One
+        // flapping destination yields one verdict, not a stacked pair
+        // (matching intermittent_rules / latency_instability_rules).
+        let flap = [
+            probe_flapping(&[(200, 5), (503, 1)]),
+            probe_flapping(&[(200, 5), (503, 1)]),
+        ];
+        let mut out = Vec::new();
+        http_status_flapping_rules(&input(&[], &[], &flap), &mut out);
+        let n = out
+            .iter()
+            .filter(|d| d.category == DiagnosticCategory::Intermittent && d.summary.contains("flapping"))
+            .count();
+        assert_eq!(n, 1, "one flapping destination must yield one verdict: {out:?}");
+    }
+
+    #[test]
     fn latency_instability_fires_on_long_slow_tail() {
         // Transport healthy, status stable (empty status_counts = no HTTP
         // status signal), but the latency tail is long: two fast attempts and
@@ -1528,6 +1593,30 @@ mod tests {
         let mut out = Vec::new();
         certificate_lifetime_rules(&input(&far, &[], &[]), &mut out);
         assert!(out.is_empty(), "far expiry must not raise a verdict: {out:?}");
+    }
+
+    #[test]
+    fn certificate_expired_earlier_today_reads_expired_not_expires_today() {
+        // `days_until_from_rfc3339` is calendar-day granularity: a cert whose
+        // `notAfter` was this morning is `days == 0` all day but has passed.
+        // A notAfter an hour in the past must read `expired` (Medium/High),
+        // never the Low "expires today" — deterministically for any runtime,
+        // whether the past hour lands on today or yesterday's calendar day.
+        let obs = [tls_with_cert(&crate::report::rfc3339_relative(-3600))];
+        let mut out = Vec::new();
+        certificate_lifetime_rules(&input(&obs, &[], &[]), &mut out);
+        let d = out
+            .iter()
+            .find(|d| d.category == DiagnosticCategory::Certificate)
+            .expect("expired verdict");
+        assert!(d.summary.contains("expired"), "summary reads expired: {}", d.summary);
+        assert_eq!(d.severity, Severity::Medium);
+        assert_eq!(d.confidence, Confidence::High);
+        assert!(
+            !d.summary.contains("expires today"),
+            "an already-passed notAfter must not be phrased as future: {}",
+            d.summary
+        );
     }
 
     #[test]

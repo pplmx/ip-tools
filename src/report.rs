@@ -276,7 +276,12 @@ fn render_cert(style: Style, cert: &CertificateSummary) -> String {
         .as_deref()
         .and_then(days_until_from_rfc3339)
         .map_or_else(String::new, move |days| {
-            if days < 0 {
+            // `days_until_from_rfc3339` is calendar-day granularity, so a cert
+            // whose `notAfter` was this morning reads `days == 0` all day even
+            // though it already passed. A day-0 expiry that is strictly in the
+            // past must read `expired`, not `expires today`.
+            let passed = days < 0 || (days == 0 && cert.not_after_utc.as_deref().is_some_and(rfc3339_is_in_past));
+            if passed {
                 style.fail(" (expired)")
             } else if days == 0 {
                 style.warn(" (expires today)")
@@ -302,6 +307,40 @@ fn render_cert(style: Style, cert: &CertificateSummary) -> String {
 /// same expiry window the human TLS report annotates.
 pub(crate) const RENDER_CERT_EXPIRY_WINDOW_DAYS: i64 = 30;
 
+/// Whether an RFC 3339 UTC timestamp denotes an instant already in the past.
+/// Distinct from [`days_until_from_rfc3339`] (calendar-day granularity): a
+/// cert that expired this morning is `days == 0` all day but has passed and
+/// must read `expired`, not `expires today`. Parses the fixed
+/// `YYYY-MM-DDTHH:MM:SSZ` shape the tool's own cert summaries are always in
+/// ([`crate::tls`] `format_utc`); anything unparseable is never "in the past"
+/// (the day-level helper already guards the date shape).
+pub(crate) fn rfc3339_is_in_past(rfc3339: &str) -> bool {
+    let Some(timestamp) = rfc3339.strip_suffix('Z') else {
+        return false;
+    };
+    let Some((date, time)) = timestamp.split_once('T') else {
+        return false;
+    };
+    let fields: Vec<i64> = date
+        .split('-')
+        .chain(time.split(':'))
+        // An unparseable field (e.g. a fractional second) silently drops it,
+        // leaving fewer than six fields and making the match below reject the
+        // timestamp — conservative: never claim past on ambiguous input.
+        .filter_map(|p| p.parse::<i64>().ok())
+        .collect();
+    let Ok([y, mo, d, h, mi, s]) = <[i64; 6]>::try_from(fields) else {
+        return false;
+    };
+    let now_secs = i64::try_from(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |dur| dur.as_secs()),
+    )
+    .unwrap_or(0);
+    days_from_civil(y, mo, d) * 86_400 + h * 3_600 + mi * 60 + s <= now_secs
+}
+
 /// Days from today until the date encoded in an RFC 3339 UTC timestamp
 /// (`YYYY-MM-DDTHH:MM:SSZ`); negative when that date is already past.
 /// `None` when the string is not recognizably that shape.
@@ -321,7 +360,11 @@ pub(crate) fn days_until_from_rfc3339(rfc3339: &str) -> Option<i64> {
 }
 
 /// Build an RFC 3339 UTC date string `N` days from today (negative = past),
-/// shared by the TLS report tests and the diagnostic engine tests.
+/// at 23:59:59Z, shared by the TLS report tests and the diagnostic engine
+/// tests. The near-end-of-day time keeps a `days == 0` fixture from being
+/// read as already-passed once midnight passes — a notAfter *today* at
+/// 23:59:59Z is (except for the final second of a UTC day) still in the
+/// future, so the "expires today" boundary stays testable.
 #[cfg(test)]
 pub(crate) fn rfc3339_days_from_now(days: i64) -> String {
     let now_days = i64::try_from(
@@ -333,7 +376,30 @@ pub(crate) fn rfc3339_days_from_now(days: i64) -> String {
     )
     .expect("days fit i64");
     let (y, m, d) = civil_from_days(now_days + days);
-    format!("{y:04}-{m:02}-{d:02}T00:00:00Z")
+    format!("{y:04}-{m:02}-{d:02}T23:59:59Z")
+}
+
+/// Build an RFC 3339 UTC timestamp `offset_secs` from now (negative = past),
+/// for tests of the `days == 0` already-passed boundary: a notAfter an hour
+/// ago is always in the past, so it must read `expired` regardless of which
+/// calendar day it falls on.
+#[cfg(test)]
+pub(crate) fn rfc3339_relative(offset_secs: i64) -> String {
+    let now = std::time::SystemTime::now();
+    let t = if offset_secs >= 0 {
+        now + std::time::Duration::from_secs(offset_secs as u64)
+    } else {
+        now - std::time::Duration::from_secs(offset_secs.unsigned_abs())
+    };
+    let secs = t.duration_since(std::time::UNIX_EPOCH).expect("epoch").as_secs();
+    let (y, m, d) = civil_from_days(i64::try_from(secs / 86_400).expect("days fit i64"));
+    let rem = secs % 86_400;
+    format!(
+        "{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z",
+        rem / 3600,
+        (rem % 3600) / 60,
+        rem % 60
+    )
 }
 
 /// Days since 1970-01-01 for a proleptic-Gregorian civil date (Hinnant's
@@ -1709,6 +1775,41 @@ mod tests {
     }
 
     #[test]
+    fn rfc3339_in_past_compares_instants_not_calendar_days() {
+        // The epoch date is long past; a far-future date is not.
+        assert!(rfc3339_is_in_past("2000-01-01T00:00:00Z"));
+        assert!(!rfc3339_is_in_past("2999-01-01T00:00:00Z"));
+        // Unparseable input is never "in the past".
+        assert!(!rfc3339_is_in_past("garbage"));
+    }
+
+    #[test]
+    fn render_cert_reads_a_passed_same_day_expiry_as_expired() {
+        // `days_until_from_rfc3339` is calendar-day granularity: a cert whose
+        // notAfter was this morning is `days == 0` all day but has passed; the
+        // human report must read it red `expired`, not yellow `expires today`.
+        // A notAfter an hour in the past is deterministic for any runtime.
+        let cert = CertificateSummary {
+            subject: "CN=x".into(),
+            issuer: "CN=y".into(),
+            not_before_utc: None,
+            not_after_utc: Some(rfc3339_relative(-3600)),
+            sans: Vec::new(),
+        };
+        let plain = render_cert(Style::plain(), &cert);
+        assert!(
+            plain.contains(" (expired)"),
+            "passed same-day expiry reads expired: {plain}"
+        );
+        assert!(!plain.contains("expires today"), "not phrased as future: {plain}");
+        let colored = render_cert(colored(), &cert);
+        assert!(
+            colored.contains("\x1b[31m (expired)\x1b[0m"),
+            "colored annotation is red when expired: {colored:?}"
+        );
+    }
+
+    #[test]
     fn render_cert_shows_subject_alternative_names() {
         let with_sans = CertificateSummary {
             subject: "CN=example.com".into(),
@@ -1798,8 +1899,10 @@ mod tests {
         assert!(render_tls(&Style::plain(), std::slice::from_ref(&mismatch)).contains("covers attacker.example: no"));
     }
 
-    /// RFC 3339 UTC string for the civil date `now + offset` days from today,
-    /// used to build deterministic expiry timestamps in tests.
+    /// RFC 3339 UTC string for the civil date `now + offset` days from today
+    /// at 23:59:59Z, used to build deterministic expiry timestamps in tests.
+    /// The near-end-of-day time keeps a `days == 0` fixture from being read as
+    /// already-passed once midnight passes.
     fn days_out_rfc3339(offset: i64) -> String {
         let now_days = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -1807,7 +1910,7 @@ mod tests {
             .as_secs()
             / 86_400;
         let (y, m, d) = civil_from_days(i64::try_from(now_days).expect("days fit i64") + offset);
-        format!("{y:04}-{m:02}-{d:02}T00:00:00Z")
+        format!("{y:04}-{m:02}-{d:02}T23:59:59Z")
     }
 
     /// A colored [`Style`] for tests (bypasses the TTY/env gate).

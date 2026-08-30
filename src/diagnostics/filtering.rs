@@ -8,6 +8,7 @@ use crate::model::{Confidence, Diagnosis, DiagnosticCategory, Evidence, FailureK
 
 /// Evaluate independent filtering signals; raise a low/medium confidence
 /// diagnosis when several align.
+#[allow(clippy::too_many_lines)] // one independent-signal check per clause
 pub(super) fn filtering_rules(input: &DiagnosticInput, dns_disagreement: bool, out: &mut Vec<Diagnosis>) {
     let mut signals = 0;
     let mut evidence = Vec::new();
@@ -61,10 +62,18 @@ pub(super) fn filtering_rules(input: &DiagnosticInput, dns_disagreement: bool, o
             detail: "TLS handshake failures observed".into(),
         });
     }
+    // "QUIC only" means every HTTP/3 row failed while a non-H3 row succeeded —
+    // and no HTTP/3 row succeeded. The last clause matters: a multi-address
+    // host where HTTP/3 fails on one address but returns 200 on another (both
+    // 200 on TCP) has QUIC working, so it must not be claimed "QUIC only".
     let has_quic_only = input
         .http
         .iter()
         .any(|h| h.protocol.as_deref() == Some("HTTP/3") && h.failure.is_some())
+        && !input
+            .http
+            .iter()
+            .any(|h| h.protocol.as_deref() == Some("HTTP/3") && h.failure.is_none())
         && input
             .http
             .iter()
@@ -283,6 +292,31 @@ mod tests {
         let lows = filtering(false, &tcp, &[], &http, &[]);
         assert_eq!(lows.len(), 1);
         assert_eq!(lows[0], Confidence::Low);
+    }
+
+    #[test]
+    fn quic_working_on_another_address_is_not_quic_only() {
+        // A multi-address host where HTTP/3 fails on 1.1.1.1 but returns 200
+        // on 2.2.2.2 (with HTTP/1.1 200 on both) has QUIC working — it must
+        // NOT count as a "protocol-selective failure (QUIC only)" signal, or
+        // the reset alone would compose to two signals and raise a
+        // demonstrably false filtering verdict.
+        let tcp = [tcp("1.1.1.1:443", false, FailureKind::ConnectionReset)];
+        let http = [
+            http("1.1.1.1:443", "HTTP/1.1", false),
+            http("1.1.1.1:443", "HTTP/3", true),
+            http("2.2.2.2:443", "HTTP/1.1", false),
+            http("2.2.2.2:443", "HTTP/3", false),
+        ];
+        let lows = filtering(false, &tcp, &[], &http, &[]);
+        // Reset alone = one signal, below the two-signal bar: filtering must
+        // stay silent. Under the old `has_quic_only` predicate the Q-bit would
+        // have been true (a H3 failure + a non-H3 success, with working QUIC
+        // ignored) and the reset would have tipped it over to a Low verdict.
+        assert!(
+            lows.is_empty(),
+            "working QUIC must not stack a QUIC-only signal: {lows:?}"
+        );
     }
 
     #[test]

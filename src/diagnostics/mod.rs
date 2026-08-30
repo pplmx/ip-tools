@@ -300,6 +300,50 @@ mod tests {
     }
 
     #[test]
+    fn single_family_locally_unreachable_is_not_reported_healthy() {
+        // `diagnose --ipv6 <v6>` from a v4-only-routed host: every observation
+        // is IPv6 (single family) and every one fails with a LOCAL no-route
+        // verdict (NetworkUnreachable — no packet ever sent). Neither the
+        // total-loss rule (its local-unreachability exclusion) nor the
+        // two-family asymmetry rule (needs both families) fires, so the engine
+        // must still name the local condition instead of falling through to
+        // Healthy.
+        let tcp = [
+            TcpObservation {
+                destination: "[2001:db8::1]:443".parse().unwrap(),
+                success: false,
+                latency_ms: None,
+                failure: Some(ProbeError {
+                    kind: FailureKind::NetworkUnreachable,
+                    message: "network unreachable".into(),
+                }),
+            },
+            TcpObservation {
+                destination: "[2001:db8::2]:443".parse().unwrap(),
+                success: false,
+                latency_ms: None,
+                failure: Some(ProbeError {
+                    kind: FailureKind::NetworkUnreachable,
+                    message: "network unreachable".into(),
+                }),
+            },
+        ];
+        let out = diagnose(&input(&[], &tcp, &[], &[], &[]));
+        assert!(
+            !categories(&out).contains(&DiagnosticCategory::Healthy),
+            "a wholly-unreachable lone family must not be Healthy: {out:?}"
+        );
+        let af = out
+            .iter()
+            .find(|d| d.category == DiagnosticCategory::AddressFamily)
+            .expect("the local condition must be named");
+        assert!(
+            af.summary.contains("locally unreachable"),
+            "summary names the local no-route condition: {af:?}"
+        );
+    }
+
+    #[test]
     fn total_connectivity_loss_not_raised_when_all_failures_are_local_unreachability() {
         // The total-loss branch previously ignored the local-unreachability
         // exclusion the partial branch honors: an IPv6-only hostname probed
