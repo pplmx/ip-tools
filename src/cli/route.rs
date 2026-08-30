@@ -35,15 +35,12 @@ pub(super) async fn run_route(sub_m: &ArgMatches, style: Style) -> ExitCode {
     }
 
     // A 0-repeat request is a caller mistake, and silently running a single
-    // trace would hide it (probe's `--count` rejects 0 the same way). The
-    // same holds for `--max-hops 0` / `--probes-per-hop 0`, which previously
-    // clamped to 1 without saying so. `--count` is also capped at `u16::MAX`
+    // trace would hide it. `--count 0` is rejected at argument parse (the
+    // nonzero `--count` parser, like `--timeout`/`--concurrency`); `--max-hops
+    // 0` / `--probes-per-hop 0` are rejected here (they previously clamped to
+    // 1 without saying so). `--count` is additionally capped at `u16::MAX`
     // because the per-hop `answered` aggregate is a `u16` — a larger count
     // would silently wrap a busy hop to "0 runs answered" (false 100% loss).
-    if count == 0 {
-        eprintln!("Error: --count must be at least 1");
-        return ExitCode::FAILURE;
-    }
     if count > u16::MAX as usize {
         eprintln!("Error: --count is at most 65535 for route (the per-hop aggregate is 16-bit)");
         return ExitCode::FAILURE;

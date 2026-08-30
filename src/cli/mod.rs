@@ -447,11 +447,16 @@ fn ipv6_arg() -> Arg {
 }
 
 /// `--count` argument for repeated probing.
+///
+/// A zero repeat would render a vacuous "0 attempts, 0.0% success" report as
+/// success, so `0` is rejected at argument parse — the same `must be at
+/// least 1` channel (and exit 2) the sibling `--timeout`/`--concurrency`
+/// nonzero parsers use, so identical mistakes exit identically.
 fn count_arg() -> Arg {
     Arg::new("count")
         .long("count")
         .value_name("N")
-        .value_parser(clap::value_parser!(usize))
+        .value_parser(nonzero_usize)
         .default_value("10")
         .help("number of repeated attempts per address")
 }
@@ -462,7 +467,7 @@ fn dns_count_arg() -> Arg {
     Arg::new("count")
         .long("count")
         .value_name("N")
-        .value_parser(clap::value_parser!(usize))
+        .value_parser(nonzero_usize)
         .default_value("1")
         .help("number of repeated resolutions to aggregate")
 }
@@ -476,19 +481,20 @@ fn diagnose_count_arg() -> Arg {
     Arg::new("count")
         .long("count")
         .value_name("N")
-        .value_parser(clap::value_parser!(usize))
+        .value_parser(nonzero_usize)
         .default_value("3")
         .help("number of repeated attempts per address in the stability phase")
 }
 
 /// `--count` for the `route` subcommand: repeat the traceroute that many
 /// times and aggregate per-hop latency + router addresses (default 1 = the
-/// single current trace, unchanged).
+/// single current trace, unchanged). Rejecting `0` at parse (like
+/// `--max-hops`/`--probes-per-hop`) keeps every zero-run guard on one channel.
 fn route_count_arg() -> Arg {
     Arg::new("count")
         .long("count")
         .value_name("N")
-        .value_parser(clap::value_parser!(usize))
+        .value_parser(nonzero_usize)
         .default_value("1")
         .help("number of traceroute runs to aggregate (1 = single trace)")
 }

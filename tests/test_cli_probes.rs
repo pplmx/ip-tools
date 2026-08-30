@@ -866,16 +866,20 @@ fn dns_cli_repeat_json_serializes_success_rate() {
 fn dns_cli_rejects_count_zero() {
     // `dns --count 0` used to silently degrade to a single-shot lookup and
     // exit 0, the one probe command not aligned with probe/route/diagnose's
-    // "never probe zero times" rejection. It must fail fast and exit non-zero.
+    // "never probe zero times" rejection. Now rejected at argument parse —
+    // the same `--count <N>: must be at least 1` (and exit 2) channel the
+    // sibling `--timeout`/`--concurrency` nonzero parsers use, so identical
+    // zero-input mistakes exit identically.
     let server = local_dns_server(&["192.0.2.77"], &[]);
     let assert = cmd()
         .args(["dns", "host.example", "--server", &server.to_string(), "--count", "0"])
         .assert()
-        .failure();
+        .failure()
+        .code(2);
     let err = stderr(&assert);
     assert!(
-        err.contains("--count must be at least 1"),
-        "dns --count 0 must fail with the shared message: {err}"
+        err.contains("must be at least 1"),
+        "dns --count 0 must fail with the shared parse message: {err}"
     );
 }
 
@@ -1424,15 +1428,23 @@ fn tcp_failure_json_contract_serializes_the_failure_object() {
 #[test]
 fn diagnose_and_route_cli_reject_zero_run_parameters() {
     // `diagnose --count 0` and route's `--count 0` / `--max-hops 0` /
-    // `--probes-per-hop 0` fail fast exactly like the probe/dns `--count 0`
-    // guards (which already have tests) — a zero repeat would render a
-    // vacuous report.
+    // `--probes-per-hop 0` fail fast — a zero repeat would render a vacuous
+    // report. `diagnose --count 0` and `route --count 0` are rejected at
+    // argument parse (exit 2, like the probe/dns `--count 0` parser); route's
+    // `--max-hops 0` / `--probes-per-hop 0` are rejected in-handler (exit 1).
     let addr = local_tcp_listener();
     cmd()
         .args(["diagnose", &addr.to_string(), "--count", "0", "--timeout", "800"])
         .assert()
         .failure()
-        .stderr(contains("--count must be at least 1"));
+        .code(2)
+        .stderr(contains("must be at least 1"));
+    cmd()
+        .args(["route", "127.0.0.1", "--count", "0", "--timeout", "300"])
+        .assert()
+        .failure()
+        .code(2)
+        .stderr(contains("must be at least 1"));
     cmd()
         .args(["route", "127.0.0.1", "--count", "0", "--timeout", "300"])
         .assert()

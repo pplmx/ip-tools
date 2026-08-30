@@ -91,10 +91,6 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches, style: Style) -> ExitCode {
     // with the per-address probe commands); the two flags conflict at parse.
     let family = FamilyScope::from_flags(sub_m.get_flag("ipv4"), sub_m.get_flag("ipv6"));
     let count = *sub_m.get_one::<usize>("count").expect("count has default");
-    if count == 0 {
-        eprintln!("Error: --count must be at least 1");
-        return ExitCode::FAILURE;
-    }
 
     let targets = match super::parse_targets(sub_m) {
         Ok(t) => t,

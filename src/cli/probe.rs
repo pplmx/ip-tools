@@ -150,13 +150,6 @@ pub(super) async fn run_probe(sub_m: &ArgMatches, style: Style) -> ExitCode {
         return ExitCode::FAILURE;
     }
     let count = *sub_m.get_one::<usize>("count").expect("count has default");
-    if count == 0 {
-        // Zero attempts would render a vacuous "0 attempts, 0.0% success"
-        // report as a success; a zero count is a caller mistake, so fail with
-        // a clear error instead (route similarly never runs zero probes).
-        eprintln!("Error: --count must be at least 1");
-        return ExitCode::FAILURE;
-    }
     let method = sub_m.get_one::<String>("method").expect("method has default").clone();
     let path = sub_m.get_one::<String>("path").expect("path has default").clone();
     let insecure = sub_m.get_flag("insecure");

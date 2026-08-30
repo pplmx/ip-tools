@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 19,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-30T07:53:02+00:00",
+  "updated_at": "2026-08-30T09:09:25+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -5473,12 +5473,49 @@
       "id": "CHG-104",
       "type": "change",
       "status": "active",
-      "version": 2,
+      "version": 3,
       "created_at": "2026-08-30T07:47:48+00:00",
-      "updated_at": "2026-08-30T07:53:02+00:00",
+      "updated_at": "2026-08-30T07:55:36+00:00",
       "touched_round": 19,
-      "commit": "PENDING-commit-now",
+      "commit": "f176d0b",
       "title": "stdin - conflict guard; probe --protocol http3 positive repeat E2E test"
+    },
+    "ISS-136": {
+      "id": "ISS-136",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T09:07:41+00:00",
+      "updated_at": "2026-08-30T09:09:25+00:00",
+      "touched_round": 19,
+      "desc": "--count 0 exits 1 (in-handler guard) while --timeout 0 / --concurrency 0 exit 2 (clap nonzero parser) - the same zero-is-invalid mistake rejected through different channels with different exit codes",
+      "severity": "low",
+      "src": "cli/mod.rs:450+"
+    },
+    "TASK-106": {
+      "id": "TASK-106",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T09:07:41+00:00",
+      "updated_at": "2026-08-30T09:09:25+00:00",
+      "touched_round": 19,
+      "category": "dx",
+      "severity": 0.4,
+      "confidence": 1.0,
+      "effort": 1,
+      "desc": "Unify the zero-run rejection: --count 0 on probe/dns/diagnose/route uses the same nonzero clap parser as --timeout/--concurrency (exit 2), keeping route u16::MAX cap as in-handler exit 1"
+    },
+    "CHG-105": {
+      "id": "CHG-105",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-30T09:07:41+00:00",
+      "updated_at": "2026-08-30T09:07:41+00:00",
+      "touched_round": 19,
+      "commit": "PENDING",
+      "title": "unify --count 0 rejection at parse (exit 2) with timeout/concurrency; drop dead in-handler guards"
     }
   },
   "edges": [
@@ -9453,6 +9490,24 @@
       "to": "COMP-cli",
       "type": "located_in",
       "created_at": "2026-08-30T07:47:48+00:00"
+    },
+    {
+      "from": "TASK-106",
+      "to": "ISS-136",
+      "type": "addresses",
+      "created_at": "2026-08-30T09:09:25+00:00"
+    },
+    {
+      "from": "CHG-105",
+      "to": "ISS-136",
+      "type": "resolves",
+      "created_at": "2026-08-30T09:09:25+00:00"
+    },
+    {
+      "from": "ISS-136",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-30T09:09:25+00:00"
     }
   ]
 }

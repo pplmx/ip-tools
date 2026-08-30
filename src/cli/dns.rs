@@ -74,14 +74,6 @@ pub(super) async fn run_dns(sub_m: &ArgMatches, style: Style) -> ExitCode {
         .map(|vals| vals.cloned().collect())
         .unwrap_or_default();
     let count = *sub_m.get_one::<usize>("count").expect("count has default");
-    if count == 0 {
-        // `0` would silently degrade to a single-shot lookup and exit 0 with
-        // statistics describing one attempt — a caller mistake, and the one
-        // probe command that had not aligned with probe/route/diagnose's
-        // "never probe zero times" rejection.
-        eprintln!("Error: --count must be at least 1");
-        return ExitCode::FAILURE;
-    }
     // `--concurrency` parallelizes a multi-target DNS health sweep (default 1
     // preserves the original sequential ordering/semantics).
     let concurrency = *sub_m.get_one::<usize>("concurrency").expect("concurrency has default");
