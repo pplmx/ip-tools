@@ -1066,6 +1066,22 @@ where
         }
     };
     let single = targets.len() == 1;
+    // An IP-literal target is probed directly — no resolver is consulted —
+    // but an operator may have configured one (`--server`/`--doh`/`--dot`).
+    // Say so once (mirroring `dns`'s literal note) rather than silently
+    // letting an encrypted-resolver health check believe its resolver was in
+    // play for a literal it never sent anywhere.
+    if (!servers.is_empty() || !doh_endpoints.is_empty() || !dot_eps.is_empty())
+        && targets.iter().any(|t| {
+            t.host
+                .trim_start_matches('[')
+                .trim_end_matches(']')
+                .parse::<std::net::IpAddr>()
+                .is_ok()
+        })
+    {
+        eprintln!("Note: --server/--doh/--dot are ignored for an IP-literal target (the address is probed directly, nothing is resolved)");
+    }
     // A target list that parsed to zero entries (`@empty-file`, empty stdin,
     // a file of blank/comment lines) is a caller mistake, not a valid sweep:
     // probing nothing would render an empty report and exit `0` — a silent

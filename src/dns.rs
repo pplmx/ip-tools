@@ -160,10 +160,15 @@ pub fn aggregate_repeat(bucket: &[DnsObservation], record_type: DnsRecordType, a
             *failures.entry(err.kind).or_default() += 1;
         }
     }
-    let failure_counts: Vec<crate::model::FailureCount> = failures
+    let mut failure_counts: Vec<crate::model::FailureCount> = failures
         .into_iter()
         .map(|(kind, count)| crate::model::FailureCount { kind, count })
         .collect();
+    // Most-frequent-first with a stable kind tiebreak (`as u8` = declaration
+    // order of the fieldless enum): the HashMap source is randomized per
+    // process, so an unsorted or count-only sort would make the `--count`
+    // repeat's JSON/CSV failure column differ between runs when two kinds tie.
+    failure_counts.sort_by_key(|f| (std::cmp::Reverse(f.count), f.kind as u8));
     DnsRepeatResult {
         // Every observation in one bucket came from the same resolver.
         resolver: bucket.first().map_or(ResolverKind::System, |o| o.resolver.clone()),

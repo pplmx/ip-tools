@@ -2859,6 +2859,63 @@ fn diagnose_cli_ipv4_and_ipv6_scope_the_pipeline_to_one_family() {
 }
 
 #[test]
+fn probe_json_status_counts_are_deterministic_on_tied_distributions() {
+    // A 200/503-alternating fixture probed with an even `--count` yields a
+    // tied distribution (3/3). Ordering `status_counts` only by count left
+    // equal-count ties to HashMap iteration order (randomized per process),
+    // so the aggregate *ordering* in `--json` could differ between runs on
+    // exactly the flapping scenario this report exists to expose. The
+    // per-run latency samples legitimately vary (timing), so assert the
+    // deterministic aggregate: the status_counts array must be identical
+    // across two fresh runs, with 200 before 503 on the tie.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let addr = fixture.tcp_addr().to_string();
+
+    let run = |_| {
+        let out = Command::cargo_bin("ip-tools")
+            .expect("ip-tools binary")
+            .args([
+                "probe",
+                &addr,
+                "--protocol",
+                "http",
+                "--insecure",
+                "--sni",
+                "flap.invalid",
+                "--count",
+                "6",
+                "--json",
+                "--timeout",
+                "2000",
+            ])
+            .output()
+            .expect("run probe --json against the flap fixture");
+        assert!(
+            out.status.success(),
+            "probe --json should exit 0: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let doc: serde_json::Value = serde_json::from_slice(&out.stdout).expect("probe --json must parse");
+        doc[0]["status_counts"].clone()
+    };
+    let a = run(());
+    let b = run(());
+    assert_eq!(
+        a, b,
+        "tied status_counts must order identically across runs:\nA={a}\nB={b}"
+    );
+    assert_eq!(
+        a,
+        serde_json::json!([{"status": 200, "count": 3}, {"status": 503, "count": 3}]),
+        "the 200/503 tie must order by status ascent: {a}"
+    );
+}
+
+#[test]
 fn http_cli_report_shows_certificate_and_covers_verdict() {
     // The HTTPS human report must surface the serving certificate and the
     // SAN-coverage verdict (parity with `tls`), not just TLS/ALPN. Against the

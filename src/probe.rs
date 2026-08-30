@@ -360,12 +360,18 @@ where
         .into_iter()
         .map(|(kind, count)| FailureCount { kind, count })
         .collect();
-    failure_counts.sort_by_key(|f| std::cmp::Reverse(f.count));
+    // Sort most-frequent-first; a tie (equal counts, e.g. a 200x3 / 503x3
+    // flapper) must fall back to a stable kind key — the HashMap iteration
+    // order is randomized per process, so a count-only sort made the JSON/CSV
+    // byte-for-byte different between runs on exactly the flapping scenario
+    // this report exists to expose. `failure.kind as u8` is the declaration
+    // order of the fieldless enum: a deterministic secondary key.
+    failure_counts.sort_by_key(|failure| (std::cmp::Reverse(failure.count), failure.kind as u8));
     let mut status_counts: Vec<StatusCount> = statuses
         .into_iter()
         .map(|(status, count)| StatusCount { status, count })
         .collect();
-    status_counts.sort_by_key(|s| std::cmp::Reverse(s.count));
+    status_counts.sort_by_key(|s| (std::cmp::Reverse(s.count), s.status));
 
     ProbeResult {
         destination,

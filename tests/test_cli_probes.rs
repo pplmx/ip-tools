@@ -684,6 +684,44 @@ fn probe_cli_expect_status_requires_an_http_protocol() {
 }
 
 #[test]
+fn probe_cli_notes_ignored_resolvers_for_ip_literal_targets() {
+    // An IP-literal target is probed directly, so `--doh`/`--dot`/`--server`
+    // are never consulted — but an operator who configured an encrypted
+    // resolver (believing it was in play) previously got a silent no-op while
+    // the `dns` subcommand printed a note for the same flags. The probe
+    // commands must say so (once), and stay silent when no resolver is set.
+    let out = cmd()
+        .args([
+            "tcp",
+            "127.0.0.1:1",
+            "--doh",
+            "https://127.0.0.1/dns-query",
+            "--timeout",
+            "300",
+        ])
+        .output()
+        .expect("probe an IP literal with --doh");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        out.status.success(),
+        "a refused literal is an observation, exit 0: {stderr}"
+    );
+    assert!(
+        stderr.contains("--server/--doh/--dot are ignored for an IP-literal target"),
+        "the ignored-resolver note must appear: {stderr}"
+    );
+    let out = cmd()
+        .args(["tcp", "127.0.0.1:1", "--timeout", "300"])
+        .output()
+        .expect("bare literal");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        !stderr.contains("ignored for an IP-literal target"),
+        "no resolver configured -> no note: {stderr}"
+    );
+}
+
+#[test]
 fn dns_cli_resolves_via_custom_local_server() {
     let server = local_dns_server(&["192.0.2.77"], &["2001:db8::77"]);
     let out = stdout(
