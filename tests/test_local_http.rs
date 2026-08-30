@@ -2012,6 +2012,71 @@ fn dns_cli_doh_distinguishes_a_cname_only_answer_from_nodata() {
 }
 
 #[test]
+fn dns_cli_doh_reports_nxdomain_as_a_failure_observation() {
+    // A non-NOERROR DoH answer (NXDOMAIN here; SERVFAIL/REFUSED are the same
+    // class) must surface as `answered NXDomain` — a genuine failure
+    // observation — never as a zero-record success. This regressed in round-24
+    // when the CNAME-only honesty branch replaced doh_query's `rcode != 0`
+    // gate instead of joining it: an NXDOMAIN answered HTTP 200 and was
+    // reported `no records (X ms)` / `error: null`, so a degraded or
+    // nonexistent-domain encrypted resolver looked 100% healthy and `--strict`
+    // stopped counting it.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let endpoint = format!("https://{}/dns-nxdomain", fixture.tcp_addr());
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "dns",
+            "host.example",
+            "--doh",
+            &endpoint,
+            "--insecure",
+            "--record-type",
+            "A",
+            "--timeout",
+            "2000",
+        ])
+        .output()
+        .expect("run dns --doh against an NXDOMAIN endpoint");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("answered NXDomain"),
+        "an NXDOMAIN DoH answer must name the rcode, not report success: {stdout}"
+    );
+    assert!(
+        !stdout.contains("no A records found for host.example"),
+        "NXDOMAIN is not NODATA: {stdout}"
+    );
+    // And the `--json` failure contract: error present, no empty success.
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "dns",
+            "host.example",
+            "--doh",
+            &endpoint,
+            "--insecure",
+            "--record-type",
+            "A",
+            "--json",
+            "--timeout",
+            "2000",
+        ])
+        .output()
+        .expect("run dns --doh NXDOMAIN --json");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("\"error\"") && stdout.contains("NXDomain"),
+        "the --json failure contract must carry the NXDOMAIN error: {stdout}"
+    );
+}
+
+#[test]
 fn dns_cli_queries_dot_fixture_endpoint() {
     // End-to-end DNS-over-TLS (RFC 7858): `dns --dot <addr> --insecure` must
     // open a TLS connection to the fixture's raw DoT listener, send the

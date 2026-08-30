@@ -114,8 +114,9 @@ Every multi-target command also reads a target list from a file or stdin:
 `@hosts.txt` expands to the file's `host[:port]` lines (blank lines and `#`
 comments skipped) and `-` reads them from stdin, so a big sweep doesn't need
 one giant shell command line.
-`--csv` emits a `host,resolver,record_type,attempts,success_rate,p50,p95,max,
-failures,ttl,records` row per (resolver, record type) — single-shot rows are
+`--csv` emits a `host,resolver,record_type,attempts,success_rate,latency_p50_ms,
+latency_p95_ms,latency_max_ms,failures,ttl,records` row per (resolver, record
+type) — single-shot rows are
 attempts=1 and carry the record TTL **and the resolved records** (the actual
 addresses/CNAME/MX/TXT/… values), while `--count` repeat rows use the
 aggregated latency stats and carry the **minimum TTL** observed across the
@@ -255,8 +256,9 @@ for more than one host; `--strict` aggregates failed probes across all targets.
 `host,destination,success,latency_ms,failure`; `tls` adds the handshake details
 (version/cipher/ALPN/certificate subject/issuer/expiry); `http`/`http2`/`http3`
 carry the response `protocol,status,location,body_bytes,ttfb_ms,latency_ms,
-sni,version,cipher,alpn,subject,issuer,not_after_utc,headers,body_snippet` — the negotiated
-TLS handshake each HTTPS observation already embeds, plus the observed response
+sni,version,cipher,alpn,subject,issuer,not_after_utc,sans,covers,headers,body_snippet,failure`
+— the negotiated TLS handshake each HTTPS observation already embeds, plus the
+certificate SAN list and `covers <sni>` verdict, the observed response
 headers (`server`, `via`, `cf-ray`, `cache-control`, … joined as `Name: value`
 pairs) and the bounded **body snippet** (WAF page / JS challenge / auth or API
 error / captive-portal prompt), so a fleet sweep keeps the cert/protocol-version,

@@ -208,8 +208,9 @@ pub(super) async fn run_probe(sub_m: &ArgMatches, style: Style) -> ExitCode {
         // `probe --protocol tcp --insecure` disables nothing it uses, so it
         // is rejected as the cross-entry-point inconsistency `--sni` was
         // (the standalone `tcp` subcommand does not define the flag).
-        let encrypted_resolver = sub_m.get_many::<String>("doh").is_none() && sub_m.get_many::<String>("dot").is_none();
-        if protocol.as_str() == "tcp" && explicitly_given("insecure") && encrypted_resolver {
+        let no_encrypted_resolver =
+            sub_m.get_many::<String>("doh").is_none() && sub_m.get_many::<String>("dot").is_none();
+        if protocol.as_str() == "tcp" && explicitly_given("insecure") && no_encrypted_resolver {
             eprintln!("Error: --insecure does not apply to --protocol tcp (a tcp repeat has no TLS handshake); it only disables --doh/--dot endpoint certificate checks");
             return ExitCode::FAILURE;
         }

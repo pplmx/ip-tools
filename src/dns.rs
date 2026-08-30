@@ -553,6 +553,23 @@ pub async fn doh_query(
         }
         return fail(FailureKind::Dns, format!("no {record_type} records found for {host}"));
     }
+    // A non-NOERROR response code means the resolution itself failed (e.g.
+    // SERVFAIL, NXDOMAIN), even though the endpoint answered HTTP 200 — it
+    // must surface as a failure observation, never as a zero-record success
+    // (a degraded/SERVFAILing encrypted resolver would otherwise report 100%
+    // healthy). Mirrors `dot_query`'s identical gate below: the two wire paths
+    // must agree on the same rcode.
+    if parsed.rcode != 0 {
+        return DnsObservation {
+            records: Vec::new(),
+            latency_ms: None,
+            error: Some(step(
+                FailureKind::Dns,
+                format!("DoH endpoint {endpoint} answered {}", rcode_name(parsed.rcode)),
+            )),
+            ..base
+        };
+    }
 
     DnsObservation {
         records: parsed.records,
@@ -988,10 +1005,12 @@ fn parse_dns_response(bytes: &[u8], want: DnsRecordType) -> Result<ParsedDnsResp
             return Err("truncated answer header".to_string());
         }
         let rtype = u16::from_be_bytes([bytes[pos], bytes[pos + 1]]);
-        // A CNAME answer is an alias, not the wanted record (unless the caller
-        // asked for the CNAME itself): record that one appeared even when the
-        // wanted type is elsewhere, so a CNAME-only answer can be told apart
-        // from true NODATA at the callers' empty-records gate.
+        // Record whether the answer section carried any CNAME. A CNAME answer
+        // is the wanted record only when the caller asked for the CNAME type
+        // itself (that decode lands in `records`); for any other wanted type it
+        // is an unconsumed alias, and flagging it lets the callers' empty-
+        // records gate tell a CNAME-only answer ("chain not followed") apart
+        // from true NODATA.
         if rtype == 5 {
             saw_cname = true;
         }

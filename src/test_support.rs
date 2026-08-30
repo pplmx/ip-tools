@@ -349,6 +349,17 @@ const DOH_CNAME_RESPONSE: &[u8] = &[
     0x07, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 0x00,
 ];
 
+/// Canned NXDOMAIN DNS response served by the fixture at `/dns-nxdomain`:
+/// header flags 0x8183 (QR|RD|RA + rcode 3), QD=1, AN=0 — the wire form of
+/// "the name does not exist". A `--doh` endpoint answering this must surface
+/// a failure observation (`answered NXDomain`), never zero-records success.
+const DOH_NXDOMAIN_RESPONSE: &[u8] = &[
+    // header: id 0x1234, flags 0x8183 (NXDOMAIN), QD=1, AN=0, NS=0, AR=0
+    0x12, 0x34, 0x81, 0x83, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    // question name: host.example (4 host, 7 example, 0 root), qtype A, qclass IN
+    0x04, b'h', b'o', b's', b't', 0x07, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 0x00, 0x00, 0x01, 0x00, 0x01,
+];
+
 /// Accept TLS connections and serve HTTP/1.1 or HTTP/2 chosen by negotiated
 /// ALPN.
 #[allow(clippy::too_many_lines)] // one hand-written arm per fixture route is clearest inline
@@ -410,6 +421,17 @@ async fn run_tcp_server(listener: tokio::net::TcpListener, acceptor: tokio_rustl
                         .header("content-type", "application/dns-message")
                         .body(http_body_util::Full::new(bytes::Bytes::from_static(DOH_CNAME_RESPONSE)).boxed())
                         .expect("static doh cname response");
+                    return Ok::<_, std::convert::Infallible>(resp);
+                }
+                if req.uri().path().starts_with("/dns-nxdomain") {
+                    // Serve a canned NXDOMAIN answer (rcode 3, zero answers):
+                    // the name does not exist. The DoH wire path must surface
+                    // this as `answered NXDomain`, never zero-records success.
+                    let resp = hyper::Response::builder()
+                        .status(200)
+                        .header("content-type", "application/dns-message")
+                        .body(http_body_util::Full::new(bytes::Bytes::from_static(DOH_NXDOMAIN_RESPONSE)).boxed())
+                        .expect("static doh nxdomain response");
                     return Ok::<_, std::convert::Infallible>(resp);
                 }
                 match route_for(&req) {
