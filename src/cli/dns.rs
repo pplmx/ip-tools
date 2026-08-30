@@ -455,14 +455,10 @@ fn opt64(v: Option<u64>) -> String {
     v.map_or_else(String::new, |x| x.to_string())
 }
 
-/// Human label for a resolver, matching the report renderer.
+/// Human label for a resolver, matching the report renderer and the `--json`
+/// `resolver` field (one spelling across human/CSV/JSON; see `ResolverKind`).
 fn resolver_label(r: &ResolverKind) -> String {
-    match r {
-        ResolverKind::System => "system".to_string(),
-        ResolverKind::Custom(addr) => addr.to_string(),
-        ResolverKind::Doh(endpoint) => endpoint.clone(),
-        ResolverKind::Dot(endpoint) => format!("{endpoint} (DoT)"),
-    }
+    r.label()
 }
 
 /// Quote a CSV field when it contains a comma, quote, or newline (RFC 4180).

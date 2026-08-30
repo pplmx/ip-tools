@@ -110,12 +110,7 @@ fn render_dns_one(style: Style, obs: &DnsObservation) -> String {
 }
 
 fn resolver_label(r: &ResolverKind) -> String {
-    match r {
-        ResolverKind::System => "system".to_string(),
-        ResolverKind::Custom(addr) => addr.to_string(),
-        ResolverKind::Doh(endpoint) => endpoint.clone(),
-        ResolverKind::Dot(endpoint) => format!("{endpoint} (DoT)"),
-    }
+    r.label()
 }
 
 const fn rt_label(rt: DnsRecordType) -> &'static str {
@@ -597,12 +592,7 @@ pub fn render_dns_repeat(style: &Style, host: &str, results: &[DnsRepeatResult])
     for r in results {
         // Identify the resolver and record type on the row, like `render_dns`
         // groups by resolver then lists each record type's addresses.
-        let label = match &r.resolver {
-            ResolverKind::System => "system".to_string(),
-            ResolverKind::Custom(addr) => addr.to_string(),
-            ResolverKind::Doh(endpoint) => endpoint.clone(),
-            ResolverKind::Dot(endpoint) => format!("{endpoint} (DoT)"),
-        };
+        let label = r.resolver.label();
         out.push_str(&format!("  {label} {}\n", rt_label(r.record_type)));
         out.push_str(&format!("    attempts: {}\n", r.attempts));
         out.push_str(&format!(

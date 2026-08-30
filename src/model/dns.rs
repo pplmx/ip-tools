@@ -6,7 +6,7 @@ use super::latency::LatencySummary;
 use super::probe::FailureCount;
 
 /// Which resolver produced a DNS observation.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResolverKind {
     /// The operating system's configured resolver.
     System,
@@ -16,6 +16,32 @@ pub enum ResolverKind {
     Doh(String),
     /// A DNS-over-TLS (RFC 7858) endpoint, e.g. `1.1.1.1` (port 853).
     Dot(String),
+}
+
+impl ResolverKind {
+    /// The single human/`--json`/CSV spelling for a resolver: `system`, a
+    /// socket address, a `DoH` endpoint, or a `host (DoT)` label — the same
+    /// string the JSON serializer and the human/CSV renderers use, so a
+    /// consumer joining JSON to either never sees a third spelling. Mirrors
+    /// `LatencyStats`'s accessor style on the public model.
+    #[must_use]
+    pub fn label(&self) -> String {
+        match self {
+            Self::System => "system".to_string(),
+            Self::Custom(addr) => addr.to_string(),
+            Self::Doh(endpoint) => endpoint.clone(),
+            Self::Dot(endpoint) => format!("{endpoint} (DoT)"),
+        }
+    }
+}
+
+// Serialize as that stable label string, not the derived externally-tagged
+// shape (`"System"` unit on one row but `{"Custom": "…"}` object on the next
+// within the same document — a JSON type swap that breaks any single filter).
+impl serde::Serialize for ResolverKind {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.label())
+    }
 }
 
 /// A DNS record type/query family.
@@ -193,5 +219,45 @@ impl DnsRepeatResult {
     #[must_use]
     pub const fn success_rate(&self) -> f64 {
         self.success_rate
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolver_label_is_the_single_spelling_across_variants() {
+        assert_eq!(ResolverKind::System.label(), "system");
+        assert_eq!(
+            ResolverKind::Custom("127.0.0.1:5399".parse().unwrap()).label(),
+            "127.0.0.1:5399"
+        );
+        assert_eq!(
+            ResolverKind::Doh("https://1.1.1.1/dns-query".to_string()).label(),
+            "https://1.1.1.1/dns-query"
+        );
+        assert_eq!(ResolverKind::Dot("1.1.1.1".to_string()).label(), "1.1.1.1 (DoT)");
+    }
+
+    #[test]
+    fn resolver_json_is_a_stable_string_not_a_type_swapping_tagged_object() {
+        // The derived externally-tagged shape mixed `"System"` (unit → string)
+        // with `{"Custom": "…"}` (newtype → object) in ONE document, so no
+        // single `.[] | .resolver` filter survived both. Every variant must
+        // serialize to the same plain-string label the human/CSV renderers use.
+        assert_eq!(serde_json::to_string(&ResolverKind::System).unwrap(), "\"system\"");
+        assert_eq!(
+            serde_json::to_string(&ResolverKind::Custom("127.0.0.1:5399".parse().unwrap())).unwrap(),
+            "\"127.0.0.1:5399\""
+        );
+        assert_eq!(
+            serde_json::to_string(&ResolverKind::Doh("https://1.1.1.1/dns-query".to_string())).unwrap(),
+            "\"https://1.1.1.1/dns-query\""
+        );
+        assert_eq!(
+            serde_json::to_string(&ResolverKind::Dot("1.1.1.1".to_string())).unwrap(),
+            "\"1.1.1.1 (DoT)\""
+        );
     }
 }
