@@ -334,6 +334,21 @@ const DOH_EMPTY_RESPONSE: &[u8] = &[
     0x00, 0x01, 0x00, 0x01,
 ];
 
+/// Canned CNAME-only DNS response served by the fixture at `/dns-cname`:
+/// `host.example` `IN CNAME target.example` (NOERROR, one answer, no A/AAAA).
+/// A responder may legitimately answer an A query this way when it does not
+/// recurse; the tool must distinguish it from plain NODATA.
+const DOH_CNAME_RESPONSE: &[u8] = &[
+    // header: id 0x1234, flags 0x8180 (QR|RD|RA, NOERROR), QD=1, AN=1, NS=0, AR=0
+    0x12, 0x34, 0x81, 0x80, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+    // question name: host.example (4 host, 7 example, 0 root), qtype A, qclass IN
+    0x04, b'h', b'o', b's', b't', 0x07, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 0x00, 0x00, 0x01, 0x00, 0x01,
+    // answer 1: pointer to the question name, type CNAME, class IN, ttl 60,
+    // rdlen 14, rdata name target.example (6 target, 7 example, 0 root)
+    0xC0, 0x0C, 0x00, 0x05, 0x00, 0x01, 0x00, 0x00, 0x00, 0x3C, 0x00, 0x0E, 0x06, b't', b'a', b'r', b'g', b'e', b't',
+    0x07, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 0x00,
+];
+
 /// Accept TLS connections and serve HTTP/1.1 or HTTP/2 chosen by negotiated
 /// ALPN.
 #[allow(clippy::too_many_lines)] // one hand-written arm per fixture route is clearest inline
@@ -383,6 +398,18 @@ async fn run_tcp_server(listener: tokio::net::TcpListener, acceptor: tokio_rustl
                         .header("content-type", "application/dns-message")
                         .body(http_body_util::Full::new(bytes::Bytes::from_static(DOH_EMPTY_RESPONSE)).boxed())
                         .expect("static doh empty response");
+                    return Ok::<_, std::convert::Infallible>(resp);
+                }
+                if req.uri().path().starts_with("/dns-cname") {
+                    // Serve a canned CNAME-only answer (NOERROR, one CNAME,
+                    // no A/AAAA): the name exists and aliases `target.example`
+                    // but the responder did not chase the chain, so the report
+                    // must say so rather than claim plain NODATA.
+                    let resp = hyper::Response::builder()
+                        .status(200)
+                        .header("content-type", "application/dns-message")
+                        .body(http_body_util::Full::new(bytes::Bytes::from_static(DOH_CNAME_RESPONSE)).boxed())
+                        .expect("static doh cname response");
                     return Ok::<_, std::convert::Infallible>(resp);
                 }
                 match route_for(&req) {

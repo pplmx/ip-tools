@@ -452,6 +452,17 @@ fn quic_tls_summary(
         .and_then(|hd| hd.downcast::<quinn::crypto::rustls::HandshakeData>().ok())
         .and_then(|hd| hd.protocol.clone())
         .map(|p| String::from_utf8_lossy(&p).into_owned());
+    // The peer's certificate chain: quinn exposes it only via `peer_identity()`
+    // (the rustls `TlsSession` identity is a `Vec<CertificateDer>`). Surfacing
+    // it gives the h3 report the same `cert :` row and `covers <host>: yes/no`
+    // verdict the README promises and h1/h2 already show — and under
+    // `--insecure`, where chain validation is skipped, coverage is the only
+    // wrong-host/wildcard-mismatch signal on the QUIC path too.
+    let certificate = conn
+        .peer_identity()
+        .and_then(|ident| ident.downcast::<Vec<rustls_pki_types::CertificateDer<'static>>>().ok())
+        .and_then(|chain| chain.first().cloned())
+        .and_then(|der| crate::tls::cert_summary(&der));
     TlsObservation {
         destination,
         // The SNI actually presented on the wire is the bracket-stripped form
@@ -462,7 +473,7 @@ fn quic_tls_summary(
         version: Some("TLSv1.3".to_string()),
         cipher: None,
         alpn,
-        certificate: None,
+        certificate,
         latency_ms: Some(handshake_start.elapsed().as_millis() as u64),
         failure: None,
     }

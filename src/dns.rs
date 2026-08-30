@@ -533,22 +533,20 @@ pub async fn doh_query(
     // {host}` failure (hickory's NoRecordsFound), so the wire paths must not
     // silently succeed with zero records: on a mixed `--doh` run the same
     // host would otherwise show SYSTEM=failure next to DOH=success, and
-    // `--strict` / repeat aggregation would disagree by resolver.
+    // `--strict` / repeat aggregation would disagree by resolver. A CNAME-only
+    // answer is the one exception that is *not* NODATA: the responder did not
+    // chase the alias (hickory does), so claiming "no records found" would be
+    // factually false when the wanted record exists behind the chain.
     if parsed.rcode == 0 && parsed.records.is_empty() {
-        return fail(FailureKind::Dns, format!("no {record_type} records found for {host}"));
-    }
-    // A non-NOERROR response code means the resolution itself failed (e.g.
-    // SERVFAIL, NXDOMAIN), even though the endpoint answered HTTP 200.
-    if parsed.rcode != 0 {
-        return DnsObservation {
-            records: Vec::new(),
-            latency_ms: None,
-            error: Some(step(
+        if parsed.saw_cname {
+            return fail(
                 FailureKind::Dns,
-                format!("DoH endpoint {endpoint} answered {}", rcode_name(parsed.rcode)),
-            )),
-            ..base
-        };
+                format!(
+                    "{host} resolved only to a CNAME (the DoH endpoint did not follow the alias); no {record_type} record in its answer"
+                ),
+            );
+        }
+        return fail(FailureKind::Dns, format!("no {record_type} records found for {host}"));
     }
 
     DnsObservation {
@@ -724,7 +722,16 @@ pub async fn dot_query(
     // NODATA (NOERROR, zero wanted records) is reported as a `no {type}
     // records found for {host}` failure, exactly as the resolver-backed path
     // surfaces hickory's NoRecordsFound — see `doh_query` for the rationale.
+    // A CNAME-only answer is the exception that is not NODATA (see `doh_query`).
     if parsed.rcode == 0 && parsed.records.is_empty() {
+        if parsed.saw_cname {
+            return fail(
+                FailureKind::Dns,
+                format!(
+                    "{host} resolved only to a CNAME (the DoT endpoint did not follow the alias); no {record_type} record in its answer"
+                ),
+            );
+        }
         return fail(FailureKind::Dns, format!("no {record_type} records found for {host}"));
     }
     if parsed.rcode != 0 {
@@ -943,6 +950,12 @@ struct ParsedDnsResponse {
     ttl: Option<u32>,
     /// Records of the wanted record type found in the answers.
     records: Vec<DnsRecord>,
+    /// Whether the answer section contained a CNAME (alias) record for the
+    /// queried name — even when no wanted-type record was found. The wire
+    /// paths issue a single query and do not chase, so a CNAME-only answer
+    /// (the responder did not recurse) is *not* NODATA: the name aliases
+    /// elsewhere and the wanted record may exist behind the chain.
+    saw_cname: bool,
 }
 
 /// Parse a DNS response message (RFC 1035 §4.1.3, with name compression
@@ -963,12 +976,20 @@ fn parse_dns_response(bytes: &[u8], want: DnsRecordType) -> Result<ParsedDnsResp
     }
     let mut recs = Vec::new();
     let mut first_ttl: Option<u32> = None;
+    let mut saw_cname = false;
     for _ in 0..ancount {
         pos = skip_name(bytes, pos)?; // answer name (possibly a pointer)
         if pos + 10 > bytes.len() {
             return Err("truncated answer header".to_string());
         }
         let rtype = u16::from_be_bytes([bytes[pos], bytes[pos + 1]]);
+        // A CNAME answer is an alias, not the wanted record (unless the caller
+        // asked for the CNAME itself): record that one appeared even when the
+        // wanted type is elsewhere, so a CNAME-only answer can be told apart
+        // from true NODATA at the callers' empty-records gate.
+        if rtype == 5 {
+            saw_cname = true;
+        }
         // Capture the first answer's TTL (class(2) + ttl(4) precede rdlength),
         // but only from a record of the *wanted* type: an answer section often
         // leads with a CNAME (aliasing) whose TTL is not the address record's
@@ -1070,6 +1091,7 @@ fn parse_dns_response(bytes: &[u8], want: DnsRecordType) -> Result<ParsedDnsResp
         rcode,
         ttl: first_ttl,
         records: recs,
+        saw_cname,
     })
 }
 
@@ -1653,6 +1675,33 @@ mod tests {
             bytes.extend_from_slice(rdata);
         }
         bytes
+    }
+
+    #[test]
+    fn parse_dns_response_marks_a_cname_only_answer_as_not_nodata() {
+        let name_ptr = vec![0xC0, 0x0C]; // compression pointer to "host.example"
+
+        // A NOERROR answer whose only record is a CNAME for the queried name
+        // is *not* NODATA for an A query: the alias says the name exists and
+        // points elsewhere, the responder just did not chase it. The parse
+        // must flag `saw_cname` (with zero wanted records) so the DoH/DoT
+        // callers can say "chained, not followed" instead of a false
+        // "no records found".
+        let parsed = parse_dns_response(&response_with(&[(5, name_ptr.clone())]), DnsRecordType::A).unwrap();
+        assert!(parsed.records.is_empty(), "no A behind the CNAME: {:?}", parsed.records);
+        assert!(parsed.saw_cname, "a CNAME-only A answer is not plain NODATA");
+
+        // A true NODATA answer (a different record type present, no alias)
+        // keeps `saw_cname` false.
+        let parsed = parse_dns_response(&response_with(&[(16, vec![0])]), DnsRecordType::A).unwrap();
+        assert!(parsed.records.is_empty());
+        assert!(!parsed.saw_cname, "a non-CNAME answer is plain NODATA");
+
+        // Asking for the CNAME itself returns it as the wanted record and
+        // still flags that a CNAME was present.
+        let parsed = parse_dns_response(&response_with(&[(5, name_ptr)]), DnsRecordType::Cname).unwrap();
+        assert_eq!(parsed.records, vec![DnsRecord::Cname("host.example".into())]);
+        assert!(parsed.saw_cname);
     }
 
     #[test]

@@ -418,8 +418,11 @@ const fn cipher_name(cs: rustls::CipherSuite) -> &'static str {
     }
 }
 
-/// Extract a certificate summary from the peer's DER certificate.
-fn cert_summary(der: &rustls_pki_types::CertificateDer<'_>) -> Option<CertificateSummary> {
+/// Extract a certificate summary from the peer's DER certificate. `pub(crate)`
+/// for the HTTP/3 observer, which feeds the same summary from quinn's
+/// `peer_identity()` chain so the h3 report shows the same `cert :` + `covers`
+/// verdict as h1/h2.
+pub(crate) fn cert_summary(der: &rustls_pki_types::CertificateDer<'_>) -> Option<CertificateSummary> {
     use x509_parser::prelude::*;
     let (_, cert) = parse_x509_certificate(der.as_ref()).ok()?;
     let subject = cert.subject().to_string();

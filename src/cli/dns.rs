@@ -278,6 +278,15 @@ async fn dns_compute(
                 results: Vec::new(),
             };
         }
+        // A forward-record IP-literal target is reported straight from the
+        // address itself — no resolver is consulted — but an operator may
+        // have configured one (`--server`/`--doh`/`--dot`). Say so instead of
+        // silently dropping it: the PTR branch above *does* use the resolver,
+        // so the same flags do opposite things across record types and the
+        // gap is easy to trip by accident.
+        if !custom.is_empty() || !doh_endpoints.is_empty() || !dot_eps.is_empty() {
+            eprintln!("Note: --server/--doh/--dot are ignored for an IP-literal forward lookup (the address is reported directly, nothing is resolved); use --record-type PTR <ip> to query a resolver for the reverse zone");
+        }
         // An IP literal with `--count N` (N>1) is re-queried only in the
         // reverse-PTR branch above; for a forward record type `--count` has no
         // aggregation to apply (there is nothing to resolve repeatedly), so it

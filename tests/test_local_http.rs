@@ -1963,6 +1963,55 @@ fn dns_cli_doh_reports_no_records_for_a_nodata_answer() {
 }
 
 #[test]
+fn dns_cli_doh_distinguishes_a_cname_only_answer_from_nodata() {
+    // A NOERROR answer that is only a CNAME (the responder did not recurse)
+    // is NOT NODATA: the name exists and aliases elsewhere, so the wanted A
+    // record may exist behind the chain. The wire path issues a single query
+    // and cannot chase it, so the report must say exactly that — not the
+    // factually-false "no A records found" (hickory on the system path follows
+    // the alias, so the two resolvers would disagree spuriously on the same
+    // host, the cross-resolver disagreement the tool promises to surface).
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let endpoint = format!("https://{}/dns-cname", fixture.tcp_addr());
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "dns",
+            "host.example",
+            "--doh",
+            &endpoint,
+            "--insecure",
+            "--record-type",
+            "A",
+            "--timeout",
+            "2000",
+        ])
+        .output()
+        .expect("run dns --doh against a CNAME-only endpoint");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "dns --doh should still exit 0 (an error is an observation): {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.contains(
+            "resolved only to a CNAME (the DoH endpoint did not follow the alias); no A record in its answer"
+        ),
+        "a CNAME-only answer must be named as an unfollowed alias, not NODATA: {stdout}"
+    );
+    assert!(
+        !stdout.contains("no A records found for host.example"),
+        "a CNAME-only answer must not be reported as plain NODATA: {stdout}"
+    );
+}
+
+#[test]
 fn dns_cli_queries_dot_fixture_endpoint() {
     // End-to-end DNS-over-TLS (RFC 7858): `dns --dot <addr> --insecure` must
     // open a TLS connection to the fixture's raw DoT listener, send the
@@ -2841,6 +2890,43 @@ fn http_cli_report_shows_certificate_and_covers_verdict() {
     assert!(
         stdout.contains("covers localhost: yes"),
         "http report must show the SAN-coverage verdict: {stdout}"
+    );
+}
+
+#[test]
+fn http3_cli_report_shows_certificate_and_covers_verdict() {
+    // The h3 report must surface the serving certificate and the SAN-coverage
+    // verdict too (the README promises parity with h1/h2). Previously
+    // `quic_tls_summary` hardcoded `certificate: None`, so an h3 success row
+    // showed `TLS: TLSv1.3 / ALPN: h3` with no `cert :` row and no `covers`
+    // verdict — the only wrong-host/wildcard-mismatch signal under
+    // `--insecure`, silently absent on the QUIC path.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let addr = fixture.udp_addr().to_string();
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args(["http3", &addr, "--sni", "localhost", "--insecure", "--timeout", "2000"])
+        .output()
+        .expect("run http3 --sni localhost");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "http3 --sni localhost should exit 0: {stdout}
+{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.contains("cert : "),
+        "http3 report must show the certificate row: {stdout}"
+    );
+    assert!(
+        stdout.contains("covers localhost: yes"),
+        "http3 report must show the SAN-coverage verdict: {stdout}"
     );
 }
 

@@ -145,6 +145,29 @@ fn test_dns_bracketed_ipv6_literal_reports_the_address_itself() {
 }
 
 #[test]
+fn test_dns_literal_forward_lookup_notes_an_ignored_resolver() {
+    // `dns 1.1.1.1 --server …` reports the literal straight from the address
+    // and never touches the configured resolver — but the PTR branch *does*
+    // use it, so the same flags do opposite things by record type. The note
+    // (mirroring the `--count`-literal and `host:port`-port notes) must
+    // surface on stderr while the forward lookup still succeeds, and stay
+    // absent when no resolver is configured.
+    let mut cmd = Command::cargo_bin("ip-tools").unwrap();
+    cmd.args(["dns", "1.1.1.1", "--server", "127.0.0.1:53"])
+        .assert()
+        .success()
+        .stdout(contains("1.1.1.1 (0 ms)"))
+        .stderr(contains(
+            "--server/--doh/--dot are ignored for an IP-literal forward lookup",
+        ));
+    let mut cmd = Command::cargo_bin("ip-tools").unwrap();
+    cmd.args(["dns", "1.1.1.1"])
+        .assert()
+        .success()
+        .stderr(contains("ignored for an IP-literal forward lookup").not());
+}
+
+#[test]
 fn test_piped_human_output_has_no_ansi_escapes() {
     // assert_cmd pipes stdout, so this exercises the non-TTY gate: the human
     // renderer must color only for a terminal and never leak escapes into a
