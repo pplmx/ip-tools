@@ -39,7 +39,7 @@ const MAX_CONCURRENCY: usize = 256;
 /// caveat rather than importing it).
 const SNIPPET_BODY_BYTES: u64 = 1024;
 /// Default port for `tcp` (and later TLS/HTTP) probes when none is given.
-const DEFAULT_PORT: u16 = 443;
+pub const DEFAULT_PORT: u16 = 443;
 
 pub fn ip_tools_cli() -> ExitCode {
     let matches = parser();

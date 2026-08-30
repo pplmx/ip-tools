@@ -599,6 +599,51 @@ fn dns_cli_no_records_error_is_human_readable() {
 }
 
 #[test]
+fn dns_cli_notes_an_ignored_target_port_on_stderr() {
+    // DNS queries a resolver, never the target's own port, so a `host:port`
+    // target's port is silently dropped by resolution. That must not happen
+    // with no indication: an operator aiming at a custom resolver port would
+    // believe the query used it. A non-default-port target gets a stderr note;
+    // a bare hostname (or its default-port spelling) stays silent.
+    let server = local_dns_server(&["192.0.2.77"], &["2001:db8::77"]);
+    let err = stderr(
+        &cmd()
+            .args([
+                "dns",
+                "host.example:5353",
+                "--server",
+                &server.to_string(),
+                "--timeout",
+                "1200",
+            ])
+            .assert()
+            .success(),
+    );
+    assert!(
+        err.contains("ignoring the :5353 port of host.example"),
+        "a non-default target port must be noted on stderr: {err}"
+    );
+    // A bare hostname carries no note.
+    let err = stderr(
+        &cmd()
+            .args([
+                "dns",
+                "host.example",
+                "--server",
+                &server.to_string(),
+                "--timeout",
+                "1200",
+            ])
+            .assert()
+            .success(),
+    );
+    assert!(
+        !err.contains("ignoring the :"),
+        "a bare hostname must not trigger the port note: {err}"
+    );
+}
+
+#[test]
 fn dns_cli_record_type_selects_a_single_record_type() {
     let server = local_dns_server(&["192.0.2.77"], &["2001:db8::77"]);
 

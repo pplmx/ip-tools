@@ -21,6 +21,13 @@ impl Target {
     /// Returns [`DiagError::InvalidTarget`] when the port is non-numeric or
     /// the input is malformed.
     pub fn parse(input: &str, default_port: u16) -> Result<Self> {
+        // Normalize surrounding whitespace up front: the stored `host` is what
+        // later hits DNS/resolution, so `" example.com "` (a paste/quote slip
+        // from a library caller — the CLI trims before this) must not keep its
+        // padding only to fail with a baffling "hostname  example.com  did not
+        // resolve". Trimming here is idempotent for the already-trimmed CLI.
+        let input = input.trim();
+
         // A pasted URL (`https://example.com`) is the most common caller
         // mistake: it has exactly one colon, so the generic branch would
         // reject it with "expected '<host>:<port>'" and leave the operator
@@ -32,10 +39,13 @@ impl Target {
                 return Err(invalid(input, &reason));
             }
         }
-        // Bracket form: "[addr]:port" or "[addr]"
+        // Bracket form: "[addr]:port" or "[addr]". An empty `addr` is
+        // malformed whether or not a port follows (`[]` and `[]:443` both name
+        // no address — otherwise the failure only surfaces later, deep in the
+        // TLS layer, as `cannot use "[]" as a server name`).
         if let Some(rest) = input.strip_prefix('[') {
             return match rest.split_once(']') {
-                Some(("", "")) => Err(invalid(input, "empty address in brackets")),
+                Some(("", _port_part)) => Err(invalid(input, "empty address in brackets")),
                 Some((addr, "")) => Ok(Self {
                     host: format!("[{addr}]"),
                     port: default_port,
@@ -172,11 +182,44 @@ mod tests {
         // A stray '[' with no closing bracket is malformed.
         assert!(Target::parse("[", 443).is_err());
         assert!(Target::parse("[::1", 443).is_err());
-        // "[]" claims to be a literal but names no address: accept it and the
-        // failure would surface later as a confusing "did not resolve" for an
-        // empty hostname, so reject it up front.
-        let err = Target::parse("[]", 443).unwrap_err().to_string();
-        assert!(err.contains("[]"), "empty-bracket error should name the input: {err}");
+        // "[]" and "[]:443" claim to be a literal but name no address: accept
+        // them and the failure would only surface later, deep in the TLS layer
+        // (`cannot use "[]" as a server name`), so reject them up front with an
+        // InvalidTarget naming the input.
+        for input in ["[]", "[]:443", "[]:8080"] {
+            let err = Target::parse(input, 443).unwrap_err().to_string();
+            assert!(
+                err.contains("[]"),
+                "empty-bracket error should name the input {input}: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn surrounding_whitespace_is_trimmed_from_the_stored_host() {
+        // A library caller passing `" github.com "` (padding from a paste or a
+        // shell split) would otherwise keep the spaces in `host` and fail later
+        // with a baffling "hostname  github.com  did not resolve"; the parser
+        // boundary normalizes them instead.
+        assert_eq!(
+            Target::parse(" github.com ", 443).unwrap(),
+            Target {
+                host: "github.com".into(),
+                port: 443
+            }
+        );
+        assert_eq!(
+            Target::parse("  example.com:8080  ", 443).unwrap(),
+            Target {
+                host: "example.com".into(),
+                port: 8080
+            }
+        );
+        // Whitespace-only is still the empty input.
+        assert!(Target::parse("   ", 443).is_err());
+        // Whitelist-internal whitespace (invalid hostname) is NOT silently
+        // collapsed.
+        assert_eq!(Target::parse("a b.example.com", 443).unwrap().host, "a b.example.com");
     }
 
     #[test]

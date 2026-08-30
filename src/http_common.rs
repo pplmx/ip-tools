@@ -23,7 +23,11 @@ pub const MAX_RESPONSE_HEADERS: usize = 24;
 pub fn collect_response_headers(headers: &hyper::HeaderMap) -> Vec<(String, String)> {
     headers
         .iter()
-        .take(MAX_RESPONSE_HEADERS)
+        // Filter BEFORE taking the cap: `.take(24)` on the raw iterator would
+        // run ahead of the filter, so headers skipped for non-UTF-8 or the
+        // separately-recorded `Location` would silently consume slots and a
+        // chatty first-24 response could register far fewer than the recorded
+        // cap while valid later headers were discarded.
         .filter_map(|(name, value)| {
             let name = name.as_str();
             let value = value.to_str().ok()?;
@@ -32,6 +36,7 @@ pub fn collect_response_headers(headers: &hyper::HeaderMap) -> Vec<(String, Stri
             }
             Some((name.to_owned(), value.to_owned()))
         })
+        .take(MAX_RESPONSE_HEADERS)
         .collect()
 }
 
@@ -182,7 +187,9 @@ pub fn write_body_to_file(path: &std::path::Path, body: &[u8]) -> std::io::Resul
 
 #[cfg(test)]
 mod tests {
-    use super::{push_bounded_body, uri_authority, uri_authority_at, wire_authority, wire_host};
+    use super::{
+        collect_response_headers, push_bounded_body, uri_authority, uri_authority_at, wire_authority, wire_host,
+    };
 
     #[test]
     fn wire_host_strips_brackets_only() {
@@ -275,6 +282,31 @@ mod tests {
         assert!(push_bounded_body(&mut snippet, None, &mut read, 10, b"xxxx"));
         assert_eq!(read, 10);
         assert_eq!(snippet, b"abcdefghij");
+    }
+
+    #[test]
+    fn header_cap_is_applied_after_filtering() {
+        // The cap bounds *recorded* headers, not iterated ones: headers skipped
+        // for non-UTF-8 or the separately-recorded `Location` must not consume
+        // slots, and valid later headers must still be recorded. A map with
+        // `Location` interspersed early exercises exactly that.
+        let mut map = hyper::HeaderMap::new();
+        // 24 distinct valid headers plus 3 Locations mixed in ahead of them
+        // would, under an iterate-then-take(24) scheme, drop the later valid
+        // ones. Insert Location at the start and keep the valid set distinct.
+        map.insert("location", hyper::header::HeaderValue::from_static("/moved"));
+        for i in 0..24 {
+            let name =
+                hyper::header::HeaderName::from_bytes(format!("x-hdr-{i}").as_bytes()).expect("valid header name");
+            map.append(name, hyper::header::HeaderValue::from_static("v"));
+        }
+        let collected = collect_response_headers(&map);
+        assert_eq!(collected.len(), 24, "all 24 valid headers survive the filter-first cap");
+        assert!(
+            collected.iter().all(|(n, _)| !n.eq_ignore_ascii_case("location")),
+            "Location must be excluded before the cap: {collected:?}"
+        );
+        assert_eq!(collected[0].0, "x-hdr-0", "iteration order preserved: {collected:?}");
     }
 
     #[test]

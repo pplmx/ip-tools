@@ -561,9 +561,6 @@ pub async fn doh_query(
 
 // --- DNS-over-TLS (RFC 7858) -------------------------------------------------
 
-/// Maximum response a `DoT` endpoint is allowed to return.
-const DOT_MAX_LEN: usize = 64 * 1024;
-
 /// Query a `DNS`-over-TLS endpoint for `host`/`record_type` over a raw
 /// `TLS` connection (RFC 7858: a 2-byte length prefix wraps each DNS message),
 /// and build a [`DnsObservation`].
@@ -691,13 +688,12 @@ pub async fn dot_query(
             )
         }
     }
+    // A DoT message is wrapped by a 2-byte length prefix, so `resp_len` is at
+    // most 65535 by construction — the RFC 7858 framing itself bounds a single
+    // message, and the allocation below is therefore inherently bounded (an
+    // explicit `resp_len > 64 KiB` guard was provably dead: the u16 can never
+    // exceed it).
     let resp_len = u16::from_be_bytes(header) as usize;
-    if resp_len > DOT_MAX_LEN {
-        return fail(
-            FailureKind::Dns,
-            format!("DoT endpoint {endpoint} returned an oversized response ({resp_len} bytes)"),
-        );
-    }
     let mut body = vec![0u8; resp_len];
     let read = tokio::time::timeout(timeout, tokio::io::AsyncReadExt::read_exact(&mut stream, &mut body)).await;
     match read {

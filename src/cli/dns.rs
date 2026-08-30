@@ -39,6 +39,21 @@ pub(super) async fn run_dns(sub_m: &ArgMatches, style: Style) -> ExitCode {
         eprintln!("Error: no targets to probe (the target list is empty)");
         return ExitCode::FAILURE;
     }
+    // DNS resolution queries a resolver's port (53 / 853 / the tunneled DoH
+    // endpoint), not the target's own port: a `host:port` target's port is
+    // never the thing queried, so silently dropping it (as resolution does)
+    // would send the operator's `dns example.com:5353` to the *system*
+    // resolver with no indication. Note it on stderr like the IP-literal
+    // `--count` note, so a mistaken custom-port intent is surfaced instead of
+    // assumed to have worked.
+    for t in &targets {
+        if t.port != super::DEFAULT_PORT {
+            eprintln!(
+                "Note: ignoring the :{} port of {} (DNS queries a resolver, not the target's port)",
+                t.port, t.host
+            );
+        }
+    }
 
     let custom: Vec<SocketAddr> = match parse_custom_servers(sub_m) {
         Ok(v) => v,

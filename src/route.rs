@@ -189,12 +189,24 @@ fn traceroute_linux(target: IpAddr, cfg: &TracerouteConfig) -> Result<Vec<RouteH
                 Ok(u) => u,
                 Err(e) => return Err(format!("failed to bind UDP probe socket: {e}")),
             };
-            let local_port = udp.local_addr().map_or(0, |a| a.port());
+            // The local port is embedded in each probe so ICMP replies can be
+            // matched back; if it cannot be read (a just-bound socket going
+            // half-dead) the match below could never succeed, so fail loudly
+            // instead of silently losing every hop with `map_or(0, ..)`.
+            let local_port = match udp.local_addr() {
+                Ok(a) => a.port(),
+                Err(e) => return Err(format!("failed to read UDP probe socket port: {e}")),
+            };
             if let Err(e) = udp.set_ttl(u32::from(ttl)) {
                 return Err(format!("failed to set TTL {ttl}: {e}"));
             }
             let probe_dest = SocketAddr::new(target, 33_434 + u16::from(probe));
-            let _ = udp.send_to(&[0u8; 8], probe_dest);
+            // A failed send is a local transport error (e.g. the socket went
+            // dead), not "the hop timed out": fail loudly so the run does not
+            // spin the full per-hop timeout on a probe that never left.
+            if let Err(e) = udp.send_to(&[0u8; 8], probe_dest) {
+                return Err(format!("failed to send traceroute probe to {probe_dest}: {e}"));
+            }
 
             // Read ICMP replies until we match this probe, or time out.
             let start = std::time::Instant::now();
