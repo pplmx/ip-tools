@@ -63,6 +63,13 @@ impl FamilyScope {
 /// object; >1 target emits a JSON array; `--strict` aggregates across hosts.
 #[allow(clippy::too_many_lines)] // orchestration: parse, loop hosts, render
 pub(super) async fn run_diagnose(sub_m: &ArgMatches, style: Style) -> ExitCode {
+    // `target -` / `--header -` / `--body -` all read the same stdin; reject
+    // requesting more than one source up front (the header parser runs before
+    // the target list and would otherwise eat the user's target stdin).
+    if let Err(e) = super::check_stdin_conflict(sub_m) {
+        eprintln!("Error: {e}");
+        return ExitCode::FAILURE;
+    }
     let json = sub_m.get_flag("json");
     let csv = sub_m.get_flag("csv");
     let insecure = sub_m.get_flag("insecure");

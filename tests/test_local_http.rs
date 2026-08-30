@@ -2368,6 +2368,47 @@ fn probe_cli_http2_repeats_fixture_via_protocol_flag() {
 }
 
 #[test]
+fn probe_cli_http3_repeats_fixture_via_protocol_flag() {
+    // End-to-end: `probe --protocol http3 --insecure` repeats HTTP/3/QUIC
+    // against the self-signed fixture and aggregates 3 successes — the one
+    // repeat arm that drops `--tls-version` (QUIC is always TLS 1.3), which
+    // the standalone `http3` subcommand exercise alone would not cover.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let addr = fixture.udp_addr().to_string();
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args([
+            "probe",
+            &addr,
+            "--protocol",
+            "http3",
+            "--count",
+            "3",
+            "--insecure",
+            "--timeout",
+            "2000",
+        ])
+        .output()
+        .expect("run probe --protocol http3");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "probe --protocol http3 should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.contains("Repeated probes"),
+        "repeated-probe heading missing: {stdout}"
+    );
+    assert!(stdout.contains("success:  3"), "expected 3 successes: {stdout}");
+}
+
+#[test]
 fn probe_http_repeat_surfaces_status_distribution() {
     // `probe --protocol http --count N` must surface the observed HTTP status
     // distribution (the fixture's Normal route answers 200) so status flapping

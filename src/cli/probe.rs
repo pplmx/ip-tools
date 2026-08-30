@@ -142,6 +142,13 @@ fn parse_probe_expectation(sub_m: &ArgMatches, protocol: &str) -> Result<Option<
 /// addresses are probed in parallel.
 #[allow(clippy::too_many_lines)] // one match arm per protocol is clearest inline
 pub(super) async fn run_probe(sub_m: &ArgMatches, style: Style) -> ExitCode {
+    // `target -` / `--header -` / `--body -` all read the same stdin; reject
+    // requesting more than one source up front (the header parser runs before
+    // the target list and would otherwise eat the user's target stdin).
+    if let Err(e) = super::check_stdin_conflict(sub_m) {
+        eprintln!("Error: {e}");
+        return ExitCode::FAILURE;
+    }
     let count = *sub_m.get_one::<usize>("count").expect("count has default");
     if count == 0 {
         // Zero attempts would render a vacuous "0 attempts, 0.0% success"

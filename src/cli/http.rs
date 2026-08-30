@@ -11,6 +11,13 @@ use std::process::ExitCode;
 /// Resolve a target's addresses and perform an HTTPS/HTTP1.1 request to each
 /// in parallel (bounded by `--concurrency`).
 pub(super) async fn run_http(sub_m: &ArgMatches, style: Style) -> ExitCode {
+    // `target -` / `--header -` / `--body -` all read the same stdin; reject
+    // requesting more than one source up front (the header parser runs before
+    // the target list and would otherwise eat the user's target stdin).
+    if let Err(e) = super::check_stdin_conflict(sub_m) {
+        eprintln!("Error: {e}");
+        return ExitCode::FAILURE;
+    }
     let method = sub_m.get_one::<String>("method").expect("method has default").clone();
     let path = sub_m.get_one::<String>("path").expect("path has default").clone();
     let plain = sub_m.get_flag("plain");

@@ -1584,6 +1584,28 @@ fn ipv6_port_hint(input: &str) -> Option<String> {
     ))
 }
 
+/// Reject using `-` (stdin) for more than one input source in one invocation.
+///
+/// `target -`, `--header -` and `--body -` all read the same stdin; when two
+/// are requested, the source parsed first consumes the other's bytes (the
+/// header parser, which runs before the target list in the http-family
+/// handlers, would eat the user's target lines and report them as malformed
+/// headers). Fail fast at the start of a run instead.
+pub fn check_stdin_conflict(sub_m: &ArgMatches) -> Result<(), String> {
+    let uses_stdin =
+        |vals: Option<clap::parser::ValuesRef<'_, String>>| -> bool { vals.is_some_and(|mut v| v.any(|s| s == "-")) };
+    let count = usize::from(uses_stdin(sub_m.get_many::<String>("target")))
+        + usize::from(uses_stdin(sub_m.get_many::<String>("header")))
+        + usize::from(uses_stdin(sub_m.get_many::<String>("body")));
+    if count > 1 {
+        return Err(
+            "only one input may come from stdin ('-'): the target list, --header, and --body all read the same stdin"
+                .into(),
+        );
+    }
+    Ok(())
+}
+
 pub fn parse_targets(sub_m: &ArgMatches) -> Result<Vec<Target>, String> {
     fn parse_line(raw: &str) -> Result<Option<Target>, String> {
         let line = raw.trim();

@@ -219,6 +219,33 @@ fn http_cli_probes_fail_against_plain_listener() {
 }
 
 #[test]
+fn stdin_conflict_fails_fast_without_consuming_stdin() {
+    // `target -` / `--header -` / `--body -` all read the same stdin; asking
+    // for more than one must fail up front — the header parser runs before the
+    // target list, so without the guard it would eat the user's target lines
+    // and report them as malformed headers.
+    cmd()
+        .args(["http", "-", "--header", "-"])
+        .write_stdin("1.1.1.1\n")
+        .assert()
+        .failure()
+        .stderr(contains("only one input may come from stdin"));
+    cmd()
+        .args(["probe", "-", "--body", "-"])
+        .write_stdin("x\n")
+        .assert()
+        .failure()
+        .stderr(contains("only one input may come from stdin"));
+    // A single stdin consumer still works (target list from stdin).
+    let addr = local_tcp_listener();
+    cmd()
+        .args(["http", "-"])
+        .write_stdin(format!("{addr}\n"))
+        .assert()
+        .success();
+}
+
+#[test]
 fn probe_cli_repeats_and_aggregates() {
     let addr = local_tcp_listener();
     let out = stdout(
