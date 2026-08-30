@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 21,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-30T13:30:24+00:00",
+  "updated_at": "2026-08-30T16:46:50+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -81,7 +81,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 18,
+      "touched_round": 21,
       "desc": "Linux UDP/ICMP traceroute, root/CAP_NET_RAW gated, IPv4-only"
     },
     "COMP-diagnose": {
@@ -101,7 +101,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 19,
+      "touched_round": 21,
       "desc": "clap arg tree + dispatch; --strict/--json/--timeout/--concurrency/--server/--insecure/--method/--count flags"
     },
     "COMP-model": {
@@ -5842,6 +5842,113 @@
       "commit": "3a62588",
       "round": 22,
       "linked_task": "TASK-108"
+    },
+    "DEC-084": {
+      "id": "DEC-084",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-30T13:49:59+00:00",
+      "updated_at": "2026-08-30T13:49:59+00:00",
+      "touched_round": 21,
+      "title": "Round-22 triage: adopt the transport/diagnostics hunt findings, defer report-API-threading and JSON-shape items",
+      "rationale": "Two round-20 deep-dive agents returned 24 findings. Verified and fixed 15 (ISS-139..152) in 5 commits: wire_authority/uri_authority must honor an explicit port override verbatim and always re-bracket IPv6; single-family all-local-unreachable must not fall through to Healthy; QUIC-only filtering signal requires no H3 success; http_status_flapping must require a transport-clean run and dedup per destination; a cert that expired earlier today reads expired; total-loss confidence scales with failing addresses; SNI recorded as the wire name; errno 64 mask gap; exact-mean jitter; CBC-SHA256/384 cipher names; ICMP inner IPv4+UDP validation; dns-repeat p90 + route-repeat lost-row column alignment.",
+      "alternatives_rejected": "Deferred, recorded as out-of-scope for round 22: (1) render_tls/render_http SNI-host sideline redundancy — fully fixing needs the user-requested host threaded through the pub render API used as a fn pointer by run_probe_flow, which is API-baseline surface; the output is informational, not wrong, so a DEC-077-style report/API deferral beats a churny signature change; (2) FailureKind snake_case JSON vs space Display — already deferred by DEC-077 (uniform --json shape); (3) DnsRepeatResult::success_rate pub field + accessor duplication — retained for older callers; (4) truncated_body + http_layer double Http row for one stalled-5xx observation — the two rules describe genuinely distinct halves (server error vs body never completing) and their dedup contract is per-destination, so merging would obscure one; (5) DNS TXT JSON quoted Display — by-design dig-style. All are honesty-neutral or API-surface tradeoffs recorded here rather than silent skips."
+    },
+    "TASK-111": {
+      "id": "TASK-111",
+      "type": "task",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-30T16:46:04+00:00",
+      "updated_at": "2026-08-30T16:46:04+00:00",
+      "touched_round": 21,
+      "category": "dx",
+      "severity": 0.8,
+      "confidence": 1.0,
+      "effort": 0.4,
+      "unlock_factor": 1.0,
+      "summary": "Validate --path at argument parse (http_path_token): empty/whitespace/control values and non-origin-form paths currently sink into the probe as exit-0 \"could not build http request\" observations, the false-green class the round-17 method/header/body guards eliminated"
+    },
+    "TASK-112": {
+      "id": "TASK-112",
+      "type": "task",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-30T16:46:05+00:00",
+      "updated_at": "2026-08-30T16:46:05+00:00",
+      "touched_round": 21,
+      "category": "correctness",
+      "severity": 0.85,
+      "confidence": 1.0,
+      "effort": 0.5,
+      "unlock_factor": 1.0,
+      "summary": "--output-body must not silently pass when the artifact is wrong or absent: a single dual-stack target (A+AAAA) raced destinations into one file (guard counted targets, not addresses), and an unwritable path exited 0 with only a stderr Warning while README advertised the write unconditionally"
+    },
+    "TASK-113": {
+      "id": "TASK-113",
+      "type": "task",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-30T16:46:05+00:00",
+      "updated_at": "2026-08-30T16:46:05+00:00",
+      "touched_round": 21,
+      "category": "dx",
+      "severity": 0.7,
+      "confidence": 1.0,
+      "effort": 0.4,
+      "unlock_factor": 1.0,
+      "summary": "Flags accepted but ineffective trip the same honesty bar: probe --protocol tcp --sni is silently ignored (standalone tcp rejects it at parse), and route --timeout does not bound target DNS resolution (hardcoded 5s per lookup) unlike every other probe command"
+    },
+    "ISS-153": {
+      "id": "ISS-153",
+      "type": "issue",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-30T16:46:05+00:00",
+      "updated_at": "2026-08-30T16:46:05+00:00",
+      "touched_round": 21,
+      "summary": "http/http2/http3/probe/diagnose accept an empty or whitespace --path; the request is never built, yet the run renders a per-address \"could not build http request\" observation and exits 0 (false green)"
+    },
+    "ISS-154": {
+      "id": "ISS-154",
+      "type": "issue",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-30T16:46:05+00:00",
+      "updated_at": "2026-08-30T16:46:05+00:00",
+      "touched_round": 21,
+      "summary": "--output-body guard counts targets; a single dual-stack hostname resolving to v4+v6 races both addresses into one file (last finisher wins silently)"
+    },
+    "ISS-155": {
+      "id": "ISS-155",
+      "type": "issue",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-30T16:46:05+00:00",
+      "updated_at": "2026-08-30T16:46:05+00:00",
+      "touched_round": 21,
+      "summary": "--output-body to an unwritable path only Warns on stderr and exits 0; README advertises the write unconditionally, so a capture-enabled health check silently loses its file"
+    },
+    "ISS-156": {
+      "id": "ISS-156",
+      "type": "issue",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-30T16:46:05+00:00",
+      "updated_at": "2026-08-30T16:46:05+00:00",
+      "touched_round": 21,
+      "summary": "probe --protocol tcp --sni NAME is silently accepted and ignored (exit 0) while standalone tcp rejects --sni at parse -- the same silent-swallow the method/path/header/body honest guards fixed"
+    },
+    "ISS-157": {
+      "id": "ISS-157",
+      "type": "issue",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-30T16:46:05+00:00",
+      "updated_at": "2026-08-30T16:46:05+00:00",
+      "touched_round": 21,
+      "summary": "route --timeout only bounds the trace, not target DNS resolution (resolve_for_tcp hardcodes 5s per lookup, A+AAAA) despite --help describing --timeout as a per-operation timeout"
     }
   },
   "edges": [
@@ -10050,6 +10157,66 @@
       "to": "TASK-110",
       "type": "implements",
       "created_at": "2026-08-30T13:30:23+00:00"
+    },
+    {
+      "from": "TASK-111",
+      "to": "ISS-153",
+      "type": "addresses",
+      "created_at": "2026-08-30T16:46:49+00:00"
+    },
+    {
+      "from": "TASK-112",
+      "to": "ISS-154",
+      "type": "addresses",
+      "created_at": "2026-08-30T16:46:49+00:00"
+    },
+    {
+      "from": "TASK-112",
+      "to": "ISS-155",
+      "type": "addresses",
+      "created_at": "2026-08-30T16:46:50+00:00"
+    },
+    {
+      "from": "TASK-113",
+      "to": "ISS-156",
+      "type": "addresses",
+      "created_at": "2026-08-30T16:46:50+00:00"
+    },
+    {
+      "from": "TASK-113",
+      "to": "ISS-157",
+      "type": "addresses",
+      "created_at": "2026-08-30T16:46:50+00:00"
+    },
+    {
+      "from": "ISS-153",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-30T16:46:50+00:00"
+    },
+    {
+      "from": "ISS-154",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-30T16:46:50+00:00"
+    },
+    {
+      "from": "ISS-155",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-30T16:46:50+00:00"
+    },
+    {
+      "from": "ISS-156",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-30T16:46:50+00:00"
+    },
+    {
+      "from": "ISS-157",
+      "to": "COMP-route",
+      "type": "located_in",
+      "created_at": "2026-08-30T16:46:50+00:00"
     }
   ]
 }

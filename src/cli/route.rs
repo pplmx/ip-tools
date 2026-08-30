@@ -1,6 +1,6 @@
 //! `route` subcommand handler.
 
-use super::{resolve_for_tcp, DEFAULT_PORT};
+use super::{resolve_for_tcp_servers, DEFAULT_PORT};
 use clap::ArgMatches;
 use ip_tools::report::{render_route, render_route_repeat, to_json};
 use ip_tools::route as ip_route;
@@ -62,13 +62,18 @@ pub(super) async fn run_route(sub_m: &ArgMatches, style: Style) -> ExitCode {
         }
     };
 
-    let addresses = match resolve_for_tcp(&target.host).await {
-        Ok(addrs) => addrs,
-        Err(err) => {
-            eprintln!("Error: {err}");
-            return ExitCode::FAILURE;
-        }
-    };
+    // Resolution is bounded by the user's `--timeout`, not the blanket
+    // default: every other probe command threads its `--timeout` into DNS so
+    // a slow resolver cannot hold a `route --timeout 200` trace for ~10 s
+    // (the default is 5 s per lookup, A + AAAA).
+    let addresses =
+        match resolve_for_tcp_servers(&target.host, &[], &[], &[], false, Duration::from_millis(timeout_ms)).await {
+            Ok(addrs) => addrs,
+            Err(err) => {
+                eprintln!("Error: {err}");
+                return ExitCode::FAILURE;
+            }
+        };
     let Some(&dest_ip) = addresses.iter().find(|a| a.is_ipv4()) else {
         eprintln!("Error: route diagnostics need an IPv4 address for {}", target.host);
         return ExitCode::FAILURE;

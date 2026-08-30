@@ -452,7 +452,10 @@ HTTP observation (request control, headers, status, and now content).
 full response body (bounded to the request's body-read cap) verbatim to a
 file, so an operator can inspect the actual bytes of a block page, challenge,
 or API error without re-running in curl — the in-memory report still shows
-only the 1 KiB snippet and the total byte count.
+only the 1 KiB snippet and the total byte count. The file is created (and the
+path verified writable) before any probe runs, so a path that cannot be
+written fails the run up front; only a failure mid-write (e.g. disk full) is
+best-effort and reported on stderr.
 
 `--max-body-bytes N` raises or lowers that response-body read cap (default
 `1048576`, i.e. 1 MiB) and the `--output-body` write together, so a genuinely

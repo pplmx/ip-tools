@@ -561,8 +561,10 @@ where
     let body_bytes = ended.then_some(bytes_read);
     let body_snippet = body_snippet_string(&snippet, (bytes_read as usize) > snippet.len());
     if let Some(path) = body_output {
-        // Best effort: a write failure is reported on stderr but does not
-        // turn a completed probe into a failure — the observation is valid.
+        // The path was verified writable up front (run_probe_flow pre-creates
+        // it). A failure *here* is mid-write only (disk full, I/O error): it
+        // is reported on stderr but does not turn a completed probe into a
+        // failure — the observation is valid.
         if let Err(e) = crate::http_common::write_body_to_file(path, &full_body) {
             eprintln!("Warning: could not write response body to {}: {e}", path.display());
         }

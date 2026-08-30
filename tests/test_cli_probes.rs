@@ -381,6 +381,55 @@ fn probe_cli_rejects_tls_version_for_http3() {
 }
 
 #[test]
+fn probe_cli_rejects_sni_for_a_tcp_repeat() {
+    // `--sni` names a TLS/SNI identity; a bare `tcp` repeat has no handshake,
+    // so the flag used to be silently ignored (exit 0) while the standalone
+    // `tcp` command rejects `--sni` at argument parse — the same silent
+    // swallow the method/path/header/body guard fixed. It must fail fast,
+    // while `--sni` stays valid on the TLS-over-TCP protocols.
+    let addr = local_tcp_listener();
+    cmd()
+        .args([
+            "probe",
+            &addr.to_string(),
+            "--protocol",
+            "tcp",
+            "--sni",
+            "vhost.example",
+            "--count",
+            "2",
+            "--timeout",
+            "800",
+        ])
+        .assert()
+        .failure()
+        .stderr(contains("--sni does not apply to --protocol tcp"));
+}
+
+#[test]
+fn http_cli_rejects_an_invalid_path_at_parse() {
+    // The request-target must be a non-empty origin-form path (RFC 9110
+    // §3.2): an empty or whitespace-carrying `--path` otherwise sinks into
+    // the probe as a bogus "could not build http request" observation that
+    // exits 0 like a network failure — the same class `--method` guards.
+    let addr = local_tcp_listener();
+    for (path, needle) in [
+        ("", "non-empty request path"),
+        ("/a b", "whitespace or control characters"),
+        ("/healthz", ""),
+    ] {
+        let assert = cmd().args(["http", &addr.to_string(), "--path", path]).assert();
+        if path == "/healthz" {
+            // A valid origin-form path still parses (the probe then fails at
+            // the TLS layer as an observation, which is exit 0).
+            assert.success().stderr(contains("request path").not());
+        } else {
+            assert.failure().stderr(contains(needle));
+        }
+    }
+}
+
+#[test]
 fn http_cli_rejects_an_invalid_method_at_parse() {
     // An HTTP method is a `token` (RFC 9110 §9.1): a value with a space is a
     // paste/quoting accident that must fail at argument parse — not deep
@@ -460,6 +509,60 @@ fn http_cli_rejects_output_body_across_a_multi_target_sweep() {
         .failure()
         .stderr(contains("--output-body").and(contains("single target")));
     let _ = std::fs::remove_file(&tmp);
+}
+
+#[test]
+fn http_cli_rejects_output_body_for_a_single_dual_address_target() {
+    // The multi-target guard counts *targets*, but a single hostname that
+    // resolves to several addresses (dual-stack A + AAAA) gets past it and
+    // would still race the addresses' bodies into the one file (last finisher
+    // wins, silently). The post-resolution destination-count guard must fail
+    // fast — before any probe writes — even when those addresses are
+    // unroutable on this host.
+    let dns = local_dns_server(&["127.0.0.1"], &["::1"]);
+    let tmp = std::env::temp_dir().join(format!("ip-tools-race-{}.bin", std::process::id()));
+    let _ = std::fs::remove_file(&tmp);
+    cmd()
+        .args([
+            "http",
+            "dual.example",
+            "--server",
+            &dns.to_string(),
+            "--output-body",
+            tmp.to_str().unwrap(),
+            "--timeout",
+            "300",
+        ])
+        .assert()
+        .failure()
+        .stderr(contains("would race all bodies into one file"));
+    let _ = std::fs::remove_file(&tmp);
+}
+
+#[test]
+fn http_cli_rejects_unwritable_output_body_before_probing() {
+    // `--output-body` is an operator-requested artifact: a path the probe
+    // cannot write (missing directory) used to surface only as a stderr
+    // `Warning:` while the run still exited 0 — a capture-enabled health
+    // check silently losing its file with a green exit. The path is now
+    // pre-created (and its writability verified) before any probe runs, so
+    // an unwritable path fails the run up front.
+    let addr = local_tcp_listener();
+    let bad = std::env::temp_dir()
+        .join(format!("ip-tools-nowhere-{}.bin", std::process::id()))
+        .join("body.bin");
+    cmd()
+        .args([
+            "http",
+            &addr.to_string(),
+            "--output-body",
+            bad.to_str().unwrap(),
+            "--timeout",
+            "800",
+        ])
+        .assert()
+        .failure()
+        .stderr(contains("--output-body cannot write"));
 }
 
 #[test]

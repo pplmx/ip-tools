@@ -191,6 +191,16 @@ pub(super) async fn run_probe(sub_m: &ArgMatches, style: Style) -> ExitCode {
             eprintln!("Error: --tls-version only applies to --protocol tls|http|http2|http3 (a tcp repeat has no TLS handshake)");
             return ExitCode::FAILURE;
         }
+        // `--sni` is the same silent-swallow on a tcp repeat: without this,
+        // `probe --protocol tcp --sni x` runs the repeat ignoring the flag
+        // (exit 0), while the standalone `tcp` command rejects `--sni` at
+        // argument parse. `--sni` is meaningful for the TLS-over-TCP
+        // protocols (tls/http/http2/http3); only a bare tcp repeat has no
+        // handshake to name.
+        if protocol.as_str() == "tcp" && explicitly_given("sni") {
+            eprintln!("Error: --sni does not apply to --protocol tcp (a tcp repeat has no TLS handshake)");
+            return ExitCode::FAILURE;
+        }
     }
     // QUIC is always TLS 1.3 (rustls on quinn offers 1.3 only), so a
     // `--tls-version 1.2` request on the http3 repeat is meaningless and would

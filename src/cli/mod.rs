@@ -29,8 +29,6 @@ use std::net::{IpAddr, SocketAddr};
 use std::process::ExitCode;
 use std::time::Duration;
 
-/// Default timeout for single network operations, in milliseconds.
-const DEFAULT_TIMEOUT_MS: u64 = 5000;
 /// Hard upper bound on concurrency to avoid resource exhaustion.
 const MAX_CONCURRENCY: usize = 256;
 /// Cap on the response-body snippet the library keeps in each observation
@@ -587,8 +585,34 @@ fn path_arg() -> Arg {
     Arg::new("path")
         .long("path")
         .value_name("PATH")
+        .value_parser(http_path_token)
         .default_value("/")
         .help("HTTP request path to probe")
+}
+
+/// Validate a `--path` value: the request-target must be a non-empty
+/// origin-form path (RFC 9110 §3.2) — starting with `/` and free of
+/// whitespace / control characters hyper cannot put on the wire. An empty or
+/// malformed path otherwise sinks into the probe and surfaces as a bogus
+/// "could not build http request" observation that exits 0 — a caller
+/// mistake masquerading as a network failure (the exact class `--method`
+/// already guards at parse via [`http_method_token`]).
+fn http_path_token(s: &str) -> Result<String, String> {
+    if s.is_empty() {
+        return Err("must be a non-empty request path (e.g. '/' or '/healthz')".to_string());
+    }
+    if !s.starts_with('/') {
+        return Err(format!(
+            "'{s}' does not start with '/' — a request-target is origin-form (RFC 9110 §3.2)"
+        ));
+    }
+    if s.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        let shown: String = s.chars().map(|c| if c.is_control() { '?' } else { c }).collect();
+        return Err(format!(
+            "'{shown}' contains whitespace or control characters that cannot appear in a request-target"
+        ));
+    }
+    Ok(s.to_string())
 }
 
 /// `--header` argument: an extra HTTP request header (repeatable).
@@ -1130,6 +1154,35 @@ where
         })
         .await;
     resolved.sort_by_key(|(idx, _)| *idx);
+    // `--output-body` is one file per probe, so even a SINGLE target whose
+    // name resolves to several destinations (dual-stack `localhost` → ::1 and
+    // 127.0.0.1) would race the destinations' bodies onto the one path — the
+    // pre-resolution `targets.len() > 1` guard above cannot see that, it only
+    // counts targets. Fail fast once the destination count is known and before
+    // any probe writes.
+    if let Some(path) = sub_m.try_get_one::<String>("output-body").ok().flatten() {
+        let dest_count: usize = resolved
+            .iter()
+            .filter_map(|(_, r)| r.as_ref().map(|(_, dests)| dests.len()))
+            .sum();
+        if dest_count > 1 {
+            eprintln!(
+                "Error: --output-body with {dest_count} destination address(es) would race all bodies into one file ({path}); use a single destination or drop the flag"
+            );
+            return ExitCode::FAILURE;
+        }
+        // Pre-flight the artifact: an `--output-body` path the probe cannot
+        // write (missing directory, no permission) used to surface only as a
+        // stderr `Warning:` while the run still exited 0 — a capture-enabled
+        // health check silently losing its file with a green exit. Creating/
+        // truncating the file here fails the run up front, before any probe,
+        // whenever the write cannot even be started; a mid-write failure
+        // (disk full) stays best-effort with the warning above.
+        if let Err(e) = std::fs::File::create(std::path::Path::new(path)) {
+            eprintln!("Error: --output-body cannot write {path}: {e}");
+            return ExitCode::FAILURE;
+        }
+    }
     // Phase 2: probe every (host, destination) pair, bounded by the same limit.
     //
     // The probe phase is where a sweep actually spends its wall-clock time (a
@@ -1392,13 +1445,6 @@ where
         }
     }
     out
-}
-
-/// Resolve a hostname to its addresses via the system resolver only.
-///
-/// If `host` is already an IP literal, it is used directly.
-pub async fn resolve_for_tcp(host: &str) -> Result<Vec<IpAddr>, String> {
-    resolve_for_tcp_servers(host, &[], &[], &[], false, Duration::from_millis(DEFAULT_TIMEOUT_MS)).await
 }
 
 /// Resolve a hostname to its addresses via the system resolver plus any
