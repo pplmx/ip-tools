@@ -1,8 +1,8 @@
 {
   "ril_version": 1,
-  "round": 25,
+  "round": 26,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-30T22:11:24+00:00",
+  "updated_at": "2026-08-30T23:29:04+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -11,7 +11,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:45+00:00",
       "updated_at": "2026-08-21T17:36:45+00:00",
-      "touched_round": 22,
+      "touched_round": 25,
       "desc": "DNS probes: system resolver, --server custom, --doh RFC8484 (hand-rolled wire), literal short-circuit, RCODE surfacing"
     },
     "COMP-tcp": {
@@ -101,7 +101,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 24,
+      "touched_round": 25,
       "desc": "clap arg tree + dispatch; --strict/--json/--timeout/--concurrency/--server/--insecure/--method/--count flags"
     },
     "COMP-model": {
@@ -6212,6 +6212,89 @@
       "touched_round": 24,
       "commit": "5a18a0c",
       "summary": "Deterministic (Reverse(count), secondary-key) sorts for probe status/failure counts + dns failure_counts; run_probe_flow one-time literal-resolver Note; 2 tests"
+    },
+    "TASK-120": {
+      "id": "TASK-120",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T23:29:03+00:00",
+      "updated_at": "2026-08-30T23:29:04+00:00",
+      "touched_round": 25,
+      "category": "correctness",
+      "severity": 0.9,
+      "confidence": 1.0,
+      "effort": 0.4,
+      "unlock_factor": 0.5,
+      "summary": "Restore doh_query rcode!=0 failure gate: round-24 CNAME edit replaced it, so NXDOMAIN/SERVFAIL/REFUSED fell through to zero-record success while dot_query kept its gate (DoH/DoT disagreement, silent false-pass)"
+    },
+    "TASK-121": {
+      "id": "TASK-121",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T23:29:03+00:00",
+      "updated_at": "2026-08-30T23:29:04+00:00",
+      "touched_round": 25,
+      "category": "docs",
+      "severity": 0.4,
+      "confidence": 1.0,
+      "effort": 0.2,
+      "unlock_factor": 0.3,
+      "summary": "README CSV schema corrections: dns latency_P50/P95/max_ms column names, http/http2/http3 missing trailing sans,covers,failure columns"
+    },
+    "ISS-166": {
+      "id": "ISS-166",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T23:29:03+00:00",
+      "updated_at": "2026-08-30T23:29:04+00:00",
+      "touched_round": 25,
+      "summary": "DoH non-NOERROR answers (NXDOMAIN/SERVFAIL/REFUSED) reported as zero-record success after round-24 f999fa2 dropped rcode!=0 gate; dot_query kept it - a false-pass and a DoH/DoT disagreement"
+    },
+    "ISS-167": {
+      "id": "ISS-167",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T23:29:03+00:00",
+      "updated_at": "2026-08-30T23:29:04+00:00",
+      "touched_round": 25,
+      "summary": "README dns --csv column list spells latency_P50/P95/max but the real header is latency_p50_ms/latency_p95_ms/latency_max_ms"
+    },
+    "ISS-168": {
+      "id": "ISS-168",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T23:29:03+00:00",
+      "updated_at": "2026-08-30T23:29:04+00:00",
+      "touched_round": 25,
+      "summary": "README http/http2/http3 --csv enumeration omits the real trailing sans,covers,failure columns (covers is the round-24 h3 CSV feature, undiscoverable)"
+    },
+    "CHG-112": {
+      "id": "CHG-112",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-30T23:29:03+00:00",
+      "updated_at": "2026-08-30T23:29:03+00:00",
+      "touched_round": 25,
+      "commit": "3d5b2ea",
+      "summary": "Restore doh_query rcode!=0 gate alongside CNAME logic (fixes round-24 regression, DoH/DoT agree); /dns-nxdomain fixture + CLI regression test; README dns+http CSV schema fixes; cosmetic renames"
+    },
+    "EVID-doh-rcode-regression": {
+      "id": "EVID-doh-rcode-regression",
+      "type": "evidence",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-30T23:29:03+00:00",
+      "updated_at": "2026-08-30T23:29:03+00:00",
+      "touched_round": 25,
+      "source": "round-27 fresh-eyes re-read of f999fa2",
+      "summary": "Regression root cause: the round-24 doh_query edit replaced (not joined) the rcode!=0 branch with the saw_cname gate; the whole-suite 110 tests passed with the bug live because no test fed a non-NOERROR message through the caller gate. Cross-verified: temporarily removing the restored branch makes dns_cli_doh_reports_nxdomain_as_a_failure_observation fail, re-applying makes it pass.",
+      "confidence": 1.0
     }
   },
   "edges": [
@@ -10684,6 +10767,72 @@
       "to": "ISS-165",
       "type": "resolves",
       "created_at": "2026-08-30T22:11:23+00:00"
+    },
+    {
+      "from": "TASK-120",
+      "to": "ISS-166",
+      "type": "addresses",
+      "created_at": "2026-08-30T23:29:03+00:00"
+    },
+    {
+      "from": "TASK-121",
+      "to": "ISS-167",
+      "type": "addresses",
+      "created_at": "2026-08-30T23:29:03+00:00"
+    },
+    {
+      "from": "TASK-121",
+      "to": "ISS-168",
+      "type": "addresses",
+      "created_at": "2026-08-30T23:29:03+00:00"
+    },
+    {
+      "from": "ISS-166",
+      "to": "COMP-dns",
+      "type": "located_in",
+      "created_at": "2026-08-30T23:29:03+00:00"
+    },
+    {
+      "from": "ISS-167",
+      "to": "COMP-dns",
+      "type": "located_in",
+      "created_at": "2026-08-30T23:29:03+00:00"
+    },
+    {
+      "from": "ISS-168",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-30T23:29:04+00:00"
+    },
+    {
+      "from": "CHG-112",
+      "to": "TASK-120",
+      "type": "implements",
+      "created_at": "2026-08-30T23:29:04+00:00"
+    },
+    {
+      "from": "CHG-112",
+      "to": "TASK-121",
+      "type": "implements",
+      "created_at": "2026-08-30T23:29:04+00:00"
+    },
+    {
+      "from": "CHG-112",
+      "to": "ISS-166",
+      "type": "resolves",
+      "created_at": "2026-08-30T23:29:04+00:00"
+    },
+    {
+      "from": "CHG-112",
+      "to": "ISS-167",
+      "type": "resolves",
+      "created_at": "2026-08-30T23:29:04+00:00"
+    },
+    {
+      "from": "CHG-112",
+      "to": "ISS-168",
+      "type": "resolves",
+      "created_at": "2026-08-30T23:29:04+00:00"
     }
   ]
 }
