@@ -27,10 +27,19 @@ pub(super) fn connectivity_rules(input: &DiagnosticInput, out: &mut Vec<Diagnosi
             return;
         }
         let kinds = failure_summary(&bad);
+        // A single observation cannot claim High — the model docs forbid High
+        // from a single observation type, and the partial branch already
+        // withholds it below two failing addresses. Several addresses failing
+        // identically is High; a lone target down is Medium.
+        let confidence = if bad.len() > 1 {
+            Confidence::High
+        } else {
+            Confidence::Medium
+        };
         out.push(Diagnosis {
             severity: Severity::High,
             category: DiagnosticCategory::TotalConnectivityLoss,
-            confidence: Confidence::High,
+            confidence,
             summary: format!("No address of {} accepts TCP connections", input.hostname),
             evidence: vec![
                 Evidence {

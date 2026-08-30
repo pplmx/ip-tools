@@ -165,6 +165,37 @@ mod tests {
     }
 
     #[test]
+    fn total_loss_confidence_scales_with_number_of_failing_addresses() {
+        // A single observation must not claim High confidence (the model doc
+        // forbids High from a single observation type): one address down is
+        // a Medium verdict.
+        let single = [tp("1.1.1.1:443", false)];
+        let out = diagnose(&input(&[], &single, &[], &[], &[]));
+        let d = out
+            .iter()
+            .find(|d| d.category == DiagnosticCategory::TotalConnectivityLoss)
+            .expect("total-loss verdict");
+        assert_eq!(
+            d.confidence,
+            Confidence::Medium,
+            "single address down is not High: {out:?}"
+        );
+
+        // Several addresses failing identically corroborate each other → High.
+        let multi = [tp("1.1.1.1:443", false), tp("1.1.1.2:443", false)];
+        let out = diagnose(&input(&[], &multi, &[], &[], &[]));
+        let d = out
+            .iter()
+            .find(|d| d.category == DiagnosticCategory::TotalConnectivityLoss)
+            .expect("total-loss verdict");
+        assert_eq!(
+            d.confidence,
+            Confidence::High,
+            "multiple addresses down corroborate: {out:?}"
+        );
+    }
+
+    #[test]
     fn partial_connectivity_when_some_fail() {
         let dns = [dns_ok("example.com", DnsRecordType::A, "1.1.1.1")];
         let tcp = [tp("1.1.1.1:443", true), tp("2.2.2.2:443", false)];
