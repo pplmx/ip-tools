@@ -772,6 +772,17 @@ fn parse_doh_url(url: &str) -> Result<(String, u16, String), String> {
         Some((authority, path)) => (authority, format!("/{path}")),
         None => (rest, "/dns-query".to_string()),
     };
+    // The probe appends `?dns=<base64url>` to `path` (RFC 8484), so an
+    // endpoint whose configured path already carries a query string or
+    // fragment (`https://dns.example/resolve?key=abc`, a corporate DNS
+    // gateway) must not keep it: a second `?` in the request target is
+    // malformed (`/resolve?key=abc?dns=...`) and the `dns` parameter would
+    // never be parsed as its own query param. Strip query+fragment, keeping
+    // the base path RFC 8484 places the parameter on.
+    let path = match path.split_once(['?', '#']) {
+        Some((base, _)) => base.to_string(),
+        None => path,
+    };
     if authority.is_empty() {
         return Err(format!("DoH endpoint {url:?} has an empty authority"));
     }
@@ -1491,6 +1502,26 @@ mod tests {
         assert!(parse_doh_url("http://1.1.1.1/dns-query").is_err());
         assert!(parse_doh_url("https://").is_err());
         assert!(parse_doh_url("").is_err());
+    }
+
+    #[test]
+    fn doh_url_strips_query_and_fragment_from_the_path() {
+        // The probe appends `?dns=<base64url>` (RFC 8484) to the path, so a
+        // configured path with its own query string or fragment must be
+        // reduced to the base path — otherwise the request target carries a
+        // malformed double `?` and the `dns` parameter is never its own key.
+        assert_eq!(
+            parse_doh_url("https://1.1.1.1/resolve?key=abc").unwrap(),
+            ("1.1.1.1".to_string(), 443, "/resolve".to_string())
+        );
+        assert_eq!(
+            parse_doh_url("https://1.1.1.1/resolve#frag").unwrap(),
+            ("1.1.1.1".to_string(), 443, "/resolve".to_string())
+        );
+        assert_eq!(
+            parse_doh_url("https://1.1.1.1/resolve?key=abc#frag").unwrap(),
+            ("1.1.1.1".to_string(), 443, "/resolve".to_string())
+        );
     }
 
     #[test]
