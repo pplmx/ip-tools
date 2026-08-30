@@ -1,8 +1,8 @@
 {
   "ril_version": 1,
-  "round": 17,
+  "round": 18,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-29T21:17:17+00:00",
+  "updated_at": "2026-08-30T04:36:17+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -11,7 +11,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:45+00:00",
       "updated_at": "2026-08-21T17:36:45+00:00",
-      "touched_round": 17,
+      "touched_round": 18,
       "desc": "DNS probes: system resolver, --server custom, --doh RFC8484 (hand-rolled wire), literal short-circuit, RCODE surfacing"
     },
     "COMP-tcp": {
@@ -41,7 +41,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 17,
+      "touched_round": 18,
       "desc": "HTTPS/HTTP1.1 single request per address over TLS, status/redirect/body-size"
     },
     "COMP-http2": {
@@ -61,7 +61,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 17,
+      "touched_round": 18,
       "desc": "HTTP/3 QUIC probe over UDP path, distinct from TCP path"
     },
     "COMP-probe": {
@@ -81,7 +81,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 17,
+      "touched_round": 18,
       "desc": "Linux UDP/ICMP traceroute, root/CAP_NET_RAW gated, IPv4-only"
     },
     "COMP-diagnose": {
@@ -101,7 +101,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 17,
+      "touched_round": 18,
       "desc": "clap arg tree + dispatch; --strict/--json/--timeout/--concurrency/--server/--insecure/--method/--count flags"
     },
     "COMP-model": {
@@ -5223,6 +5223,203 @@
       "touched_round": 17,
       "rationale": "Round-17 capstone: ISS-122 shell completions was deferred in DEC-082 (dependency + feature scope), but the operator goal explicitly targets ease-of-use (易用性) and clap_complete makes it a near-free, self-contained slice driven off the live clap tree. Implemented in-round (e8f8e55): completions bash|zsh|fish|elvish|powershell, MSRV-1.88 verified, api-baseline unchanged, EPIPE-tolerant generation (a generated pipe must never panic). DEC-082 remains in force for the other two deferrals (dead pub IpVersion enum; DEC-077 uniform --json shape).",
       "alternatives_rejected": "Keeping the ISS-122 deferral (would leave the goalmost-completion-friendly CLI without tab-completion while the goal names ease-of-use); hand-written completion files (they would drift from the clap tree); committed scripts instead of a generator (same drift)."
+    },
+    "ISS-123": {
+      "id": "ISS-123",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T03:40:57+00:00",
+      "updated_at": "2026-08-30T04:36:17+00:00",
+      "touched_round": 18,
+      "desc": "HTTP/1.1 custom Host header override drops the destination port (wire_authority not applied to override) while h2/h3 append it (uri_authority_at) - same input diverges across protocols, RFC 7230 5.4 vhost routing breaks",
+      "severity": "medium",
+      "src": "http.rs:441-449"
+    },
+    "ISS-124": {
+      "id": "ISS-124",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T03:40:57+00:00",
+      "updated_at": "2026-08-30T04:36:17+00:00",
+      "touched_round": 18,
+      "desc": "Duplicate Content-Length when --body plus explicit content-length header: h1/h2/h3 emit user headers then unconditionally append their own content-length (HeaderMap.header appends) - RFC 7230 3.3.2 / RFC 9113 8.3.1 violation or server 400",
+      "severity": "medium",
+      "src": "http.rs:456-467,http2.rs:293-296,http3.rs:297-300"
+    },
+    "ISS-125": {
+      "id": "ISS-125",
+      "type": "issue",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-30T03:40:57+00:00",
+      "updated_at": "2026-08-30T03:40:57+00:00",
+      "touched_round": 18,
+      "desc": "probe --protocol http3 --tls-version silently ignored (http3 arm drops tls_protocol) while http3 subcommand rejects the flag at parse - same flag, one exit 0 no-op, other exit 2",
+      "severity": "medium",
+      "src": "cli/probe.rs:287-300"
+    },
+    "ISS-126": {
+      "id": "ISS-126",
+      "type": "issue",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-30T03:40:57+00:00",
+      "updated_at": "2026-08-30T03:40:57+00:00",
+      "touched_round": 18,
+      "desc": "--method help lies ('GET or HEAD') and a garbage token fails deep inside a probe with exit 0 (looks like a network failure, README documents POST) - no value_parser",
+      "severity": "medium",
+      "src": "cli/mod.rs:509-515"
+    },
+    "ISS-127": {
+      "id": "ISS-127",
+      "type": "issue",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-30T03:42:06+00:00",
+      "updated_at": "2026-08-30T03:42:06+00:00",
+      "touched_round": 18,
+      "desc": "diagnose --max-body-bytes help text advertises 'and any --output-body write' but diagnose defines no --output-body - following the hint yields unexpected-argument exit 2",
+      "severity": "low",
+      "src": "cli/mod.rs:594-601"
+    },
+    "ISS-128": {
+      "id": "ISS-128",
+      "type": "issue",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-30T03:42:06+00:00",
+      "updated_at": "2026-08-30T03:42:06+00:00",
+      "touched_round": 18,
+      "desc": "DoT oversized-response guard is dead code: resp_len is u16 (max 65535) but DOT_MAX_LEN=65536, resp_len > DOT_MAX_LEN never true - intended 64KiB cap silently becomes 65535",
+      "severity": "low",
+      "src": "dns.rs:565,694-700"
+    },
+    "ISS-129": {
+      "id": "ISS-129",
+      "type": "issue",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-30T03:42:06+00:00",
+      "updated_at": "2026-08-30T03:42:06+00:00",
+      "touched_round": 18,
+      "desc": "Target::parse accepts '[]:443' (empty bracketed addr with a port) while '[]' is rejected - fails later deep in TLS as InvalidServerName instead of InvalidTarget up front",
+      "severity": "low",
+      "src": "target.rs:36-51"
+    },
+    "ISS-130": {
+      "id": "ISS-130",
+      "type": "issue",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-30T03:42:06+00:00",
+      "updated_at": "2026-08-30T03:42:06+00:00",
+      "touched_round": 18,
+      "desc": "Target::parse trims only for the emptiness check but stores the untrimmed host - library callers get hostname ' example.com' that fails DNS with a baffling error; CLI is safe (parses first)",
+      "severity": "low",
+      "src": "target.rs:82-89"
+    },
+    "ISS-131": {
+      "id": "ISS-131",
+      "type": "issue",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-30T03:43:31+00:00",
+      "updated_at": "2026-08-30T03:43:31+00:00",
+      "touched_round": 18,
+      "desc": "route probe swallows send_to errors and local_addr() failures (map_or(0,...) -> local_port 0 means ICMP match can never succeed) - silent full-timeout lost hops with no diagnostic",
+      "severity": "low",
+      "src": "route.rs:192-197"
+    },
+    "ISS-132": {
+      "id": "ISS-132",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T03:43:31+00:00",
+      "updated_at": "2026-08-30T04:36:17+00:00",
+      "touched_round": 18,
+      "desc": "http3 TLS observation records the un-stripped (possibly bracketed) SNI and always None handshake latency, while the wire sends wire_host(host) and the handshake time is measurable - misleading report fields",
+      "severity": "low",
+      "src": "http3.rs:432-448"
+    },
+    "ISS-133": {
+      "id": "ISS-133",
+      "type": "issue",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-30T03:43:31+00:00",
+      "updated_at": "2026-08-30T03:43:31+00:00",
+      "touched_round": 18,
+      "desc": "header-collection cap applied by iteration, not count of recorded headers: .take(24) runs before the Location/UTF-8 filter, so a chatty first-24 response yields far fewer than 24 recorded headers while valid later ones are dropped",
+      "severity": "low",
+      "src": "http_common.rs:23-36"
+    },
+    "ISS-134": {
+      "id": "ISS-134",
+      "type": "issue",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-30T03:43:31+00:00",
+      "updated_at": "2026-08-30T03:43:31+00:00",
+      "touched_round": 18,
+      "desc": "dns host:port silently drops the port (resolution ignores target.port) with no error or warning - user aiming a query at a non-standard port silently gets the system resolver answer",
+      "severity": "low",
+      "src": "cli/dns.rs eg 196-315"
+    },
+    "TASK-102": {
+      "id": "TASK-102",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T03:46:22+00:00",
+      "updated_at": "2026-08-30T04:36:17+00:00",
+      "touched_round": 18,
+      "category": "correctness",
+      "severity": 0.6,
+      "confidence": 1.0,
+      "effort": 3,
+      "desc": "HTTP-family wire correctness: custom Host override carries the destination port (parity h1=h2=h3), dedupe content-length when --body plus explicit header, and h3 TLS observation records the actual wire SNI + measurable handshake latency"
+    },
+    "TASK-103": {
+      "id": "TASK-103",
+      "type": "task",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-30T03:46:22+00:00",
+      "updated_at": "2026-08-30T03:46:22+00:00",
+      "touched_round": 18,
+      "category": "dx",
+      "severity": 0.5,
+      "confidence": 1.0,
+      "effort": 2,
+      "desc": "CLI honesty/fail-fast: reject --tls-version for --protocol http3 (QUIC is TLS1.3-only), value-parse --method so garbage fails at parse not inside a probe, and fix the diagnose --max-body-bytes help that advertises an undefined --output-body"
+    },
+    "TASK-104": {
+      "id": "TASK-104",
+      "type": "task",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-30T03:46:22+00:00",
+      "updated_at": "2026-08-30T03:46:22+00:00",
+      "touched_round": 18,
+      "category": "correctness",
+      "severity": 0.4,
+      "confidence": 1.0,
+      "effort": 2,
+      "desc": "Engine edge robustness: dead DoT oversized-response guard, empty-bracket target with a port, untrimmed stored host, swallowed route send_to errors, and header-cap applied after filtering"
+    },
+    "CHG-101": {
+      "id": "CHG-101",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-30T04:34:19+00:00",
+      "updated_at": "2026-08-30T04:34:19+00:00",
+      "touched_round": 18,
+      "commit": "PENDING",
+      "title": "HTTP-family wire correctness: custom Host carries the port; content-length dedup; h3 wire SNI + handshake latency"
     }
   },
   "edges": [
@@ -8975,6 +9172,156 @@
       "to": "DEC-082",
       "type": "supersedes",
       "created_at": "2026-08-29T21:17:17+00:00"
+    },
+    {
+      "from": "TASK-102",
+      "to": "ISS-123",
+      "type": "addresses",
+      "created_at": "2026-08-30T03:51:01+00:00"
+    },
+    {
+      "from": "TASK-102",
+      "to": "ISS-124",
+      "type": "addresses",
+      "created_at": "2026-08-30T03:51:01+00:00"
+    },
+    {
+      "from": "TASK-102",
+      "to": "ISS-132",
+      "type": "addresses",
+      "created_at": "2026-08-30T03:51:01+00:00"
+    },
+    {
+      "from": "TASK-103",
+      "to": "ISS-125",
+      "type": "addresses",
+      "created_at": "2026-08-30T03:51:01+00:00"
+    },
+    {
+      "from": "TASK-103",
+      "to": "ISS-126",
+      "type": "addresses",
+      "created_at": "2026-08-30T03:51:01+00:00"
+    },
+    {
+      "from": "TASK-103",
+      "to": "ISS-127",
+      "type": "addresses",
+      "created_at": "2026-08-30T03:51:01+00:00"
+    },
+    {
+      "from": "TASK-104",
+      "to": "ISS-128",
+      "type": "addresses",
+      "created_at": "2026-08-30T03:51:02+00:00"
+    },
+    {
+      "from": "TASK-104",
+      "to": "ISS-129",
+      "type": "addresses",
+      "created_at": "2026-08-30T03:51:02+00:00"
+    },
+    {
+      "from": "TASK-104",
+      "to": "ISS-130",
+      "type": "addresses",
+      "created_at": "2026-08-30T03:51:02+00:00"
+    },
+    {
+      "from": "TASK-104",
+      "to": "ISS-131",
+      "type": "addresses",
+      "created_at": "2026-08-30T03:51:02+00:00"
+    },
+    {
+      "from": "TASK-104",
+      "to": "ISS-133",
+      "type": "addresses",
+      "created_at": "2026-08-30T03:51:02+00:00"
+    },
+    {
+      "from": "ISS-123",
+      "to": "COMP-http",
+      "type": "located_in",
+      "created_at": "2026-08-30T03:51:02+00:00"
+    },
+    {
+      "from": "ISS-124",
+      "to": "COMP-http",
+      "type": "located_in",
+      "created_at": "2026-08-30T03:51:02+00:00"
+    },
+    {
+      "from": "ISS-125",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-30T03:51:02+00:00"
+    },
+    {
+      "from": "ISS-126",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-30T03:51:02+00:00"
+    },
+    {
+      "from": "ISS-127",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-30T03:51:02+00:00"
+    },
+    {
+      "from": "ISS-128",
+      "to": "COMP-dns",
+      "type": "located_in",
+      "created_at": "2026-08-30T03:51:02+00:00"
+    },
+    {
+      "from": "ISS-129",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-30T03:51:02+00:00"
+    },
+    {
+      "from": "ISS-130",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-30T03:51:02+00:00"
+    },
+    {
+      "from": "ISS-131",
+      "to": "COMP-route",
+      "type": "located_in",
+      "created_at": "2026-08-30T03:51:02+00:00"
+    },
+    {
+      "from": "ISS-132",
+      "to": "COMP-http3",
+      "type": "located_in",
+      "created_at": "2026-08-30T03:51:02+00:00"
+    },
+    {
+      "from": "ISS-133",
+      "to": "COMP-http",
+      "type": "located_in",
+      "created_at": "2026-08-30T03:51:03+00:00"
+    },
+    {
+      "from": "CHG-101",
+      "to": "ISS-123",
+      "type": "resolves",
+      "created_at": "2026-08-30T04:36:16+00:00"
+    },
+    {
+      "from": "CHG-101",
+      "to": "ISS-124",
+      "type": "resolves",
+      "created_at": "2026-08-30T04:36:16+00:00"
+    },
+    {
+      "from": "CHG-101",
+      "to": "ISS-132",
+      "type": "resolves",
+      "created_at": "2026-08-30T04:36:16+00:00"
     }
   ]
 }

@@ -227,6 +227,10 @@ async fn probe_impl(
         Ok(c) => c,
         Err(e) => return base.with_failure(failure(FailureKind::Quic, format!("quic connect failed: {e}"))),
     };
+    // The QUIC handshake time is measurable relative to just before the
+    // connect future is driven, and is recorded on the TLS observation (the
+    // h1/h2 TLS observations carry their handshake latency too).
+    let handshake_start = Instant::now();
     let quic_conn = match tokio::time::timeout(timeout, connecting).await {
         Ok(Ok(c)) => c,
         Ok(Err(e)) => return base.with_failure(failure(FailureKind::Quic, format!("quic handshake failed: {e}"))),
@@ -289,7 +293,14 @@ async fn probe_impl(
         .header("user-agent", "ip-tools")
         .header("accept", "*/*");
     for (name, value) in headers {
-        if custom_host.is_none() || !name.eq_ignore_ascii_case("host") {
+        // An explicit `content-length` header is skipped when a request body
+        // is present: the probe computes the length from the actual bytes and
+        // must be the single authority on it, otherwise a user-supplied value
+        // stacks a second `content-length` on the wire (RFC 9114 §4.1) and a
+        // mismatch with the sent bytes is a protocol violation servers reject.
+        if (custom_host.is_none() || !name.eq_ignore_ascii_case("host"))
+            && !(body.is_some() && name.eq_ignore_ascii_case("content-length"))
+        {
             builder = builder.header(*name, *value);
         }
     }
@@ -414,7 +425,7 @@ async fn probe_impl(
         }
     }
     HttpObservation {
-        tls: Some(quic_tls_summary(&quic_conn, destination, host)),
+        tls: Some(quic_tls_summary(&quic_conn, destination, host, handshake_start)),
         status: Some(status),
         protocol: Some("HTTP/3".to_string()),
         location,
@@ -429,7 +440,12 @@ async fn probe_impl(
 }
 
 /// Capture the (minimal) TLS/QUIC negotiated parameters for the observation.
-fn quic_tls_summary(conn: &quinn::Connection, destination: SocketAddr, host: &str) -> TlsObservation {
+fn quic_tls_summary(
+    conn: &quinn::Connection,
+    destination: SocketAddr,
+    host: &str,
+    handshake_start: Instant,
+) -> TlsObservation {
     let alpn = conn
         .handshake_data()
         .and_then(|hd| hd.downcast::<quinn::crypto::rustls::HandshakeData>().ok())
@@ -437,13 +453,16 @@ fn quic_tls_summary(conn: &quinn::Connection, destination: SocketAddr, host: &st
         .map(|p| String::from_utf8_lossy(&p).into_owned());
     TlsObservation {
         destination,
-        sni: host.to_string(),
+        // The SNI actually presented on the wire is the bracket-stripped form
+        // (`[::1]` would be rejected by quinn's ServerName), so record that
+        // rather than the raw (possibly bracketed) target host.
+        sni: crate::http_common::wire_host(host).to_string(),
         success: true,
         version: Some("TLSv1.3".to_string()),
         cipher: None,
         alpn,
         certificate: None,
-        latency_ms: None,
+        latency_ms: Some(handshake_start.elapsed().as_millis() as u64),
         failure: None,
     }
 }

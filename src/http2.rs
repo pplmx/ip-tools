@@ -285,7 +285,14 @@ async fn probe_impl(
         .header("user-agent", "ip-tools")
         .header("accept", "*/*");
     for (name, value) in headers {
-        if custom_host.is_none() || !name.eq_ignore_ascii_case("host") {
+        // An explicit `content-length` header is skipped when a request body
+        // is present: the probe computes the length from the actual bytes and
+        // must be the single authority on it, otherwise a user-supplied value
+        // stacks a second `content-length` on the wire (RFC 9113 §8.3.1) and a
+        // mismatch with the sent bytes is a protocol violation servers reject.
+        if (custom_host.is_none() || !name.eq_ignore_ascii_case("host"))
+            && !(body.is_some() && name.eq_ignore_ascii_case("content-length"))
+        {
             builder = builder.header(*name, *value);
         }
     }

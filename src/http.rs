@@ -438,12 +438,16 @@ where
     // bracket-stripped: a bracketed IPv6-literal target (`tls [::1]`) must
     // put the unbracketed `::1` on the wire (RFC 7230 §5.4 requires the host
     // without brackets).
-    let mut custom_host: Option<&str> = None;
+    let mut custom_host: Option<String> = None;
     let default_host: String = match headers.iter().find(|(n, _)| n.eq_ignore_ascii_case("host")) {
         Some((_, v)) => {
-            let v = crate::http_common::wire_host(v);
-            custom_host = Some(v);
-            v.to_string()
+            // An explicit `host` override keeps the destination port appended
+            // when it is not the scheme default — parity with the default
+            // authority and with the h2/h3 path, so a vhost keyed by host+port
+            // routes identically across every protocol (RFC 7230 §5.4).
+            let v = crate::http_common::wire_authority(v, destination.port(), tls.is_some());
+            custom_host = Some(v.clone());
+            v
         }
         None => crate::http_common::wire_authority(host, destination.port(), tls.is_some()),
     };
@@ -454,7 +458,14 @@ where
         .header("user-agent", "ip-tools")
         .header("accept", "*/*");
     for (name, value) in headers {
-        if custom_host.is_none() || !name.eq_ignore_ascii_case("host") {
+        // An explicit `content-length` header is skipped when a request body
+        // is present: the probe computes the length from the actual bytes and
+        // must be the single authority on it, otherwise a user-supplied value
+        // stacks a second `content-length` on the wire (RFC 7230 §3.3.2) and a
+        // mismatch with the sent bytes is a protocol violation servers reject.
+        if (custom_host.is_none() || !name.eq_ignore_ascii_case("host"))
+            && !(body.is_some() && name.eq_ignore_ascii_case("content-length"))
+        {
             builder = builder.header(*name, *value);
         }
     }

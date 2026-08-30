@@ -1021,14 +1021,79 @@ async fn explicit_host_header_overrides_the_default_on_the_wire() {
         .filter(|l| l.to_ascii_lowercase().starts_with("host:"))
         .copied()
         .collect();
+    // The override is probed on an ephemeral (never default) port, so the
+    // wire Host must carry the destination port — parity with the default
+    // authority and the h2/h3 path, or a host+port vhost would misroute
+    // (RFC 7230 §5.4). Exactly one Host header, never a stacked second one.
     assert_eq!(
         hosts,
-        vec!["host: vhost.example"],
-        "exactly one Host header, overridden by --header host: request was:\n{request}"
+        vec![format!("host: vhost.example:{}", addr.port()).as_str()],
+        "exactly one Host header, override carrying the non-default port: request was:\n{request}"
     );
     assert!(
         request.contains("x-custom: 1"),
         "non-host custom headers must still be sent:\n{request}"
+    );
+    server.abort();
+}
+
+/// A request body plus an explicit `content-length` header must not stack two
+/// Content-Length headers on the wire (RFC 7230 §3.3.2): the probe computes
+/// the length from the actual bytes, so the user-supplied value is skipped and
+/// the single computed header remains the one authority.
+#[tokio::test(flavor = "current_thread")]
+async fn content_length_header_is_deduped_when_a_body_is_sent() {
+    use tokio::io::AsyncReadExt;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind listener");
+    let addr = listener.local_addr().expect("listener addr");
+    let (sent_tx, mut sent_rx) = tokio::sync::mpsc::channel(1);
+    let server = tokio::spawn(async move {
+        use tokio::io::AsyncWriteExt;
+        if let Ok((mut stream, _peer)) = listener.accept().await {
+            let mut buf = [0u8; 4096];
+            let n = tokio::time::timeout(Duration::from_secs(3), stream.read(&mut buf))
+                .await
+                .map_or(0, |r| r.unwrap_or(0));
+            let _ = sent_tx.send(String::from_utf8_lossy(&buf[..n]).into_owned()).await;
+            let _ = stream
+                .write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\nok")
+                .await;
+        }
+    });
+
+    // A user-supplied `content-length` that differs from the real body length:
+    // the probe must drop it and send the true `content-length: 5`.
+    let obs = http::probe_plain(
+        addr,
+        "default.example",
+        "POST",
+        "/",
+        &[("content-length", "99"), ("x-custom", "1")],
+        Some(b"hello"),
+        Duration::from_secs(2),
+    )
+    .await;
+    assert_eq!(obs.status, Some(200), "probe should complete: {obs:?}");
+    assert!(obs.failure.is_none(), "probe must not fail: {obs:?}");
+
+    let request = tokio::time::timeout(Duration::from_secs(3), sent_rx.recv())
+        .await
+        .expect("server should report the request")
+        .expect("channel open");
+    let content_lengths: Vec<&str> = request
+        .lines()
+        .filter(|l| l.to_ascii_lowercase().starts_with("content-length:"))
+        .collect();
+    assert_eq!(
+        content_lengths,
+        vec!["content-length: 5"],
+        "exactly one Content-Length, the computed true length: request was:\n{request}"
+    );
+    assert!(
+        request.contains("x-custom: 1"),
+        "non-length custom headers must still be sent:\n{request}"
     );
     server.abort();
 }
@@ -3984,6 +4049,49 @@ fn http3_probe_records_response_headers() {
     assert!(
         stdout.contains("ip-tools-fixture"),
         "http3 must record the server header value: {stdout}"
+    );
+}
+
+/// The HTTP/3 TLS sub-observation must record the wire-presented SNI and the
+/// QUIC handshake latency, not a bracketed target host and a null latency:
+/// the `-json` row is what an operator asserting on the h3 result reads.
+#[test]
+fn http3_json_reports_wire_sni_and_handshake_latency() {
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let udp = fixture.udp_addr();
+
+    let out = Command::cargo_bin("ip-tools")
+        .expect("ip-tools binary")
+        .args(["http3", &udp.to_string(), "--insecure", "--json", "--timeout", "2000"])
+        .output()
+        .expect("run http3 JSON");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "http3 should exit 0: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let as_value: serde_json::Value = serde_json::from_str(&stdout).expect("http3 JSON must parse");
+    let obs = &as_value[0];
+    // The fixture cert is for `localhost`, so the negotiated SNI must be the
+    // wire host (the bare IP/`localhost`), never a `[...]`-bracketed literal.
+    let sni = obs["tls"]["sni"].as_str().expect("h3 JSON carries tls.sni");
+    assert!(
+        !sni.contains('[') && !sni.contains(']'),
+        "h3 SNI must be bracket-stripped, got {sni:?}: {stdout}"
+    );
+    assert!(
+        obs["tls"]["latency_ms"].as_u64().is_some(),
+        "h3 TLS sub-observation must carry the handshake latency: {stdout}"
+    );
+    assert_eq!(
+        obs["tls"]["version"].as_str(),
+        Some("TLSv1.3"),
+        "QUIC is TLS 1.3: {stdout}"
     );
 }
 
