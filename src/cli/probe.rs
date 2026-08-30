@@ -201,6 +201,18 @@ pub(super) async fn run_probe(sub_m: &ArgMatches, style: Style) -> ExitCode {
             eprintln!("Error: --sni does not apply to --protocol tcp (a tcp repeat has no TLS handshake)");
             return ExitCode::FAILURE;
         }
+        // `--insecure` on a tcp repeat is a no-op only when no encrypted
+        // resolver is in play: with `--doh`/`--dot` it governs *that*
+        // endpoint's certificate validation (self-signed lab resolvers), even
+        // though the repeat itself is a bare TCP connect. A bare
+        // `probe --protocol tcp --insecure` disables nothing it uses, so it
+        // is rejected as the cross-entry-point inconsistency `--sni` was
+        // (the standalone `tcp` subcommand does not define the flag).
+        let encrypted_resolver = sub_m.get_many::<String>("doh").is_none() && sub_m.get_many::<String>("dot").is_none();
+        if protocol.as_str() == "tcp" && explicitly_given("insecure") && encrypted_resolver {
+            eprintln!("Error: --insecure does not apply to --protocol tcp (a tcp repeat has no TLS handshake); it only disables --doh/--dot endpoint certificate checks");
+            return ExitCode::FAILURE;
+        }
     }
     // QUIC is always TLS 1.3 (rustls on quinn offers 1.3 only), so a
     // `--tls-version 1.2` request on the http3 repeat is meaningless and would

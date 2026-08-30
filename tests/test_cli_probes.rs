@@ -407,6 +407,31 @@ fn probe_cli_rejects_sni_for_a_tcp_repeat() {
 }
 
 #[test]
+fn probe_cli_rejects_insecure_for_a_tcp_repeat() {
+    // `--insecure` disables certificate verification — meaningless where there
+    // is no handshake. The standalone `tcp` subcommand doesn't define the flag,
+    // so `probe --protocol tcp --insecure` used to run a plain TCP repeat
+    // silently (exit 0). It must fail fast, while `--insecure` stays valid on
+    // the TLS-over-TCP protocols.
+    let addr = local_tcp_listener();
+    cmd()
+        .args([
+            "probe",
+            &addr.to_string(),
+            "--protocol",
+            "tcp",
+            "--insecure",
+            "--count",
+            "2",
+            "--timeout",
+            "800",
+        ])
+        .assert()
+        .failure()
+        .stderr(contains("--insecure does not apply to --protocol tcp"));
+}
+
+#[test]
 fn http_cli_rejects_an_invalid_path_at_parse() {
     // The request-target must be a non-empty origin-form path (RFC 9110
     // §3.2): an empty or whitespace-carrying `--path` otherwise sinks into
