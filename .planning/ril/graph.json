@@ -1,8 +1,8 @@
 {
   "ril_version": 1,
-  "round": 24,
+  "round": 25,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-30T20:54:03+00:00",
+  "updated_at": "2026-08-30T22:11:24+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -71,7 +71,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 11,
+      "touched_round": 24,
       "desc": "Repeated probing with latency stats (min/p50/p90/p95/p99/max/jitter/failure-dist) for tcp/tls/http/http2/http3"
     },
     "COMP-route": {
@@ -101,7 +101,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 22,
+      "touched_round": 24,
       "desc": "clap arg tree + dispatch; --strict/--json/--timeout/--concurrency/--server/--insecure/--method/--count flags"
     },
     "COMP-model": {
@@ -6151,6 +6151,67 @@
       "source": "src/cli/route.rs:135-139 vs 186-192, live run",
       "summary": "Round-25 enumerated the concrete DEC-077 cases: tcp/tls/http/http2/http3/probe/dns --json swap bare-array (single target) vs [{target,results}] (multi); route --json additionally renames fields by --count (addr/rtt_ms single array vs addrs/rtt-with-distribution object for --count 2). Both are the documented DEC-077 uniform-JSON deferral (top-level shape by input), not regressions; recorded so DEC-077 execution covers the route count rename explicitly.",
       "confidence": 1.0
+    },
+    "TASK-118": {
+      "id": "TASK-118",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T22:11:23+00:00",
+      "updated_at": "2026-08-30T22:11:23+00:00",
+      "touched_round": 24,
+      "category": "correctness",
+      "severity": 0.6,
+      "confidence": 1.0,
+      "effort": 0.4,
+      "unlock_factor": 0.4,
+      "summary": "Repeat-report failure/status distributions must be byte-deterministic: count-only sorts leak per-process HashMap order on ties (200x3/503x3 flappers), and dns --count failure_counts was unsorted entirely"
+    },
+    "TASK-119": {
+      "id": "TASK-119",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T22:11:23+00:00",
+      "updated_at": "2026-08-30T22:11:23+00:00",
+      "touched_round": 24,
+      "category": "dx",
+      "severity": 0.4,
+      "confidence": 1.0,
+      "effort": 0.3,
+      "unlock_factor": 0.3,
+      "summary": "Probe commands must note when --server/--doh/--dot are ignored for an IP-literal target (dns already does)"
+    },
+    "ISS-164": {
+      "id": "ISS-164",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T22:11:23+00:00",
+      "updated_at": "2026-08-30T22:11:24+00:00",
+      "touched_round": 24,
+      "summary": "probe status_counts/failure_counts sort by count only -> ties fall to randomized HashMap order per process (--json/--csv/human byte order differs between runs on a tied flapper); dns --count failure_counts unsorted"
+    },
+    "ISS-165": {
+      "id": "ISS-165",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-30T22:11:23+00:00",
+      "updated_at": "2026-08-30T22:11:24+00:00",
+      "touched_round": 24,
+      "summary": "tcp/tls/http/http2/http3/probe with an IP-literal target silently ignore --server/--doh/--dot (nothing resolved) with no signal, while dns prints a note for the same flags"
+    },
+    "CHG-111": {
+      "id": "CHG-111",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-30T22:11:23+00:00",
+      "updated_at": "2026-08-30T22:11:23+00:00",
+      "touched_round": 24,
+      "commit": "5a18a0c",
+      "summary": "Deterministic (Reverse(count), secondary-key) sorts for probe status/failure counts + dns failure_counts; run_probe_flow one-time literal-resolver Note; 2 tests"
     }
   },
   "edges": [
@@ -10575,6 +10636,54 @@
       "to": "ISS-162",
       "type": "resolves",
       "created_at": "2026-08-30T20:52:57+00:00"
+    },
+    {
+      "from": "TASK-118",
+      "to": "ISS-164",
+      "type": "addresses",
+      "created_at": "2026-08-30T22:11:23+00:00"
+    },
+    {
+      "from": "TASK-119",
+      "to": "ISS-165",
+      "type": "addresses",
+      "created_at": "2026-08-30T22:11:23+00:00"
+    },
+    {
+      "from": "ISS-164",
+      "to": "COMP-probe",
+      "type": "located_in",
+      "created_at": "2026-08-30T22:11:23+00:00"
+    },
+    {
+      "from": "ISS-165",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-30T22:11:23+00:00"
+    },
+    {
+      "from": "CHG-111",
+      "to": "TASK-118",
+      "type": "implements",
+      "created_at": "2026-08-30T22:11:23+00:00"
+    },
+    {
+      "from": "CHG-111",
+      "to": "TASK-119",
+      "type": "implements",
+      "created_at": "2026-08-30T22:11:23+00:00"
+    },
+    {
+      "from": "CHG-111",
+      "to": "ISS-164",
+      "type": "resolves",
+      "created_at": "2026-08-30T22:11:23+00:00"
+    },
+    {
+      "from": "CHG-111",
+      "to": "ISS-165",
+      "type": "resolves",
+      "created_at": "2026-08-30T22:11:23+00:00"
     }
   ]
 }
