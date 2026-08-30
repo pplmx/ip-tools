@@ -274,11 +274,12 @@ async fn probe_impl(
         .find(|(n, _)| n.eq_ignore_ascii_case("host"))
         .map(|(_, v)| *v);
     let effective_host = custom_host.unwrap_or(host);
-    // The URI authority is bracketed for an IPv6 literal (`https://[::1]/`),
-    // while the `host` header value is bracket-stripped — so `:authority`
-    // (driven by the URI) and `host` agree on the unbracketed form, matching
-    // the h2 handling (RFC 9114 §4.3.1 requires them to match). Both name the
-    // destination port when it is not 443, so host+port vhosting routes.
+    // Both the URI authority (which drives h3's `:authority`) and the `host`
+    // header re-bracket an IPv6 literal (`https://[::1]/`, `host: [::1]:8443`)
+    // through the shared authority helpers, so the two wire forms agree
+    // (RFC 9114 §4.3.1 requires them to match). An override already naming a
+    // port is honored verbatim by both. Each names the destination port when
+    // it is not 443, so host+port vhosting routes.
     let uri = format!(
         "https://{}{path}",
         crate::http_common::uri_authority_at(effective_host, destination.port())

@@ -1037,6 +1037,60 @@ async fn explicit_host_header_overrides_the_default_on_the_wire() {
     server.abort();
 }
 
+/// An override that already names a port (`--header 'host: vhost:8443'`) is a
+/// complete authority: the probe must not append the destination port on top
+/// of it (that would corrupt the wire Host into `vhost:8443:8443`).
+#[tokio::test(flavor = "current_thread")]
+async fn explicit_host_header_with_port_is_left_verbatim_on_the_wire() {
+    use tokio::io::AsyncReadExt;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind listener");
+    let addr = listener.local_addr().expect("listener addr");
+    let (sent_tx, mut sent_rx) = tokio::sync::mpsc::channel(1);
+    let server = tokio::spawn(async move {
+        use tokio::io::AsyncWriteExt;
+        if let Ok((mut stream, _peer)) = listener.accept().await {
+            let mut buf = [0u8; 4096];
+            let n = tokio::time::timeout(Duration::from_secs(3), stream.read(&mut buf))
+                .await
+                .map_or(0, |r| r.unwrap_or(0));
+            let _ = sent_tx.send(String::from_utf8_lossy(&buf[..n]).into_owned()).await;
+            let _ = stream
+                .write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\nok")
+                .await;
+        }
+    });
+
+    let obs = http::probe_plain(
+        addr,
+        "default.example",
+        "GET",
+        "/",
+        &[("host", "vhost.example:8443")],
+        None,
+        Duration::from_secs(2),
+    )
+    .await;
+    assert_eq!(obs.status, Some(200), "probe should complete: {obs:?}");
+
+    let request = tokio::time::timeout(Duration::from_secs(3), sent_rx.recv())
+        .await
+        .expect("server should report the request")
+        .expect("channel open");
+    let host_line = request
+        .lines()
+        .filter(|l| l.to_ascii_lowercase().starts_with("host:"))
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        host_line,
+        vec!["host: vhost.example:8443".to_string()],
+        "a port-carrying override must be used verbatim, not double-suffixed:\n{request}"
+    );
+    server.abort();
+}
+
 /// A request body plus an explicit `content-length` header must not stack two
 /// Content-Length headers on the wire (RFC 7230 §3.3.2): the probe computes
 /// the length from the actual bytes, so the user-supplied value is skipped and

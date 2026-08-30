@@ -434,10 +434,11 @@ where
     // 3. Build and send the request. An explicit `host` header (e.g.
     // `--header 'host: vhost.example'` against a shared-IP virtual host)
     // replaces the default Host instead of stacking a second, RFC 7230 §5.4-
-    // malformed Host on top of it. Both the override and the default are
-    // bracket-stripped: a bracketed IPv6-literal target (`tls [::1]`) must
-    // put the unbracketed `::1` on the wire (RFC 7230 §5.4 requires the host
-    // without brackets).
+    // malformed Host on top of it. `wire_authority` honors an override that
+    // already names a port verbatim, appends the destination port when it is
+    // not the scheme default, and re-brackets an IPv6 literal (`[::1]:8443`),
+    // since `Host: 2001:db8::1:8443` is not a valid authority (RFC 7230 §5.4 /
+    // RFC 3986 §3.2.2).
     let mut custom_host: Option<String> = None;
     let default_host: String = match headers.iter().find(|(n, _)| n.eq_ignore_ascii_case("host")) {
         Some((_, v)) => {

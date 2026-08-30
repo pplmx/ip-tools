@@ -77,9 +77,14 @@ pub fn wire_host(host: &str) -> &str {
 
 /// The URI-authority form of a wire host: an IPv6 literal must be bracketed
 /// (`https://[::1]/` is a valid authority; `https://::1/` is not, RFC 3986
-/// §3.2.2), while hostnames and IPv4 pass through unaltered.
+/// §3.2.2), while hostnames and IPv4 pass through unaltered. A `host:port`
+/// / `[v6]:port` override that already names a port is a complete authority
+/// and is used verbatim (RFC 3986 §3.2.2) — never re-bracketed or re-suffixed.
 #[must_use]
 pub fn uri_authority(host: &str) -> std::borrow::Cow<'_, str> {
+    if authority_has_explicit_port(host) {
+        return std::borrow::Cow::Owned(host.trim().to_string());
+    }
     let bare = wire_host(host);
     match bare.parse::<std::net::IpAddr>() {
         Ok(std::net::IpAddr::V6(_)) => std::borrow::Cow::Owned(format!("[{bare}]")),
@@ -92,20 +97,52 @@ pub fn uri_authority(host: &str) -> std::borrow::Cow<'_, str> {
 pub const HTTPS_DEFAULT_PORT: u16 = 443;
 pub const HTTP_DEFAULT_PORT: u16 = 80;
 
+/// Whether `input` unambiguously carries an authority port: either bracketed
+/// IPv6 with a port (`[::1]:8443`) or `host:port` with a colon-free host side
+/// (`vhost.example:8443`). An unbracketed IPv6 literal never qualifies — every
+/// colon-group is part of the address, and `2001:db8::1` would be misread as
+/// host `2001:db8:…` with "port 1" (RFC 3986 §3.2.2 requires brackets when a
+/// port is present).
+#[must_use]
+pub fn authority_has_explicit_port(input: &str) -> bool {
+    let t = input.trim();
+    if t.starts_with('[') {
+        return t
+            .split_once(']')
+            .is_some_and(|(_, after)| after.strip_prefix(':').is_some_and(|p| p.parse::<u16>().is_ok()));
+    }
+    t.rsplit_once(':')
+        .is_some_and(|(host, port)| !host.contains(':') && port.parse::<u16>().is_ok())
+}
+
 /// The wire `Host` header / `:authority` value for a target probed at `port`:
 /// the port is appended when it is not the scheme default (`example.com` at
 /// 8080 → `example.com:8080`; at 443 → `example.com`), because an origin
 /// server doing host-based virtual hosting keys on host **and** port — sending
 /// the bare host for a non-default port routes a request to the wrong vhost
 /// or returns 404/421 (RFC 7230 §5.4 / RFC 9113 §8.3.1 / RFC 9114 §4.3.1).
-/// `tls` selects the scheme (443 vs 80). Brackets are stripped from an IPv6
-/// literal, matching [`wire_host`]; `port == 0` (unset) is never named.
+/// `tls` selects the scheme (443 vs 80). Two overrides are honored: an input
+/// that already names a port is a complete authority and is used verbatim
+/// (appending the destination port would corrupt `vhost.example:8443` into
+/// `vhost.example:8443:8443`); and an IPv6 literal is always re-bracketed
+/// (`[2001:db8::1]:8443`, `[::1]`), since `Host: 2001:db8::1:8443` is not a
+/// valid authority (RFC 7230 §5.4 / RFC 3986 §3.2.2). `port == 0` (unset) is
+/// never named.
 #[must_use]
 pub fn wire_authority(host: &str, port: u16, tls: bool) -> String {
+    if authority_has_explicit_port(host) {
+        return host.trim().to_string();
+    }
     let bare = wire_host(host);
     let default = if tls { HTTPS_DEFAULT_PORT } else { HTTP_DEFAULT_PORT };
     if port != 0 && port != default {
-        format!("{bare}:{port}")
+        if bare.contains(':') {
+            format!("[{bare}]:{port}")
+        } else {
+            format!("{bare}:{port}")
+        }
+    } else if bare.contains(':') {
+        format!("[{bare}]")
     } else {
         bare.to_string()
     }
@@ -115,9 +152,14 @@ pub fn wire_authority(host: &str, port: u16, tls: bool) -> String {
 /// `https://host[:port]/path`: the IPv6 literal is re-bracketed (RFC 3986
 /// §3.2.2) and the port is appended when it is not the HTTPS default 443 —
 /// so the `:authority` pseudo-header on the h2/h3 wire names the exact port
-/// the probe connects to (RFC 9113 §8.3.1 / RFC 9114 §4.3.1).
+/// the probe connects to (RFC 9113 §8.3.1 / RFC 9114 §4.3.1). An input that
+/// already names a port is a complete authority and is used verbatim, exactly
+/// like [`wire_authority`].
 #[must_use]
 pub fn uri_authority_at(host: &str, port: u16) -> std::borrow::Cow<'_, str> {
+    if authority_has_explicit_port(host) {
+        return std::borrow::Cow::Owned(host.trim().to_string());
+    }
     let mut base = uri_authority(host).into_owned();
     if port != 0 && port != HTTPS_DEFAULT_PORT {
         base.push(':');
@@ -188,7 +230,8 @@ pub fn write_body_to_file(path: &std::path::Path, body: &[u8]) -> std::io::Resul
 #[cfg(test)]
 mod tests {
     use super::{
-        collect_response_headers, push_bounded_body, uri_authority, uri_authority_at, wire_authority, wire_host,
+        authority_has_explicit_port, collect_response_headers, push_bounded_body, uri_authority, uri_authority_at,
+        wire_authority, wire_host,
     };
 
     #[test]
@@ -224,11 +267,26 @@ mod tests {
         // plain HTTP on 443 (or HTTPS on 80) must still be named.
         assert_eq!(wire_authority("example.com", 443, false), "example.com:443");
         assert_eq!(wire_authority("example.com", 80, true), "example.com:80");
-        // IPv4 and IPv6 literals (brackets stripped) behave the same.
+        // IPv4 literals append a non-default port plainly.
         assert_eq!(wire_authority("1.2.3.4", 443, true), "1.2.3.4");
         assert_eq!(wire_authority("1.2.3.4", 8443, true), "1.2.3.4:8443");
-        assert_eq!(wire_authority("[2001:db8::1]", 8443, true), "2001:db8::1:8443");
-        assert_eq!(wire_authority("[::1]", 443, true), "::1");
+        // An IPv6 literal is always re-bracketed — `Host: 2001:db8::1:8443`
+        // is not a valid authority (RFC 7230 §5.4 / RFC 3986 §3.2.2), and
+        // even at the scheme-default port the brackets are required.
+        assert_eq!(wire_authority("[2001:db8::1]", 8443, true), "[2001:db8::1]:8443");
+        assert_eq!(wire_authority("[::1]", 443, true), "[::1]");
+        assert_eq!(wire_authority("[::1]", 8443, true), "[::1]:8443");
+        assert_eq!(wire_authority("2001:db8::1", 443, true), "[2001:db8::1]");
+        // An override that already names a port is a complete authority and is
+        // used verbatim — appending the destination port would corrupt it.
+        assert_eq!(wire_authority("vhost.example:8443", 8443, true), "vhost.example:8443");
+        assert_eq!(wire_authority("vhost.example:8443", 80, false), "vhost.example:8443");
+        assert_eq!(wire_authority("[::1]:8443", 443, true), "[::1]:8443");
+        // An unbracketed IPv6 literal is its own host, never a `host:1` pair.
+        assert!(!authority_has_explicit_port("2001:db8::1"));
+        assert!(authority_has_explicit_port("vhost.example:8443"));
+        assert!(authority_has_explicit_port("[::1]:8443"));
+        assert!(!authority_has_explicit_port("[::1]"));
         // An unset port (0) is treated as "not named".
         assert_eq!(wire_authority("example.com", 0, true), "example.com");
     }
@@ -243,6 +301,11 @@ mod tests {
         assert_eq!(uri_authority_at("::1", 8443), "[::1]:8443");
         assert_eq!(uri_authority_at("[::1]", 8443), "[::1]:8443");
         assert_eq!(uri_authority_at("1.2.3.4", 8443), "1.2.3.4:8443");
+        // An override already naming a port is a complete authority: no
+        // destination port is re-appended on top of it.
+        assert_eq!(uri_authority_at("vhost.example:8443", 8443), "vhost.example:8443");
+        assert_eq!(uri_authority_at("vhost.example:8443", 80), "vhost.example:8443");
+        assert_eq!(uri_authority_at("[2001:db8::1]:8443", 8080), "[2001:db8::1]:8443");
     }
 
     #[test]
