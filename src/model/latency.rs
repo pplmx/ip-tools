@@ -90,7 +90,10 @@ impl From<&LatencyStats> for LatencySummary {
         let jitter = if n == 0 {
             None
         } else {
-            let mean_f = mean.unwrap_or(0) as f64;
+            // Variance is computed about the exact (non-truncated) mean: the
+            // integer `mean` field above floors, so `[0, 1]` would center on
+            // 0 and report zero jitter for a 1 ms spread (true std dev 0.5).
+            let mean_f = stats.samples.iter().map(|&s| s as f64).sum::<f64>() / n as f64;
             let variance = stats
                 .samples
                 .iter()
@@ -157,5 +160,22 @@ mod tests {
         let sum = s.summarize();
         assert_eq!(sum.mean, Some(100));
         assert_eq!(sum.jitter, Some(0));
+    }
+
+    #[test]
+    fn jitter_uses_the_exact_not_truncated_mean() {
+        // `[0, 0, 0, 4, 4]` has a true mean of 8/5 and population std dev of
+        // sqrt(19.2/5) ≈ 1.96 → jitter 1. Centering the variance on the
+        // truncated mean (1) instead pulls the samples further from the center
+        // (variance 21/5, std dev ≈ 2.05) and would report jitter 2 — the
+        // systematic overestimate the cell confines to sub-ms around 0 but
+        // compounds on larger spreads.
+        let mut s = LatencyStats::default();
+        for v in [0, 0, 0, 4, 4] {
+            s.push(v);
+        }
+        let sum = s.summarize();
+        assert_eq!(sum.mean, Some(1), "the reported mean stays the floor");
+        assert_eq!(sum.jitter, Some(1), "variance is about the exact mean");
     }
 }

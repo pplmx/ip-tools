@@ -45,7 +45,11 @@ pub fn collect_response_headers(headers: &hyper::HeaderMap) -> Vec<(String, Stri
 pub fn build_tls_observation(conn: &tls::TlsConnection, destination: SocketAddr, host: &str) -> TlsObservation {
     TlsObservation {
         destination,
-        sni: host.to_string(),
+        // The wire-presented identity, bracket-stripped: a bracketed
+        // IPv6-literal target (`[::1]`) presents `::1` on the wire, and the
+        // recorded sni must match what was actually named (parity with the
+        // HTTP/3 path, which records `wire_host(host)`).
+        sni: wire_host(host).to_string(),
         success: true,
         version: conn.version.clone(),
         cipher: conn.cipher.clone(),

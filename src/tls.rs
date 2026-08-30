@@ -308,7 +308,12 @@ async fn probe_impl(
     match connect_to(destination, sni, ALPN_GENERAL, timeout, mode, protocol).await {
         Ok(conn) => TlsObservation {
             destination,
-            sni: sni.to_string(),
+            // Record the wire-presented identity, bracket-stripped: a
+            // bracketed IPv6-literal target (`tls [::1]`) presents `::1` as
+            // its ServerName (server_name strips the brackets), so the
+            // recorded sni must match what was named, not the literal bracket
+            // form (parity with the bearer HTTP observation and HTTP/3).
+            sni: crate::http_common::wire_host(sni).to_string(),
             success: true,
             version: conn.version,
             cipher: conn.cipher,
@@ -319,7 +324,7 @@ async fn probe_impl(
         },
         Err(failure) => TlsObservation {
             destination,
-            sni: sni.to_string(),
+            sni: crate::http_common::wire_host(sni).to_string(),
             success: false,
             version: None,
             cipher: None,
@@ -383,10 +388,12 @@ const fn version_name(v: rustls::ProtocolVersion) -> &'static str {
 const fn cipher_name(cs: rustls::CipherSuite) -> &'static str {
     use rustls::CipherSuite::{
         TLS13_AES_128_GCM_SHA256, TLS13_AES_256_GCM_SHA384, TLS13_CHACHA20_POLY1305_SHA256,
-        TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA, TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
-        TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA, TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+        TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA, TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256,
+        TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256, TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,
+        TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384, TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
         TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256, TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
-        TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256, TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
+        TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256, TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+        TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA, TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384,
         TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384, TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
     };
     match cs {
@@ -401,8 +408,12 @@ const fn cipher_name(cs: rustls::CipherSuite) -> &'static str {
         TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256 => "ECDHE_RSA_CHACHA20_POLY1305_SHA256",
         TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA => "ECDHE_RSA_AES_128_CBC_SHA",
         TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA => "ECDHE_RSA_AES_256_CBC_SHA",
+        TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256 => "ECDHE_RSA_AES_128_CBC_SHA256",
+        TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384 => "ECDHE_RSA_AES_256_CBC_SHA384",
         TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA => "ECDHE_ECDSA_AES_128_CBC_SHA",
         TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA => "ECDHE_ECDSA_AES_256_CBC_SHA",
+        TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256 => "ECDHE_ECDSA_AES_128_CBC_SHA256",
+        TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384 => "ECDHE_ECDSA_AES_256_CBC_SHA384",
         _ => "unknown",
     }
 }

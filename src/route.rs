@@ -350,6 +350,16 @@ fn parse_icmp_udp_src(buf: &[u8], len: usize) -> Option<(u8, u16)> {
     if inner_start + 20 > len {
         return None;
     }
+    // The quoted datagram must be our own IPv4/UDP probe packet for the
+    // "UDP source port" to be meaningful: the raw ICMP socket receives *all*
+    // ICMP for the machine, and an unrelated reply quoting a non-UDP or
+    // malformed packet could carry a coincidental two-byte "port" that the
+    // hop's port-match loop would attribute to a live probe (route.rs:219).
+    // `buf[inner_start] >> 4` is the inner IP version, `buf[inner_start + 9]`
+    // the inner protocol (UDP = 17).
+    if buf[inner_start] >> 4 != 4 || buf[inner_start + 9] != 17 {
+        return None;
+    }
     let inner_ihl = ((buf[inner_start] & 0x0f) as usize) * 4;
     let udp_start = inner_start + inner_ihl;
     if udp_start + 4 > len {
@@ -372,9 +382,11 @@ mod tests {
         p.push(11);
         p.push(0);
         p.extend_from_slice(&[0, 0, 0, 0, 0, 0]);
-        // Inner IP header (IHL=5).
+        // Inner IP header (IHL=5): version 4, protocol 17 (UDP) — the fields
+        // the parser validates before trusting the quoted UDP source port
+        // (version nibble at offset 0, protocol at offset 9).
         p.push(0x45);
-        p.extend_from_slice(&[0, 0, 0, 0, 0, 0, 0, 0, 0, 64, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        p.extend_from_slice(&[0, 0, 0, 0, 0, 0, 0, 64, 17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
         // Inner UDP header: src port, dst port, len, checksum.
         p.extend_from_slice(&inner_udp_src.to_be_bytes());
         p.extend_from_slice(&[0x82, 0x9a, 0, 8, 0, 0]);
@@ -407,6 +419,22 @@ mod tests {
         // A redirect (type 5) also carries no offending datagram to act on.
         p[20] = 5;
         assert_eq!(parse_icmp_udp_src(&p, p.len()), None);
+    }
+
+    #[test]
+    fn rejects_quoted_datagrams_that_are_not_ipv4_udp() {
+        // The quoted datagram must be IPv4 carrying UDP; a reply quoting a
+        // non-UDP protocol (e.g. ICMP, protocol 1) or a non-IPv4 packet must
+        // not be read for a "UDP source port" (a coincidental two bytes of an
+        // unrelated packet must never be attributed to a live probe). Inner
+        // IP starts at index 28: version nibble at 28, protocol at 37.
+        let mut no_udp = build_icmp_time_exceeded(0x1234);
+        no_udp[37] = 1; // inner protocol: ICMP instead of UDP
+        assert_eq!(parse_icmp_udp_src(&no_udp, no_udp.len()), None);
+
+        let mut no_ipv4 = build_icmp_time_exceeded(0x1234);
+        no_ipv4[28] = (no_ipv4[28] & 0x0f) | 0x60; // inner version: 6 instead of 4
+        assert_eq!(parse_icmp_udp_src(&no_ipv4, no_ipv4.len()), None);
     }
 
     #[test]

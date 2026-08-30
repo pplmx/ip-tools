@@ -75,9 +75,9 @@ pub(crate) fn classify_io_error(e: &std::io::Error) -> FailureKind {
         std::io::ErrorKind::ConnectionReset => ConnectionReset,
         std::io::ErrorKind::TimedOut => Timeout,
         _ => match e.raw_os_error() {
-            // ENETUNREACH
-            Some(101 | 134) => NetworkUnreachable,
-            // EHOSTUNREACH
+            // ENETUNREACH: 101 = Linux, 64 = macOS.
+            Some(101 | 64) => NetworkUnreachable,
+            // EHOSTUNREACH: 113 = Linux, 65 = macOS.
             Some(113 | 65) => HostUnreachable,
             // ETIMEDOUT
             Some(110) => Timeout,
@@ -119,7 +119,10 @@ mod tests {
     #[test]
     fn classifies_unreachable_by_os_code() {
         assert_eq!(classify_io_error(&err(101)), FailureKind::NetworkUnreachable);
+        // macOS variant of ENETUNREACH (the 134 arm previously masked its gap).
+        assert_eq!(classify_io_error(&err(64)), FailureKind::NetworkUnreachable);
         assert_eq!(classify_io_error(&err(113)), FailureKind::HostUnreachable);
+        assert_eq!(classify_io_error(&err(65)), FailureKind::HostUnreachable);
         assert_eq!(classify_io_error(&err(110)), FailureKind::Timeout);
         assert_eq!(classify_io_error(&err(104)), FailureKind::ConnectionReset);
         assert_eq!(classify_io_error(&err(111)), FailureKind::ConnectionRefused);
