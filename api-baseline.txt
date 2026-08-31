@@ -139,7 +139,9 @@ pub ip_tools::model::dns::ResolverKind::Custom(core::net::socket_addr::SocketAdd
 pub ip_tools::model::dns::ResolverKind::Doh(alloc::string::String)
 pub ip_tools::model::dns::ResolverKind::Dot(alloc::string::String)
 pub ip_tools::model::dns::ResolverKind::System
+impl ip_tools::model::dns::ResolverKind
 pub fn ip_tools::model::dns::ResolverKind::label(&self) -> alloc::string::String
+impl serde_core::ser::Serialize for ip_tools::model::dns::ResolverKind
 pub fn ip_tools::model::dns::ResolverKind::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
 pub struct ip_tools::model::dns::DnsObservation
 pub ip_tools::model::dns::DnsObservation::error: core::option::Option<ip_tools::model::ProbeError>
@@ -321,7 +323,9 @@ pub ip_tools::model::ResolverKind::Custom(core::net::socket_addr::SocketAddr)
 pub ip_tools::model::ResolverKind::Doh(alloc::string::String)
 pub ip_tools::model::ResolverKind::Dot(alloc::string::String)
 pub ip_tools::model::ResolverKind::System
+impl ip_tools::model::dns::ResolverKind
 pub fn ip_tools::model::dns::ResolverKind::label(&self) -> alloc::string::String
+impl serde_core::ser::Serialize for ip_tools::model::dns::ResolverKind
 pub fn ip_tools::model::dns::ResolverKind::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
 pub enum ip_tools::model::Severity
 pub ip_tools::model::Severity::High
@@ -595,7 +599,9 @@ pub ip_tools::ResolverKind::Custom(core::net::socket_addr::SocketAddr)
 pub ip_tools::ResolverKind::Doh(alloc::string::String)
 pub ip_tools::ResolverKind::Dot(alloc::string::String)
 pub ip_tools::ResolverKind::System
+impl ip_tools::model::dns::ResolverKind
 pub fn ip_tools::model::dns::ResolverKind::label(&self) -> alloc::string::String
+impl serde_core::ser::Serialize for ip_tools::model::dns::ResolverKind
 pub fn ip_tools::model::dns::ResolverKind::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
 pub enum ip_tools::Severity
 pub ip_tools::Severity::High

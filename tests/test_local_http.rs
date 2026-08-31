@@ -2994,7 +2994,7 @@ fn probe_json_status_counts_are_deterministic_on_tied_distributions() {
     let fixture = rt.block_on(FixtureServer::start());
     let addr = fixture.tcp_addr().to_string();
 
-    let run = |_| {
+    let run = |()| {
         let out = Command::cargo_bin("ip-tools")
             .expect("ip-tools binary")
             .args([
@@ -3056,7 +3056,7 @@ fn diagnose_json_probe_order_is_deterministic_across_runs() {
             String::from_utf8_lossy(&out.stderr)
         );
         let doc: serde_json::Value = serde_json::from_slice(&out.stdout).expect("diagnose --json must parse");
-        let probes = doc["probes"].as_array().expect("probes array").to_vec();
+        let probes = doc["probes"].as_array().expect("probes array").clone();
         let order: Vec<String> = probes
             .iter()
             .map(|p| p["destination"].as_str().expect("destination string").to_string())

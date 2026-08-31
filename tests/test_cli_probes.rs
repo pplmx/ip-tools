@@ -884,12 +884,10 @@ fn dns_cli_multi_server_rows_are_deterministically_ordered() {
                 .success(),
         );
         let value: serde_json::Value = serde_json::from_str(&out).expect("dns --json must parse");
-        let resolvers: Vec<String> = if let Some(rows) = value.as_array() {
-            rows.iter().map(|r| r["resolver"].to_string()).collect()
-        } else {
-            vec![value["resolver"].to_string()]
-        };
-        resolvers
+        value.as_array().map_or_else(
+            || vec![value["resolver"].to_string()],
+            |rows| rows.iter().map(|r| r["resolver"].to_string()).collect(),
+        )
     };
     assert_eq!(run(), run(), "multi-resolver rows must not flip between runs");
     // Both custom resolvers must be present and stable — the system resolver
