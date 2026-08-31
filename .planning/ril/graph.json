@@ -1,8 +1,8 @@
 {
   "ril_version": 1,
-  "round": 27,
+  "round": 28,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-31T00:30:45+00:00",
+  "updated_at": "2026-08-31T04:49:57+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -101,7 +101,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 26,
+      "touched_round": 27,
       "desc": "clap arg tree + dispatch; --strict/--json/--timeout/--concurrency/--server/--insecure/--method/--count flags"
     },
     "COMP-model": {
@@ -6340,6 +6340,122 @@
       "touched_round": 26,
       "commit": "5c789f5",
       "title": "route zero-guards: nonzero_u8 parsers, dead guards removed"
+    },
+    "ISS-170": {
+      "id": "ISS-170",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-31T04:39:51+00:00",
+      "updated_at": "2026-08-31T04:49:57+00:00",
+      "touched_round": 27,
+      "title": "observation-order nondeterminism (MEDIUM-1)"
+    },
+    "ISS-171": {
+      "id": "ISS-171",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-31T04:39:51+00:00",
+      "updated_at": "2026-08-31T04:49:57+00:00",
+      "touched_round": 27,
+      "title": "closed-stdout pipe panics every report command to exit 101 (MEDIUM-2)"
+    },
+    "ISS-172": {
+      "id": "ISS-172",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-31T04:39:51+00:00",
+      "updated_at": "2026-08-31T04:49:57+00:00",
+      "touched_round": 27,
+      "title": "ANSI/control-byte injection from wire-decoded DNS names human+CSV (MEDIUM-3)"
+    },
+    "ISS-173": {
+      "id": "ISS-173",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-31T04:39:51+00:00",
+      "updated_at": "2026-08-31T04:49:57+00:00",
+      "touched_round": 27,
+      "title": "local-stack denial codes classify Other -> false HIGH + false --strict (MEDIUM-4)"
+    },
+    "ISS-174": {
+      "id": "ISS-174",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-31T04:39:51+00:00",
+      "updated_at": "2026-08-31T04:49:57+00:00",
+      "touched_round": 27,
+      "title": "round-29 LOW batch: CSV p50 mislabel, --json--csv exit channel, aggregate_runs u16 wrap, README exit-code gap"
+    },
+    "TASK-124": {
+      "id": "TASK-124",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-31T04:42:54+00:00",
+      "updated_at": "2026-08-31T04:49:57+00:00",
+      "touched_round": 27,
+      "category": "correctness",
+      "title": "resolve ISS-170 (round-29)"
+    },
+    "TASK-125": {
+      "id": "TASK-125",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-31T04:42:54+00:00",
+      "updated_at": "2026-08-31T04:49:57+00:00",
+      "touched_round": 27,
+      "category": "correctness",
+      "title": "resolve ISS-171 (round-29)"
+    },
+    "TASK-126": {
+      "id": "TASK-126",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-31T04:42:54+00:00",
+      "updated_at": "2026-08-31T04:49:57+00:00",
+      "touched_round": 27,
+      "category": "correctness",
+      "title": "resolve ISS-172 (round-29)"
+    },
+    "TASK-127": {
+      "id": "TASK-127",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-31T04:42:54+00:00",
+      "updated_at": "2026-08-31T04:49:57+00:00",
+      "touched_round": 27,
+      "category": "correctness",
+      "title": "resolve ISS-173 (round-29)"
+    },
+    "TASK-128": {
+      "id": "TASK-128",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-31T04:42:54+00:00",
+      "updated_at": "2026-08-31T04:49:57+00:00",
+      "touched_round": 27,
+      "category": "correctness",
+      "title": "resolve ISS-174 (round-29)"
+    },
+    "CHG-114": {
+      "id": "CHG-114",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-31T04:44:52+00:00",
+      "updated_at": "2026-08-31T04:44:52+00:00",
+      "touched_round": 27,
+      "commit": "a6873b1",
+      "title": "round-29 batch: determinism, EPIPE, ANSI-escape, local-denial, 4 LOWs (a6873b1)"
     }
   },
   "edges": [
@@ -10908,6 +11024,126 @@
       "to": "ISS-169",
       "type": "addresses",
       "created_at": "2026-08-31T00:30:45+00:00"
+    },
+    {
+      "from": "TASK-124",
+      "to": "ISS-170",
+      "type": "addresses",
+      "created_at": "2026-08-31T04:47:49+00:00"
+    },
+    {
+      "from": "CHG-114",
+      "to": "TASK-124",
+      "type": "implements",
+      "created_at": "2026-08-31T04:47:49+00:00"
+    },
+    {
+      "from": "CHG-114",
+      "to": "ISS-170",
+      "type": "resolves",
+      "created_at": "2026-08-31T04:47:49+00:00"
+    },
+    {
+      "from": "TASK-125",
+      "to": "ISS-171",
+      "type": "addresses",
+      "created_at": "2026-08-31T04:47:49+00:00"
+    },
+    {
+      "from": "CHG-114",
+      "to": "TASK-125",
+      "type": "implements",
+      "created_at": "2026-08-31T04:47:50+00:00"
+    },
+    {
+      "from": "CHG-114",
+      "to": "ISS-171",
+      "type": "resolves",
+      "created_at": "2026-08-31T04:47:50+00:00"
+    },
+    {
+      "from": "TASK-126",
+      "to": "ISS-172",
+      "type": "addresses",
+      "created_at": "2026-08-31T04:47:50+00:00"
+    },
+    {
+      "from": "CHG-114",
+      "to": "TASK-126",
+      "type": "implements",
+      "created_at": "2026-08-31T04:47:50+00:00"
+    },
+    {
+      "from": "CHG-114",
+      "to": "ISS-172",
+      "type": "resolves",
+      "created_at": "2026-08-31T04:47:50+00:00"
+    },
+    {
+      "from": "TASK-127",
+      "to": "ISS-173",
+      "type": "addresses",
+      "created_at": "2026-08-31T04:47:50+00:00"
+    },
+    {
+      "from": "CHG-114",
+      "to": "TASK-127",
+      "type": "implements",
+      "created_at": "2026-08-31T04:47:50+00:00"
+    },
+    {
+      "from": "CHG-114",
+      "to": "ISS-173",
+      "type": "resolves",
+      "created_at": "2026-08-31T04:47:50+00:00"
+    },
+    {
+      "from": "TASK-128",
+      "to": "ISS-174",
+      "type": "addresses",
+      "created_at": "2026-08-31T04:47:50+00:00"
+    },
+    {
+      "from": "CHG-114",
+      "to": "TASK-128",
+      "type": "implements",
+      "created_at": "2026-08-31T04:47:50+00:00"
+    },
+    {
+      "from": "CHG-114",
+      "to": "ISS-174",
+      "type": "resolves",
+      "created_at": "2026-08-31T04:47:50+00:00"
+    },
+    {
+      "from": "ISS-170",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-31T04:47:50+00:00"
+    },
+    {
+      "from": "ISS-171",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-31T04:47:50+00:00"
+    },
+    {
+      "from": "ISS-172",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-31T04:47:50+00:00"
+    },
+    {
+      "from": "ISS-173",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-31T04:47:50+00:00"
+    },
+    {
+      "from": "ISS-174",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-31T04:47:50+00:00"
     }
   ]
 }
