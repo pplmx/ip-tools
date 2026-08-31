@@ -2077,6 +2077,60 @@ fn dns_cli_doh_reports_nxdomain_as_a_failure_observation() {
 }
 
 #[test]
+fn dns_cli_doh_escapes_control_bytes_in_wire_decoded_names() {
+    // MEDIUM-3: the hand-rolled wire decoder (`read_name`) passes a raw byte
+    // through `from_utf8_lossy`, so a DoH answer placing an ANSI ESC in a
+    // CNAME label would previously render as a live terminal sequence in the
+    // human report and land un-escaped in the CSV records cell (a spreadsheet
+    // would split the row). The hickory-backed `--server`/system path already
+    // presented such bytes octal-escaped, so the identical answer differed in
+    // safety by resolver path. This pins the DoH wire path to the same
+    // `\033`-style spelling (no raw ESC anywhere in human/CSV/JSON output).
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let fixture = rt.block_on(FixtureServer::start());
+    let endpoint = format!("https://{}/dns-escape", fixture.tcp_addr());
+
+    for fmt in ["", "--csv", "--json"] {
+        let mut args = vec![
+            "dns",
+            "host.example",
+            "--doh",
+            &endpoint,
+            "--insecure",
+            "--record-type",
+            "CNAME",
+            "--timeout",
+            "2000",
+        ];
+        if !fmt.is_empty() {
+            args.push(fmt);
+        }
+        let out = Command::cargo_bin("ip-tools")
+            .expect("ip-tools binary")
+            .args(args)
+            .output()
+            .expect("run dns --doh against the ESC-laden CNAME endpoint");
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            out.status.success(),
+            "{fmt:?} should exit 0: {stdout}\n{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(
+            !stdout.contains('\u{1b}'),
+            "{fmt:?} output must not carry a raw ANSI ESC: {stdout:?}"
+        );
+        assert!(
+            stdout.contains("\\033[31mEVIL"),
+            "{fmt:?} output must show the ESC octal-escaped: {stdout}"
+        );
+    }
+}
+
+#[test]
 fn dns_cli_queries_dot_fixture_endpoint() {
     // End-to-end DNS-over-TLS (RFC 7858): `dns --dot <addr> --insecure` must
     // open a TLS connection to the fixture's raw DoT listener, send the
@@ -2977,6 +3031,43 @@ fn probe_json_status_counts_are_deterministic_on_tied_distributions() {
         a,
         serde_json::json!([{"status": 200, "count": 3}, {"status": 503, "count": 3}]),
         "the 200/503 tie must order by status ascent: {a}"
+    );
+}
+
+#[test]
+fn diagnose_json_probe_order_is_deterministic_across_runs() {
+    // `diagnose` collects each evidence vector (TCP/TLS/HTTP/repeat probes)
+    // from a JoinSet in *completion* order, so the `probes` array (and every
+    // other per-destination row) flipped between address orders across
+    // identical runs — the repeat probes complete in whatever order the
+    // scheduler finished them. The evidence stack must span runs identically;
+    // the destination *sequence* is the deterministic part (latency samples
+    // legitimately vary, so only order is compared). `localhost` resolves to
+    // both 127.0.0.1 and ::1, exercising the two-address flip.
+    let run = || {
+        let out = Command::cargo_bin("ip-tools")
+            .expect("ip-tools binary")
+            .args(["diagnose", "localhost", "--json", "--count", "3", "--timeout", "2000"])
+            .output()
+            .expect("run diagnose --json against localhost");
+        assert!(
+            out.status.success(),
+            "diagnose --json should exit 0: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let doc: serde_json::Value = serde_json::from_slice(&out.stdout).expect("diagnose --json must parse");
+        let probes = doc["probes"].as_array().expect("probes array").to_vec();
+        let order: Vec<String> = probes
+            .iter()
+            .map(|p| p["destination"].as_str().expect("destination string").to_string())
+            .collect();
+        order
+    };
+    let a = run();
+    let b = run();
+    assert_eq!(
+        a, b,
+        "diagnose probes must order identically across runs:\nA={a:?}\nB={b:?}"
     );
 }
 

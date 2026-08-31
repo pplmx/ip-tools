@@ -1,6 +1,6 @@
 //! `diagnose` subcommand handler.
 
-use super::{parallel_map, parallel_map_with_limit};
+use super::{parallel_map, parallel_map_with_limit, print_stdout};
 use clap::ArgMatches;
 use ip_tools::diagnostics::{diagnose, DiagnosticInput};
 use ip_tools::dns::DnsClient;
@@ -84,10 +84,6 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches, style: Style) -> ExitCode {
     super::note_concurrency_cap(sub_m);
     let timeout = Duration::from_millis(timeout_ms);
 
-    if let Err(e) = super::ensure_single_output_format(sub_m) {
-        eprintln!("Error: {e}");
-        return ExitCode::FAILURE;
-    }
     // `--ipv4`/`--ipv6` scope the whole pipeline to one address family (parity
     // with the per-address probe commands); the two flags conflict at parse.
     let family = FamilyScope::from_flags(sub_m.get_flag("ipv4"), sub_m.get_flag("ipv6"));
@@ -223,18 +219,23 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches, style: Style) -> ExitCode {
         0
     };
 
-    if csv {
-        print!("{}", render_csv(&reports));
+    let out_ok = if csv {
+        print_stdout(&render_csv(&reports))
     } else if json {
         if reports.len() == 1 {
-            println!("{}", to_json(&reports[0]));
+            print_stdout(&format!("{}\n", to_json(&reports[0])))
         } else {
-            println!("{}", to_json(&reports));
+            print_stdout(&format!("{}\n", to_json(&reports)))
         }
     } else {
+        let mut text = String::new();
         for report in &reports {
-            print!("{}", report.render_human(style, plain));
+            text.push_str(&report.render_human(style, plain));
         }
+        print_stdout(&text)
+    };
+    if !out_ok {
+        return ExitCode::FAILURE;
     }
 
     if unresolved > 0 {
@@ -343,6 +344,12 @@ async fn diagnose_one(
         }
         return None;
     }
+    // Canonical address order, once, so every downstream stage that derives
+    // from this pool (reverse-DNS rows, destination list, and the report
+    // observations below) is deterministic across runs — despite the probes
+    // themselves completing in whatever order the scheduler finished them.
+    addresses.sort();
+
     // `--reverse`: add reverse-DNS (PTR) names to the DNS evidence stack so
     // the operator can see what hostname rDNS maps an address to. An IP-literal
     // target reverses itself; a hostname target reverses each resolved address
@@ -380,18 +387,19 @@ async fn diagnose_one(
         .map(|ip| SocketAddr::new(ip, target.port))
         .collect();
 
-    let tcp_obs: Vec<TcpObservation> =
+    let mut tcp_obs: Vec<TcpObservation> =
         parallel_map_with_limit(destinations.clone(), probe_limit.clone(), move |d| async move {
             ip_tcp::probe(d, timeout).await
         })
         .await;
+    tcp_obs.sort_by_key(|o| o.destination);
 
     let sni = presented.to_string();
     // `--plain`: the endpoint is cleartext HTTP, so there is no TLS handshake
     // to observe — running it would only raise a false "handshake fails where
     // TCP connects" verdict. The TLS evidence stack is left empty and the HTTP
     // phase + stability repeat probe the endpoint over cleartext HTTP/1.1.
-    let tls_obs: Vec<TlsObservation> = if plain {
+    let mut tls_obs: Vec<TlsObservation> = if plain {
         Vec::new()
     } else {
         parallel_map_with_limit(destinations.clone(), probe_limit.clone(), move |d| {
@@ -407,6 +415,7 @@ async fn diagnose_one(
         })
         .await
     };
+    tls_obs.sort_by_key(|o| o.destination);
 
     let http_obs = collect_http_probes(
         destinations.clone(),
@@ -440,44 +449,49 @@ async fn diagnose_one(
     );
     // Each `parallel_map` closure is `Fn` (re-invoked per destination), so it
     // must clone the captured request shape before the `async move`.
-    let probe_obs: Vec<ProbeResult> = parallel_map_with_limit(destinations.clone(), probe_limit.clone(), move |d| {
-        let (host, method, path, headers, body) = (
-            header_host.clone(),
-            header_method.clone(),
-            header_path.clone(),
-            header_headers.clone(),
-            header_body.clone(),
-        );
-        async move {
-            let header_refs: Vec<(&str, &str)> = headers.iter().map(|(n, v)| (n.as_str(), v.as_str())).collect();
-            // `--plain`: the stability repeat probes cleartext HTTP/1.1 (no
-            // handshake), so a plaintext endpoint's status/latency stability
-            // is observed truthfully instead of failing at the handshake.
-            let http = if plain {
-                ip_probe::http_repeat_plain(d, &host, &method, &path, &header_refs, body.as_deref(), count, timeout)
+    let mut probe_obs: Vec<ProbeResult> =
+        parallel_map_with_limit(destinations.clone(), probe_limit.clone(), move |d| {
+            let (host, method, path, headers, body) = (
+                header_host.clone(),
+                header_method.clone(),
+                header_path.clone(),
+                header_headers.clone(),
+                header_body.clone(),
+            );
+            async move {
+                let header_refs: Vec<(&str, &str)> = headers.iter().map(|(n, v)| (n.as_str(), v.as_str())).collect();
+                // `--plain`: the stability repeat probes cleartext HTTP/1.1 (no
+                // handshake), so a plaintext endpoint's status/latency stability
+                // is observed truthfully instead of failing at the handshake.
+                let http = if plain {
+                    ip_probe::http_repeat_plain(d, &host, &method, &path, &header_refs, body.as_deref(), count, timeout)
+                        .await
+                } else {
+                    ip_probe::http_repeat_with_version(
+                        d,
+                        &host,
+                        &method,
+                        &path,
+                        &header_refs,
+                        body.as_deref(),
+                        count,
+                        timeout,
+                        insecure,
+                        tls_protocol,
+                    )
                     .await
-            } else {
-                ip_probe::http_repeat_with_version(
-                    d,
-                    &host,
-                    &method,
-                    &path,
-                    &header_refs,
-                    body.as_deref(),
-                    count,
-                    timeout,
-                    insecure,
-                    tls_protocol,
-                )
-                .await
-            };
-            [ip_probe::tcp_repeat(d, count, timeout).await, http]
-        }
-    })
-    .await
-    .into_iter()
-    .flatten()
-    .collect();
+                };
+                [ip_probe::tcp_repeat(d, count, timeout).await, http]
+            }
+        })
+        .await
+        .into_iter()
+        .flatten()
+        .collect();
+    // Stable by destination: the two entries from one destination (TCP
+    // transport, HTTP status) keep their relative order, while the whole
+    // vector matches the canonical `addresses` order above.
+    probe_obs.sort_by_key(|o| o.destination);
 
     let input = DiagnosticInput {
         hostname: &target.host,
@@ -621,148 +635,158 @@ async fn collect_http_probes(
         body.map(<[u8]>::to_vec),
     );
 
-    let http1: Vec<HttpObservation> = parallel_map_with_limit(destinations.clone(), probe_limit.clone(), move |d| {
-        let (host, method, path, headers, body) = (
-            host_1.clone(),
-            method_1.clone(),
-            path_1.clone(),
-            headers_1.clone(),
-            body_1.clone(),
-        );
-        async move {
-            let header_refs: Vec<(&str, &str)> = headers.iter().map(|(n, v)| (n.as_str(), v.as_str())).collect();
-            if plain {
-                // `--plain`: cleartext HTTP/1.1 only (no TLS handshake), the
-                // same probe `http --plain` uses — http2/http3 are TLS-only
-                // protocols and are skipped below.
-                ip_http::probe_plain_output(
-                    d,
-                    &host,
-                    &method,
-                    &path,
-                    &header_refs,
-                    body.as_deref(),
-                    timeout,
-                    max_body_bytes,
-                    None,
-                )
-                .await
-            } else if insecure {
-                ip_http::probe_insecure_with_version_output(
-                    d,
-                    &host,
-                    &method,
-                    &path,
-                    &header_refs,
-                    body.as_deref(),
-                    timeout,
-                    tls_protocol,
-                    max_body_bytes,
-                    None,
-                )
-                .await
-            } else {
-                ip_http::probe_with_version_output(
-                    d,
-                    &host,
-                    &method,
-                    &path,
-                    &header_refs,
-                    body.as_deref(),
-                    timeout,
-                    tls_protocol,
-                    max_body_bytes,
-                    None,
-                )
-                .await
+    let mut http1: Vec<HttpObservation> =
+        parallel_map_with_limit(destinations.clone(), probe_limit.clone(), move |d| {
+            let (host, method, path, headers, body) = (
+                host_1.clone(),
+                method_1.clone(),
+                path_1.clone(),
+                headers_1.clone(),
+                body_1.clone(),
+            );
+            async move {
+                let header_refs: Vec<(&str, &str)> = headers.iter().map(|(n, v)| (n.as_str(), v.as_str())).collect();
+                if plain {
+                    // `--plain`: cleartext HTTP/1.1 only (no TLS handshake), the
+                    // same probe `http --plain` uses — http2/http3 are TLS-only
+                    // protocols and are skipped below.
+                    ip_http::probe_plain_output(
+                        d,
+                        &host,
+                        &method,
+                        &path,
+                        &header_refs,
+                        body.as_deref(),
+                        timeout,
+                        max_body_bytes,
+                        None,
+                    )
+                    .await
+                } else if insecure {
+                    ip_http::probe_insecure_with_version_output(
+                        d,
+                        &host,
+                        &method,
+                        &path,
+                        &header_refs,
+                        body.as_deref(),
+                        timeout,
+                        tls_protocol,
+                        max_body_bytes,
+                        None,
+                    )
+                    .await
+                } else {
+                    ip_http::probe_with_version_output(
+                        d,
+                        &host,
+                        &method,
+                        &path,
+                        &header_refs,
+                        body.as_deref(),
+                        timeout,
+                        tls_protocol,
+                        max_body_bytes,
+                        None,
+                    )
+                    .await
+                }
             }
-        }
-    })
-    .await;
+        })
+        .await;
 
-    let http2: Vec<HttpObservation> = parallel_map_with_limit(destinations.clone(), probe_limit.clone(), move |d| {
-        let (host, method, path, headers, body) = (
-            host_2.clone(),
-            method_2.clone(),
-            path_2.clone(),
-            headers_2.clone(),
-            body_2.clone(),
-        );
-        async move {
-            let header_refs: Vec<(&str, &str)> = headers.iter().map(|(n, v)| (n.as_str(), v.as_str())).collect();
-            if insecure {
-                ip_http2::probe_insecure_with_version_output(
-                    d,
-                    &host,
-                    &method,
-                    &path,
-                    &header_refs,
-                    body.as_deref(),
-                    timeout,
-                    tls_protocol,
-                    max_body_bytes,
-                    None,
-                )
-                .await
-            } else {
-                ip_http2::probe_with_version_output(
-                    d,
-                    &host,
-                    &method,
-                    &path,
-                    &header_refs,
-                    body.as_deref(),
-                    timeout,
-                    tls_protocol,
-                    max_body_bytes,
-                    None,
-                )
-                .await
+    let mut http2: Vec<HttpObservation> =
+        parallel_map_with_limit(destinations.clone(), probe_limit.clone(), move |d| {
+            let (host, method, path, headers, body) = (
+                host_2.clone(),
+                method_2.clone(),
+                path_2.clone(),
+                headers_2.clone(),
+                body_2.clone(),
+            );
+            async move {
+                let header_refs: Vec<(&str, &str)> = headers.iter().map(|(n, v)| (n.as_str(), v.as_str())).collect();
+                if insecure {
+                    ip_http2::probe_insecure_with_version_output(
+                        d,
+                        &host,
+                        &method,
+                        &path,
+                        &header_refs,
+                        body.as_deref(),
+                        timeout,
+                        tls_protocol,
+                        max_body_bytes,
+                        None,
+                    )
+                    .await
+                } else {
+                    ip_http2::probe_with_version_output(
+                        d,
+                        &host,
+                        &method,
+                        &path,
+                        &header_refs,
+                        body.as_deref(),
+                        timeout,
+                        tls_protocol,
+                        max_body_bytes,
+                        None,
+                    )
+                    .await
+                }
             }
-        }
-    })
-    .await;
+        })
+        .await;
 
-    let http3: Vec<HttpObservation> = parallel_map_with_limit(destinations.clone(), probe_limit.clone(), move |d| {
-        let (host, method, path, headers, body) = (
-            host_3.clone(),
-            method_3.clone(),
-            path_3.clone(),
-            headers_3.clone(),
-            body_3.clone(),
-        );
-        async move {
-            let header_refs: Vec<(&str, &str)> = headers.iter().map(|(n, v)| (n.as_str(), v.as_str())).collect();
-            if insecure {
-                ip_http3::probe_insecure_output(
-                    d,
-                    &host,
-                    &method,
-                    &path,
-                    &header_refs,
-                    body.as_deref(),
-                    timeout,
-                    max_body_bytes,
-                    None,
-                )
-                .await
-            } else {
-                ip_http3::probe_output(
-                    d,
-                    &host,
-                    &method,
-                    &path,
-                    &header_refs,
-                    body.as_deref(),
-                    timeout,
-                    max_body_bytes,
-                    None,
-                )
-                .await
+    let mut http3: Vec<HttpObservation> =
+        parallel_map_with_limit(destinations.clone(), probe_limit.clone(), move |d| {
+            let (host, method, path, headers, body) = (
+                host_3.clone(),
+                method_3.clone(),
+                path_3.clone(),
+                headers_3.clone(),
+                body_3.clone(),
+            );
+            async move {
+                let header_refs: Vec<(&str, &str)> = headers.iter().map(|(n, v)| (n.as_str(), v.as_str())).collect();
+                if insecure {
+                    ip_http3::probe_insecure_output(
+                        d,
+                        &host,
+                        &method,
+                        &path,
+                        &header_refs,
+                        body.as_deref(),
+                        timeout,
+                        max_body_bytes,
+                        None,
+                    )
+                    .await
+                } else {
+                    ip_http3::probe_output(
+                        d,
+                        &host,
+                        &method,
+                        &path,
+                        &header_refs,
+                        body.as_deref(),
+                        timeout,
+                        max_body_bytes,
+                        None,
+                    )
+                    .await
+                }
             }
-        }
-    })
-    .await;
+        })
+        .await;
+
+    // Deterministic per protocol: each vector arrives in JoinSet completion
+    // order; within a protocol group the rows are re-sorted to the canonical
+    // `addresses` order so the evidence stack spans runs identically.
+    http1.sort_by_key(|o| o.destination);
+    http2.sort_by_key(|o| o.destination);
+    http3.sort_by_key(|o| o.destination);
 
     let mut out = http1;
     if !plain {

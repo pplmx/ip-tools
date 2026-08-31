@@ -285,6 +285,30 @@ impl std::io::Write for PipeTolerant {
     }
 }
 
+/// Write a report to stdout treating a closed pipe (`tcp -L | head`, a pager)
+/// as success — the universal form of the [`PipeTolerant`] rule above: Rust
+/// ignores `SIGPIPE` and surfaces `EPIPE` as an error, so a report piped into
+/// `head`/`jq`/a pager that closes early would otherwise panic with a
+/// backtrace and exit 101, the worst exit for output that is, by definition,
+/// disposable shell script.
+///
+/// A *genuine* write failure (ENOSPC redirecting to a full disk, an `EIO`) is
+/// the opposite case: the report is lost, and returning success would be a
+/// false green for a capture-enabled health check. Returns `false` (having
+/// printed the reason to stderr) on any non-EPIPE error so the caller turns
+/// it into exit 1.
+pub fn print_stdout(s: &str) -> bool {
+    use std::io::Write as _;
+    let mut out = PipeTolerant(std::io::stdout());
+    match out.write_all(s.as_bytes()).and_then(|()| out.flush()) {
+        Ok(()) => true,
+        Err(e) => {
+            eprintln!("Error: failed to write report to stdout: {e}");
+            false
+        }
+    }
+}
+
 /// Render the `completions` output to stdout from the live [`build_command`]
 /// tree (the same one the parser uses).
 fn handle_completions(sub_m: &ArgMatches) -> ExitCode {
@@ -417,25 +441,6 @@ fn dns_concurrency_arg() -> Arg {
         .value_parser(nonzero_usize)
         .default_value("1")
         .help("maximum number of target hosts to resolve in parallel; 1 runs a sweep sequentially (default)")
-}
-
-/// `--json` and `--csv` are alternate output formats; both select one, so
-/// passing both is a self-contradictory request (today the JSON is silently
-/// dropped by the `if csv { } else if json { }` render chains). Fail fast,
-/// matching the other contradictory-flag guards (`--output-body` races,
-/// `--ipv4`+`--ipv6`). `--json` can be given where `--csv` is not defined, so
-/// the CSV side is read defensively.
-fn ensure_single_output_format(sub_m: &ArgMatches) -> Result<(), String> {
-    let csv = sub_m
-        .try_get_one::<bool>("csv")
-        .ok()
-        .flatten()
-        .copied()
-        .unwrap_or_default();
-    if sub_m.get_flag("json") && csv {
-        return Err("--json and --csv are mutually exclusive (pick one output format)".to_string());
-    }
-    Ok(())
 }
 
 /// `--ipv4` argument: probe only the IPv4 addresses of each target.
@@ -680,10 +685,17 @@ fn max_body_bytes_arg(with_output_body: bool) -> Arg {
 }
 
 /// `--csv` argument for `diagnose`: emit per-diagnosis rows in CSV.
+///
+/// `--json` (global) and `--csv` conflict at parse (exit 2), on the same
+/// channel as every other contradictory-flag pair (`--ipv4`+`--ipv6`,
+/// `--plain`+`--insecure`): asking for two output formats is the same
+/// caller-mistake class, and the runtime guard it used to exercise (exit 1)
+/// is gone.
 fn csv_arg() -> Arg {
     Arg::new("csv")
         .long("csv")
         .action(ArgAction::SetTrue)
+        .conflicts_with("json")
         .help("output the results as CSV rows instead of human text")
 }
 
@@ -1016,22 +1028,7 @@ where
     type ResolvedTarget = (usize, Option<(String, Vec<SocketAddr>)>);
 
     let json = sub_m.get_flag("json");
-    // Not every subcommand routes through here defines `--csv` (the transport
-    // and HTTP probes do; `diagnose` renders its own CSV rows below), so read
-    // it defensively — try_get_one returns Err when the arg isn't defined.
-    let csv = sub_m
-        .try_get_one::<bool>("csv")
-        .ok()
-        .flatten()
-        .copied()
-        .unwrap_or_default();
-    // `--json` + `--csv` both name an output format; the render chain would
-    // silently honor CSV and drop the JSON, so reject the contradiction up
-    // front like the other contradictory flag combinations.
-    if let Err(e) = ensure_single_output_format(sub_m) {
-        eprintln!("Error: {e}");
-        return ExitCode::FAILURE;
-    }
+    let csv = sub_m.get_flag("csv");
     let strict = sub_m.get_flag("strict");
     let timeout_ms = *sub_m.get_one::<u64>("timeout").expect("timeout has default");
     let concurrency = *sub_m.get_one::<usize>("concurrency").expect("concurrency has default");
@@ -1277,9 +1274,9 @@ where
         }
     }
 
-    if csv {
+    let out_ok = if csv {
         if let Some(renderer) = csv_render {
-            print!("{}", renderer(&per_target));
+            print_stdout(&renderer(&per_target))
         } else {
             eprintln!("Error: --csv is not supported for this subcommand");
             return ExitCode::FAILURE;
@@ -1287,14 +1284,16 @@ where
     } else if json {
         if single {
             if let Some((_, results)) = per_target.first() {
-                println!("{}", to_json(results));
+                print_stdout(&format!("{}\n", to_json(results)))
+            } else {
+                true
             }
         } else {
             let items: Vec<serde_json::Value> = per_target
                 .iter()
                 .map(|(host, results)| serde_json::json!({ "target": host, "results": results }))
                 .collect();
-            println!("{}", to_json(&items));
+            print_stdout(&format!("{}\n", to_json(&items)))
         }
     } else {
         let mut text = String::new();
@@ -1307,7 +1306,12 @@ where
             }
             text.push_str(&render(&style, results));
         }
-        print!("{text}");
+        print_stdout(&text)
+    };
+    if !out_ok {
+        // The report could not be delivered (e.g. a full disk): the run
+        // completed but its result was lost, so this is failure, not success.
+        return ExitCode::FAILURE;
     }
 
     if unresolved > 0 {
@@ -1352,12 +1356,16 @@ fn handle_get(sub_m: &ArgMatches) -> ExitCode {
     let json = sub_m.get_flag("json");
     match get_local_ip() {
         Ok(ip) => {
-            if json {
-                println!("{}", to_json(&IpOutput { ip }));
+            let out_ok = if json {
+                print_stdout(&format!("{}\n", to_json(&IpOutput { ip })))
             } else {
-                println!("{ip}");
+                print_stdout(&format!("{ip}\n"))
+            };
+            if out_ok {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
             }
-            ExitCode::SUCCESS
         }
         Err(e) => {
             eprintln!("Error: {e}");
@@ -1370,7 +1378,7 @@ fn handle_list(sub_m: &ArgMatches) -> ExitCode {
     let json = sub_m.get_flag("json");
     match list_net_ifs() {
         Ok(net_ifs) => {
-            if json {
+            let out_ok = if json {
                 let interfaces: Vec<InterfaceOutput> = net_ifs
                     .iter()
                     .map(|(name, ip)| InterfaceOutput {
@@ -1378,13 +1386,20 @@ fn handle_list(sub_m: &ArgMatches) -> ExitCode {
                         ip: *ip,
                     })
                     .collect();
-                println!("{}", to_json(&interfaces));
+                print_stdout(&format!("{}\n", to_json(&interfaces)))
             } else {
+                use std::fmt::Write as _;
+                let mut text = String::new();
                 for (name, ip) in &net_ifs {
-                    println!("{name}: {ip}");
+                    let _ = writeln!(text, "{name}: {ip}");
                 }
+                print_stdout(&text)
+            };
+            if out_ok {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
             }
-            ExitCode::SUCCESS
         }
         Err(e) => {
             eprintln!("Error: {e}");

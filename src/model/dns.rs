@@ -134,22 +134,47 @@ impl DnsRecord {
     }
 }
 
+/// Present a name-bearing record value for terminal/CSV safety: printable
+/// bytes (including non-ASCII UTF-8 labels) verbatim, every control byte as
+/// hickory's `\NNN` octal escape (0x1b ESC → `\033`, LF → `\012`). The wire
+/// decoders (`dns::read_name`/`read_txt`) pass raw bytes through
+/// `from_utf8_lossy`, so a hostile DNS answer can place a live ANSI ESC, CR or
+/// LF into a CNAME/NS/PTR/SOA label — rendered raw in the human report a
+/// terminal would reinterpret, or un-quoted into a CSV cell a spreadsheet
+/// would split. Escaping once on the shared `Display` funnel both resolution
+/// paths use keeps the invariant both now honor: no resolution path emits a
+/// raw control byte — hickory additionally backslash-escapes a few
+/// hostname-unsafe *printable* bytes (`[` → `\[`) and appends the root dot,
+/// but that cosmetic difference is independent of the safety property here.
+fn esc_present(s: &str) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        if ch.is_control() {
+            let _ = write!(out, "\\{:03o}", ch as u32);
+        } else {
+            out.push(ch);
+        }
+    }
+    out
+}
+
 impl std::fmt::Display for DnsRecord {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::A(ip) => write!(f, "{ip}"),
             Self::Aaaa(ip) => write!(f, "{ip}"),
-            Self::Cname(name) | Self::Ns(name) | Self::Ptr(name) => write!(f, "{name}"),
-            Self::Mx { preference, exchange } => write!(f, "{preference} {exchange}"),
+            Self::Cname(name) | Self::Ns(name) | Self::Ptr(name) => write!(f, "{}", esc_present(name)),
+            Self::Mx { preference, exchange } => write!(f, "{preference} {}", esc_present(exchange)),
             Self::Txt(text) => write!(f, "{text:?}"),
-            Self::Soa(s) => write!(f, "{s}"),
-            Self::Caa { flags, tag, value } => write!(f, "{flags} {tag} {value}"),
+            Self::Soa(s) => write!(f, "{}", esc_present(s)),
+            Self::Caa { flags, tag, value } => write!(f, "{flags} {tag} {}", esc_present(value)),
             Self::Srv {
                 priority,
                 weight,
                 port,
                 target,
-            } => write!(f, "{priority} {weight} {port} {target}"),
+            } => write!(f, "{priority} {weight} {port} {}", esc_present(target)),
         }
     }
 }
@@ -259,5 +284,27 @@ mod tests {
             serde_json::to_string(&ResolverKind::Dot("1.1.1.1".to_string())).unwrap(),
             "\"1.1.1.1 (DoT)\""
         );
+    }
+
+    #[test]
+    fn dns_record_display_escapes_control_bytes_like_hickory() {
+        // A hostile DNS answer can carry a control byte (ANSI ESC) in a
+        // CNAME/NS/PTR label — the wire decoders pass the raw byte through —
+        // and the human report / CSV render via `Display`. Control bytes must
+        // render as hickory's octal `\NNN` spelling (ESC 0x1b → `\033`),
+        // never as a live terminal sequence, while printable ASCII survives.
+        let evil = DnsRecord::Cname("\u{1b}[31mEVIL.example".to_string());
+        assert_eq!(evil.to_string(), "\\033[31mEVIL.example");
+        // Printable (incl. non-ASCII IDN labels) must stay verbatim.
+        let idn = DnsRecord::Ns("例子.测试".to_string());
+        assert_eq!(idn.to_string(), "例子.测试");
+        // Newline and carriage return are also escaped (CSV-cell safety).
+        assert_eq!(DnsRecord::Ptr("a\r\nb".to_string()).to_string(), "a\\015\\012b");
+        // TXT already Debug-escapes; ensure it stays that way.
+        assert_eq!(DnsRecord::Txt("x\u{1b}y".to_string()).to_string(), "\"x\\u{1b}y\"");
+        // JSON serializes through Display (collect_str) → the CSV/human-safe
+        // spelling, no raw control byte in the document.
+        let json = serde_json::to_string(&DnsRecord::Cname("\u{1b}red".to_string())).unwrap();
+        assert!(!json.contains('\u{1b}'), "JSON must not carry a raw 0x1b: {json}");
     }
 }

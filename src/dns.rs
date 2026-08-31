@@ -100,6 +100,11 @@ impl DnsClient {
                 results.push(obs);
             }
         }
+        // JoinSet delivers in completion order and `self.custom` is a HashMap
+        // (random iteration per process) — both nondeterministic across runs.
+        // Sort by the canonical resolver spelling so single-shot rows render
+        // in a stable order (`--server A --server B` output no longer flips).
+        results.sort_by_key(|o| o.resolver.label());
         results
     }
 
@@ -137,6 +142,10 @@ impl DnsClient {
         for (_resolver, bucket) in per_resolver {
             out.push(aggregate_repeat(&bucket, record_type, attempts));
         }
+        // Same deterministic ordering as [`DnsClient::resolve`]: the bucket
+        // order above comes from HashMap iteration, so the repeat rows must be
+        // re-sorted by resolver to render identically across runs.
+        out.sort_by_key(|r| r.resolver.label());
         out
     }
 }

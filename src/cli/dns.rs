@@ -1,6 +1,6 @@
 //! `dns` subcommand handler.
 
-use super::{parallel_map, parse_custom_servers};
+use super::{parallel_map, parse_custom_servers, print_stdout};
 use clap::ArgMatches;
 use ip_tools::dns::{aggregate_repeat, DnsClient};
 use ip_tools::model::{DnsObservation, DnsRecord, DnsRecordType, DnsRepeatResult, ResolverKind};
@@ -22,11 +22,6 @@ pub(super) async fn run_dns(sub_m: &ArgMatches, style: Style) -> ExitCode {
     let strict = sub_m.get_flag("strict");
     let timeout_ms = *sub_m.get_one::<u64>("timeout").expect("timeout has default");
     let timeout = Duration::from_millis(timeout_ms);
-
-    if let Err(e) = super::ensure_single_output_format(sub_m) {
-        eprintln!("Error: {e}");
-        return ExitCode::FAILURE;
-    }
 
     let targets = match super::parse_targets(sub_m) {
         Ok(t) => t,
@@ -131,15 +126,15 @@ pub(super) async fn run_dns(sub_m: &ArgMatches, style: Style) -> ExitCode {
     indexed.sort_by_key(|(idx, _)| *idx);
     let outputs: Vec<TargetDns> = indexed.into_iter().map(|(_, o)| o).collect();
 
-    if csv {
-        print!("{}", render_dns_csv(&outputs));
+    let out_ok = if csv {
+        print_stdout(&render_dns_csv(&outputs))
     } else if json {
         if outputs.len() == 1 {
             let o = &outputs[0];
             if o.repeat {
-                println!("{}", to_json(&o.results));
+                print_stdout(&format!("{}\n", to_json(&o.results)))
             } else {
-                println!("{}", to_json(&o.observations));
+                print_stdout(&format!("{}\n", to_json(&o.observations)))
             }
         } else {
             let items: Vec<serde_json::Value> = outputs
@@ -152,7 +147,7 @@ pub(super) async fn run_dns(sub_m: &ArgMatches, style: Style) -> ExitCode {
                     }
                 })
                 .collect();
-            println!("{}", to_json(&items));
+            print_stdout(&format!("{}\n", to_json(&items)))
         }
     } else {
         let mut text = String::new();
@@ -163,7 +158,10 @@ pub(super) async fn run_dns(sub_m: &ArgMatches, style: Style) -> ExitCode {
                 text.push_str(&render_dns(&style, &o.host, &o.observations));
             }
         }
-        print!("{text}");
+        print_stdout(&text)
+    };
+    if !out_ok {
+        return ExitCode::FAILURE;
     }
 
     // `--strict`: a failed lookup / failed repeat row is an observation, but

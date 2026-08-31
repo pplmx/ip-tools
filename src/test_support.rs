@@ -349,6 +349,22 @@ const DOH_CNAME_RESPONSE: &[u8] = &[
     0x07, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 0x00,
 ];
 
+/// Canned DNS response whose CNAME target embeds a raw ANSI ESC byte, served
+/// by the fixture at `/dns-escape`: `host.example` `IN CNAME <ESC>[31mEVIL`
+/// (the label is the 9 bytes ESC `[3` `1m` `EVIL`, then root). The hand-rolled
+/// wire decoder passes such a byte through unchanged; the report must present
+/// it escaped (`\033[31mEVIL`), never as a live terminal sequence.
+const DOH_ESCAPE_RESPONSE: &[u8] = &[
+    // header: id 0x1234, flags 0x8180 (QR|RD|RA, NOERROR), QD=1, AN=1, NS=0, AR=0
+    0x12, 0x34, 0x81, 0x80, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+    // question name: host.example (4 host, 7 example, 0 root), qtype A, qclass IN
+    0x04, b'h', b'o', b's', b't', 0x07, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 0x00, 0x00, 0x01, 0x00, 0x01,
+    // answer 1: pointer to the question name, type CNAME, class IN, ttl 60,
+    // rdlen 11, rdata name: label 9 = ESC [ 3 1 m E V I L, then root
+    0xC0, 0x0C, 0x00, 0x05, 0x00, 0x01, 0x00, 0x00, 0x00, 0x3C, 0x00, 0x0B, 0x09, 0x1B, b'[', b'3', b'1', b'm', b'E',
+    b'V', b'I', b'L', 0x00,
+];
+
 /// Canned NXDOMAIN DNS response served by the fixture at `/dns-nxdomain`:
 /// header flags 0x8183 (QR|RD|RA + rcode 3), QD=1, AN=0 — the wire form of
 /// "the name does not exist". A `--doh` endpoint answering this must surface
@@ -421,6 +437,17 @@ async fn run_tcp_server(listener: tokio::net::TcpListener, acceptor: tokio_rustl
                         .header("content-type", "application/dns-message")
                         .body(http_body_util::Full::new(bytes::Bytes::from_static(DOH_CNAME_RESPONSE)).boxed())
                         .expect("static doh cname response");
+                    return Ok::<_, std::convert::Infallible>(resp);
+                }
+                if req.uri().path().starts_with("/dns-escape") {
+                    // Serve a canned CNAME whose target embeds a raw ANSI ESC
+                    // byte: the wire decoder passes it through, and the report
+                    // must escape it (terminal/CSV safety), not emit it live.
+                    let resp = hyper::Response::builder()
+                        .status(200)
+                        .header("content-type", "application/dns-message")
+                        .body(http_body_util::Full::new(bytes::Bytes::from_static(DOH_ESCAPE_RESPONSE)).boxed())
+                        .expect("static doh escape response");
                     return Ok::<_, std::convert::Infallible>(resp);
                 }
                 if req.uri().path().starts_with("/dns-nxdomain") {

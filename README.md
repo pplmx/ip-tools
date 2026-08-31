@@ -695,9 +695,11 @@ addresses observed, and a `path changed` marker when a hop's router differed
 between runs. A single trace cannot show a flapping next-hop, a load-balanced
 router or BGP/MPLS churn; the repeat view makes the path stability (or
 instability) explicit. The repeat `--csv` emits
-`ttl,hostname,addr,rtt_min_ms,rtt_med_ms,rtt_max_ms,answered,runs,path_changed`
+`ttl,hostname,addr,rtt_min_ms,rtt_p50_ms,rtt_max_ms,answered,runs,path_changed`
 rows (addresses joined with `;` when the path changed); `--strict` counts a
-hop as lost when it never answered across any run.
+hop as lost when it never answered across any run. The middle latency column is
+`p50` (nearest-rank percentile, matching the JSON `rtt.p50`), not a true
+median.
 
 ### Repeated probes
 
@@ -792,6 +794,14 @@ ip-tools route example.com --strict || echo "a hop was lost"
 attempt (repeated `probe`), any failed DNS lookup (`dns`), any non-`Healthy`
 diagnosis (`diagnose`) or any lost hop (`route`). Output is still rendered in
 full; only the exit code changes.
+
+Two cases exit `1` **even without `--strict`**, because the run could not
+complete at all: a target that produced no address to probe — the hostname
+did not resolve (or the `--ipv4`/`--ipv6` family scope emptied the pool) — and
+an empty target list. A run that completes (every address probed, even with
+refused/unreachable failures) stays `0`, so `--strict` remains the gate that
+turns failures into non-zero exits; the no-address exits are a fail-fast on a
+mis-targeted invocation, not a verdict about the destination.
 
 For **assertions** — "exit non-zero unless the response is *exactly* the shape
 I expected" — the `--expect-*` gates take over: `--expect-status` /

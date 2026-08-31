@@ -68,6 +68,18 @@ pub async fn probe(destination: SocketAddr, timeout: Duration) -> TcpObservation
 /// Standard `ErrorKind` covers refused/reset/timeout. Unreachable conditions
 /// have no stable `ErrorKind`, so they are recovered from the raw OS error
 /// code (Linux and macOS values).
+///
+/// The neighbouring local-stack denial codes — "no local source address for
+/// this family/scope" (EADDRNOTAVAIL), "address family not supported"
+/// (EAFNOSUPPORT), "host is down" (EHOSTDOWN), and local egress policy
+/// denials (EACCES/EPERM) — are folded into the local-unreachable kinds on
+/// the same grounds the engine documents for ENETUNREACH/EHOSTUNREACH: they
+/// are reported by the local stack *before any packet is sent to the
+/// destination*, so they are evidence about the host's own addressing/routing
+/// state, not about the destination path. Keeping them out of `Other` lets
+/// the diagnostic engine's local-condition exclusions (which match these two
+/// kinds) avoid raising a false HIGH total-loss verdict or a false `--strict`
+/// failure that would blame the destination.
 pub(crate) fn classify_io_error(e: &std::io::Error) -> FailureKind {
     use FailureKind::{ConnectionRefused, ConnectionReset, HostUnreachable, NetworkUnreachable, Other, Timeout};
     match e.kind() {
@@ -75,10 +87,20 @@ pub(crate) fn classify_io_error(e: &std::io::Error) -> FailureKind {
         std::io::ErrorKind::ConnectionReset => ConnectionReset,
         std::io::ErrorKind::TimedOut => Timeout,
         _ => match e.raw_os_error() {
-            // ENETUNREACH: 101 = Linux, 64 = macOS.
-            Some(101 | 64) => NetworkUnreachable,
-            // EHOSTUNREACH: 113 = Linux, 65 = macOS.
-            Some(113 | 65) => HostUnreachable,
+            // ENETUNREACH: 101 = Linux, 64 = macOS. EADDRNOTAVAIL: 99 = Linux,
+            // 49 = macOS ("cannot assign requested address" — no usable local
+            // source address, e.g. a global-scope IPv6 connect from a host with
+            // only link-local/loopback). EAFNOSUPPORT: 97 = Linux, 47 = macOS
+            // (address family not supported on this host). All are local-stack
+            // conditions emitted before any packet is sent.
+            Some(101 | 64 | 99 | 49 | 97 | 47) => NetworkUnreachable,
+            // EHOSTUNREACH: 113 = Linux, 65 = macOS. EHOSTDOWN: 112 = Linux
+            // (kernel ARP/ND says the host is down; macOS's EHOSTDOWN (64)
+            // collides with its ENETUNREACH (64) above — both local, so the
+            // collision is harmless). EACCES / EPERM (13 / 1, both platforms):
+            // local egress policy denied the connect (SELinux/seccomp/container
+            // firewall) — the local stack refused before any packet was sent.
+            Some(113 | 65 | 112 | 13 | 1) => HostUnreachable,
             // ETIMEDOUT
             Some(110) => Timeout,
             // ECONNRESET
@@ -131,5 +153,22 @@ mod tests {
     #[test]
     fn unknown_os_error_is_other() {
         assert_eq!(classify_io_error(&err(9999)), FailureKind::Other);
+    }
+
+    #[test]
+    fn classifies_local_stack_denials_as_local_unreachability() {
+        // EADDRNOTAVAIL (no local source address for this family/scope),
+        // EAFNOSUPPORT (family unsupported), EHOSTDOWN and the egress-policy
+        // codes EACCES/EPERM are all reported by the local stack before any
+        // packet is sent — they must classify as local-unreachable (not
+        // `Other`), or the diagnostic engine would read them as destination
+        // path failures and raise a false HIGH total-loss verdict.
+        assert_eq!(classify_io_error(&err(99)), FailureKind::NetworkUnreachable); // EADDRNOTAVAIL
+        assert_eq!(classify_io_error(&err(49)), FailureKind::NetworkUnreachable); // EADDRNOTAVAIL (macOS)
+        assert_eq!(classify_io_error(&err(97)), FailureKind::NetworkUnreachable); // EAFNOSUPPORT
+        assert_eq!(classify_io_error(&err(47)), FailureKind::NetworkUnreachable); // EAFNOSUPPORT (macOS)
+        assert_eq!(classify_io_error(&err(112)), FailureKind::HostUnreachable); // EHOSTDOWN
+        assert_eq!(classify_io_error(&err(13)), FailureKind::HostUnreachable); // EACCES (egress policy)
+        assert_eq!(classify_io_error(&err(1)), FailureKind::HostUnreachable); // EPERM (egress policy)
     }
 }

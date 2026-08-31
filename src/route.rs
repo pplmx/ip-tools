@@ -82,6 +82,11 @@ pub struct RouteRepeat {
 /// Pure, so unit-testable without a raw ICMP socket. A hop that answered in
 /// some runs and was lost in others counts toward `answered` with the
 /// latencies it produced; a hop never seen in a run is simply absent.
+///
+/// `answered` saturates at `u16::MAX` rather than wrapping: the CLI already
+/// rejects a `--count` above that (a wrap would silently report a fully
+/// answered hop as "0 runs answered" — false 100% loss), and this public
+/// function applies the same guard for library callers who by-pass the CLI.
 #[must_use]
 pub fn aggregate_runs(hops_by_run: &[Vec<RouteHop>]) -> RouteRepeat {
     let mut by_ttl: BTreeMap<u8, (u16, Vec<IpAddr>, Option<String>, LatencyStats)> = BTreeMap::new();
@@ -93,7 +98,7 @@ pub fn aggregate_runs(hops_by_run: &[Vec<RouteHop>]) -> RouteRepeat {
             if hop.lost {
                 continue;
             }
-            entry.0 += 1;
+            entry.0 = entry.0.saturating_add(1);
             if let Some(addr) = hop.addr {
                 if !entry.1.contains(&addr) {
                     entry.1.push(addr);
@@ -371,7 +376,31 @@ fn parse_icmp_udp_src(buf: &[u8], len: usize) -> Option<(u8, u16)> {
 
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
+    use super::aggregate_runs;
     use super::parse_icmp_udp_src;
+    use super::RouteHop;
+
+    #[test]
+    fn aggregate_runs_saturates_answered_at_u16_max() {
+        // More answered runs than `u16::MAX` (the CLI rejects such a --count,
+        // but the public library fn is callable directly): `answered` must
+        // saturate, not wrap — a wrap would report a fully-answered hop as
+        // "0 runs answered" (false 100% loss in the human/--strict verdict).
+        let answered = u16::MAX as usize + 2;
+        let mut runs = Vec::with_capacity(answered);
+        for _ in 0..answered {
+            runs.push(vec![RouteHop {
+                ttl: 1,
+                addr: Some("192.0.2.1".parse().unwrap()),
+                hostname: None,
+                rtt_ms: Some(3),
+                lost: false,
+            }]);
+        }
+        let rep = aggregate_runs(&runs);
+        assert_eq!(rep.hops[0].answered, u16::MAX, "must saturate, not wrap");
+        assert!(!rep.hops[0].path_changed);
+    }
 
     fn build_icmp_time_exceeded(inner_udp_src: u16) -> Vec<u8> {
         let mut p = Vec::new();

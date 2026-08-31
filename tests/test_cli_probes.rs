@@ -92,6 +92,71 @@ fn response(query: &[u8], ipv4: &[IpAddr], ipv6: &[IpAddr]) -> Option<Vec<u8>> {
     Some(out)
 }
 
+/// A minimal in-process DNS server answering every query with a single CNAME
+/// whose target name embeds a raw ANSI ESC byte (`\x1b[31mEVIL`) — the wire
+/// arranges for `dns`'s hand-rolled `read_name` decoder to pass a control byte
+/// through; the report must escape it, never emit a live terminal sequence.
+fn cname_escape_server() -> SocketAddr {
+    let sock = UdpSocket::bind("127.0.0.1:0").expect("bind dns server");
+    let addr = sock.local_addr().expect("dns server address");
+    thread::spawn(move || {
+        let mut buf = [0u8; 512];
+        while let Ok((n, peer)) = sock.recv_from(&mut buf) {
+            if let Some(resp) = cname_response(&buf[..n]) {
+                let _ = sock.send_to(&resp, peer);
+            }
+        }
+    });
+    addr
+}
+
+/// Build a DNS answer: one CNAME whose target is the label
+/// `ESC [ 3 1 m E V I L` (9 bytes) then root.
+fn cname_response(query: &[u8]) -> Option<Vec<u8>> {
+    if query.len() < 12 {
+        return None;
+    }
+    let id = [query[0], query[1]];
+    let qdcount = u16::from_be_bytes([query[4], query[5]]);
+    if qdcount == 0 {
+        return None;
+    }
+    let mut pos = 12;
+    loop {
+        let len = *query.get(pos)? as usize;
+        pos += 1;
+        if len == 0 {
+            break;
+        }
+        if len > 63 {
+            return None;
+        }
+        pos += len;
+    }
+    let question = &query[12..pos + 4];
+    let target: Vec<u8> = {
+        let mut t = vec![9u8];
+        t.extend_from_slice(&[0x1b, b'[', b'3', b'1', b'm', b'E', b'V', b'I', b'L']);
+        t.push(0u8); // root
+        t
+    };
+    let mut out = Vec::with_capacity(128);
+    out.extend_from_slice(&id);
+    out.extend_from_slice(&0x8180u16.to_be_bytes());
+    out.extend_from_slice(&qdcount.to_be_bytes());
+    out.extend_from_slice(&1u16.to_be_bytes()); // one answer
+    out.extend_from_slice(&[0u8; 4]); // ns, ar counts
+    out.extend_from_slice(question);
+    out.extend_from_slice(&[0xC0, 0x0C]); // answer name: pointer to qname
+    out.extend_from_slice(&5u16.to_be_bytes()); // CNAME
+    out.extend_from_slice(&[0, 1]); // IN
+    out.extend_from_slice(&60u32.to_be_bytes()); // ttl
+    let rdlen = u16::try_from(target.len()).expect("short target");
+    out.extend_from_slice(&rdlen.to_be_bytes());
+    out.extend_from_slice(&target);
+    Some(out)
+}
+
 fn cmd() -> Command {
     Command::cargo_bin("ip-tools").expect("ip-tools binary")
 }
@@ -757,6 +822,112 @@ fn dns_cli_resolves_via_custom_local_server() {
     );
     assert!(out.contains("2001:db8::77"), "AAAA with --ipv6 missing: {out}");
     assert!(!out.contains("192.0.2.77"), "--ipv6 must not include A: {out}");
+}
+
+#[test]
+fn dns_cli_multi_server_rows_are_deterministically_ordered() {
+    // Two `--server` resolvers: `resolve()` collects from a `HashMap` of
+    // resolvers in completion order (both nondeterministic per process), so
+    // before the deterministic re-sort the row order in the JSON `resolver`
+    // field flipped across identical runs. Two fresh runs of the same command
+    // must now emit byte-identical *resolver sequences* (latency values still
+    // vary run to run, so only the row order is compared).
+    let server_a = local_dns_server(&["192.0.2.71"], &[]);
+    let server_b = local_dns_server(&["192.0.2.72"], &[]);
+    let run = || {
+        let out = stdout(
+            &cmd()
+                .args([
+                    "dns",
+                    "host.example",
+                    "--server",
+                    &server_a.to_string(),
+                    "--server",
+                    &server_b.to_string(),
+                    "--record-type",
+                    "A",
+                    "--json",
+                    "--timeout",
+                    "1200",
+                ])
+                .assert()
+                .success(),
+        );
+        let value: serde_json::Value = serde_json::from_str(&out).expect("dns --json must parse");
+        let resolvers: Vec<String> = if let Some(rows) = value.as_array() {
+            rows.iter().map(|r| r["resolver"].to_string()).collect()
+        } else {
+            vec![value["resolver"].to_string()]
+        };
+        resolvers
+    };
+    assert_eq!(run(), run(), "multi-resolver rows must not flip between runs");
+    // Both custom resolvers must be present and stable — the system resolver
+    // row is deliberately not counted: it is skipped when the host has no
+    // usable system resolver (a stripped container), so an exact row count
+    // would make the test environment-brittle rather than more precise.
+    let r = run();
+    assert!(r.len() >= 2, "at least the two custom resolvers: {r:?}");
+    for s in [&server_a.to_string(), &server_b.to_string()] {
+        assert!(
+            r.iter().any(|row| row.contains(s.as_str())),
+            "missing resolver {s}: {r:?}"
+        );
+    }
+}
+
+#[test]
+fn dns_cli_escapes_control_bytes_in_wire_decoded_names() {
+    // A CNAME answer whose target label begins with a raw ANSI ESC byte must
+    // render escaped — never as a live terminal sequence — on BOTH resolution
+    // paths. This exercises the `--server`/hickory path (which already
+    // octal-escapes, spelling the ESC `\033` and other hostname-unsafe bytes
+    // like `[` as `\[`); the DoH/DoT hand-rolled wire path is pinned by the
+    // fixture-gated `dns_cli_doh_escapes_control_bytes_in_wire_decoded_names`
+    // test, whose `read_name` decoder previously passed the raw byte through.
+    let server = cname_escape_server();
+    let human = stdout(
+        &cmd()
+            .args([
+                "dns",
+                "host.example",
+                "--server",
+                &server.to_string(),
+                "--record-type",
+                "CNAME",
+                "--timeout",
+                "1200",
+            ])
+            .assert()
+            .success(),
+    );
+    assert!(
+        !human.contains('\u{1b}'),
+        "human report must not carry a raw ESC: {human:?}"
+    );
+    assert!(
+        human.contains("\\033\\[31mEVIL"),
+        "ESC must render as hickory's octal escape: {human}"
+    );
+
+    let csv = stdout(
+        &cmd()
+            .args([
+                "dns",
+                "host.example",
+                "--server",
+                &server.to_string(),
+                "--record-type",
+                "CNAME",
+                "--csv",
+                "--timeout",
+                "1200",
+            ])
+            .assert()
+            .success(),
+    );
+    assert!(!csv.contains('\u{1b}'), "CSV must not carry a raw ESC: {csv:?}");
+    assert!(csv.contains("\\033\\[31mEVIL"), "CSV records cell must escape: {csv}");
 }
 
 #[test]
@@ -1505,19 +1676,44 @@ fn dns_and_diagnose_cli_reject_an_empty_target_list() {
     let _ = std::fs::remove_file(&tmp);
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn probe_family_cli_surfaces_a_lost_output_as_failure() {
+    // A genuine stdout write failure (redirected to a full disk) must be a
+    // failure, not a silent exit 0 with the report lost: an ENOSPC on
+    // `/dev/full` is the opposite of the closed-pipe case (`... | head`,
+    // which stays success). The run completes; the report never lands.
+    use std::process::{Command as StdCommand, Stdio};
+    let addr = local_tcp_listener();
+    let full = std::fs::File::create("/dev/full").expect("open /dev/full");
+    let out = StdCommand::new(env!("CARGO_BIN_EXE_ip-tools"))
+        .args(["tcp", &addr.to_string(), "--timeout", "800"])
+        .stdout(Stdio::from(full))
+        .output()
+        .expect("run tcp with stdout redirected to a full device");
+    assert_eq!(out.status.code(), Some(1), "a lost report must exit 1");
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        err.contains("failed to write report to stdout"),
+        "the lost-report reason must be on stderr: {err}"
+    );
+}
+
 #[test]
 fn probe_family_cli_rejects_json_with_csv() {
     // `--json` and `--csv` both name the output format; the render chain used
     // to silently honor CSV and drop the JSON. The README already calls them
-    // mutually exclusive — make the CLI enforce it like the other
-    // contradictory flag combinations.
+    // mutually exclusive — and the rejection is a clap `conflicts_with` parse
+    // error (exit 2), on the same channel as the other contradictory-flag
+    // pairs (`--ipv4`+`--ipv6`, `--plain`+`--insecure`), not a runtime exit 1.
     let addr = local_tcp_listener();
     for sub in ["tcp", "tls", "http", "probe", "dns", "route", "diagnose"] {
         cmd()
             .args([sub, &addr.to_string(), "--json", "--csv"])
             .assert()
             .failure()
-            .stderr(contains("--json and --csv are mutually exclusive"));
+            .code(2)
+            .stderr(contains("cannot be used with"));
     }
 }
 

@@ -1,6 +1,6 @@
 //! `route` subcommand handler.
 
-use super::{resolve_for_tcp_servers, DEFAULT_PORT};
+use super::{print_stdout, resolve_for_tcp_servers, DEFAULT_PORT};
 use clap::ArgMatches;
 use ip_tools::report::{render_route, render_route_repeat, to_json};
 use ip_tools::route as ip_route;
@@ -28,11 +28,6 @@ pub(super) async fn run_route(sub_m: &ArgMatches, style: Style) -> ExitCode {
         .get_one::<u8>("probes-per-hop")
         .expect("probes-per-hop has default");
     let timeout_ms = *sub_m.get_one::<u64>("timeout").expect("timeout has default");
-
-    if let Err(e) = super::ensure_single_output_format(sub_m) {
-        eprintln!("Error: {e}");
-        return ExitCode::FAILURE;
-    }
 
     // A 0-repeat request is a caller mistake, and silently running a single
     // trace would hide it. `--count 0`, `--max-hops 0` and `--probes-per-hop 0`
@@ -123,12 +118,15 @@ pub(super) async fn run_route(sub_m: &ArgMatches, style: Style) -> ExitCode {
         0
     };
 
-    if csv {
-        print!("{}", render_route_csv(&hops));
+    let out_ok = if csv {
+        print_stdout(&render_route_csv(&hops))
     } else if json {
-        println!("{}", to_json(&hops));
+        print_stdout(&format!("{}\n", to_json(&hops)))
     } else {
-        print!("{}", render_route(&style, &hops));
+        print_stdout(&render_route(&style, &hops))
+    };
+    if !out_ok {
+        return ExitCode::FAILURE;
     }
     if lost > 0 {
         eprintln!("Error: {lost} route hop(s) lost (--strict)");
@@ -176,12 +174,15 @@ async fn run_route_repeat(
         0
     };
 
-    if csv {
-        print!("{}", render_route_repeat_csv(&repeat));
+    let out_ok = if csv {
+        print_stdout(&render_route_repeat_csv(&repeat))
     } else if json {
-        println!("{}", to_json(&repeat));
+        print_stdout(&format!("{}\n", to_json(&repeat)))
     } else {
-        print!("{}", render_route_repeat(&style, &repeat));
+        print_stdout(&render_route_repeat(&style, &repeat))
+    };
+    if !out_ok {
+        return ExitCode::FAILURE;
     }
     if lost > 0 {
         eprintln!("Error: {lost} route hop(s) entirely lost across {count} runs (--strict)");
@@ -215,8 +216,14 @@ async fn resolve_repeat_hostnames(repeat: &mut RouteRepeat) {
 /// Render a repeated-traceroute aggregation as CSV: a header then one row per
 /// hop, with the aggregated router address(es), min/p50/max latency, answer
 /// rate and path-change verdict (RFC 4180 quoting).
+///
+/// The middle latency column is named `rtt_p50_ms`, not "median": the model's
+/// percentile is nearest-rank (for an even sample count, the systematically
+/// lower middle — e.g. `[2,4]` → 2), the same `p50` value the JSON `rtt`
+/// object and the human `p50` row expose. Calling it a median would overstate
+/// it.
 fn render_route_repeat_csv(repeat: &RouteRepeat) -> String {
-    let mut out = String::from("ttl,hostname,addr,rtt_min_ms,rtt_med_ms,rtt_max_ms,answered,runs,path_changed\n");
+    let mut out = String::from("ttl,hostname,addr,rtt_min_ms,rtt_p50_ms,rtt_max_ms,answered,runs,path_changed\n");
     for h in &repeat.hops {
         out.push_str(&h.ttl.to_string());
         out.push(',');
@@ -312,7 +319,7 @@ mod tests {
         let mut lines = out.lines();
         assert_eq!(
             lines.next(),
-            Some("ttl,hostname,addr,rtt_min_ms,rtt_med_ms,rtt_max_ms,answered,runs,path_changed")
+            Some("ttl,hostname,addr,rtt_min_ms,rtt_p50_ms,rtt_max_ms,answered,runs,path_changed")
         );
         // Stable hop: sole addr, min/med/max latency, 2/2 answered.
         assert_eq!(lines.next(), Some("1,r1.example.com,192.0.2.1,2,2,4,2,2,0"));
