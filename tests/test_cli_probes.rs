@@ -578,6 +578,36 @@ fn probe_cli_rejects_zero_timeout() {
 }
 
 #[test]
+fn http_cli_output_body_does_not_truncate_an_artifact_on_a_doomed_run() {
+    // A run whose target fails to resolve produces no body — so it must not
+    // truncate a previous valid capture at the `--output-body` path. Before
+    // the fix the pre-flight `File::create` ran whenever the flag was present,
+    // destroying the artifact even though `dest_count == 0` and the run below
+    // fails loudly with "did not resolve".
+    let tmp = std::env::temp_dir().join(format!("ip-tools-doomed-output-{}.html", std::process::id()));
+    std::fs::write(&tmp, "PREVIOUS CAPTURE").expect("write prior artifact");
+    cmd()
+        .args([
+            "http",
+            "no-such-host-round32.invalid",
+            "--output-body",
+            tmp.to_str().unwrap(),
+            "--timeout",
+            "800",
+        ])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(contains("did not resolve"));
+    assert_eq!(
+        std::fs::read_to_string(&tmp).expect("artifact still readable"),
+        "PREVIOUS CAPTURE",
+        "a doomed run must leave the prior artifact untouched"
+    );
+    let _ = std::fs::remove_file(&tmp);
+}
+
+#[test]
 fn http_cli_rejects_output_body_across_a_multi_target_sweep() {
     // `--output-body` writes one file per probe; a multi-target sweep would
     // race every host's body onto the same path (last finisher wins), so it

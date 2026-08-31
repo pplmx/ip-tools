@@ -1244,9 +1244,17 @@ where
         // truncating the file here fails the run up front, before any probe,
         // whenever the write cannot even be started; a mid-write failure
         // (disk full) stays best-effort with the warning above.
-        if let Err(e) = std::fs::File::create(std::path::Path::new(path)) {
-            eprintln!("Error: --output-body cannot write {path}: {e}");
-            return ExitCode::FAILURE;
+        //
+        // Only pre-create when a probe could actually write: with `dest_count
+        // == 0` the target failed to resolve (or the `--ipv4/--ipv6` scope
+        // emptied its pool) and the run below already fails loudly with "no
+        // address to probe" — truncating the artifact now would destroy a
+        // previous valid capture for a run that never produces a body.
+        if dest_count == 1 {
+            if let Err(e) = std::fs::File::create(std::path::Path::new(path)) {
+                eprintln!("Error: --output-body cannot write {path}: {e}");
+                return ExitCode::FAILURE;
+            }
         }
     }
     // Phase 2: probe every (host, destination) pair, bounded by the same limit.
