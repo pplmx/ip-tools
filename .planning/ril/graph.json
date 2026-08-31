@@ -1,8 +1,8 @@
 {
   "ril_version": 1,
-  "round": 28,
+  "round": 29,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-31T04:49:57+00:00",
+  "updated_at": "2026-08-31T07:09:13+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -101,7 +101,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 27,
+      "touched_round": 28,
       "desc": "clap arg tree + dispatch; --strict/--json/--timeout/--concurrency/--server/--insecure/--method/--count flags"
     },
     "COMP-model": {
@@ -6456,6 +6456,59 @@
       "touched_round": 27,
       "commit": "a6873b1",
       "title": "round-29 batch: determinism, EPIPE, ANSI-escape, local-denial, 4 LOWs (a6873b1)"
+    },
+    "ISS-175": {
+      "id": "ISS-175",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-31T07:03:20+00:00",
+      "updated_at": "2026-08-31T07:09:12+00:00",
+      "touched_round": 28,
+      "title": "completions write-failure panic exit 101 (round-30 LOW)"
+    },
+    "TASK-129": {
+      "id": "TASK-129",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-31T07:03:20+00:00",
+      "updated_at": "2026-08-31T07:09:12+00:00",
+      "touched_round": 28,
+      "category": "correctness",
+      "title": "close the --json/--csv position hole"
+    },
+    "TASK-130": {
+      "id": "TASK-130",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-31T07:03:20+00:00",
+      "updated_at": "2026-08-31T07:09:13+00:00",
+      "touched_round": 28,
+      "category": "dx",
+      "title": "make completions honor the write-failure contract"
+    },
+    "CHG-115": {
+      "id": "CHG-115",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-31T07:03:21+00:00",
+      "updated_at": "2026-08-31T07:03:21+00:00",
+      "touched_round": 28,
+      "commit": "04b0e16",
+      "title": "round-30: json/csv position hole + completions write-failure (04b0e16)"
+    },
+    "ISS-176": {
+      "id": "ISS-176",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-31T07:05:51+00:00",
+      "updated_at": "2026-08-31T07:09:12+00:00",
+      "touched_round": 28,
+      "title": "round-30 MEDIUM: --json/--csv conflict hole when --json precedes the subcommand"
     }
   },
   "edges": [
@@ -11144,6 +11197,54 @@
       "to": "COMP-cli",
       "type": "located_in",
       "created_at": "2026-08-31T04:47:50+00:00"
+    },
+    {
+      "from": "TASK-129",
+      "to": "ISS-176",
+      "type": "addresses",
+      "created_at": "2026-08-31T07:07:21+00:00"
+    },
+    {
+      "from": "TASK-130",
+      "to": "ISS-175",
+      "type": "addresses",
+      "created_at": "2026-08-31T07:07:21+00:00"
+    },
+    {
+      "from": "CHG-115",
+      "to": "TASK-129",
+      "type": "implements",
+      "created_at": "2026-08-31T07:07:21+00:00"
+    },
+    {
+      "from": "CHG-115",
+      "to": "TASK-130",
+      "type": "implements",
+      "created_at": "2026-08-31T07:07:21+00:00"
+    },
+    {
+      "from": "CHG-115",
+      "to": "ISS-176",
+      "type": "resolves",
+      "created_at": "2026-08-31T07:07:21+00:00"
+    },
+    {
+      "from": "CHG-115",
+      "to": "ISS-175",
+      "type": "resolves",
+      "created_at": "2026-08-31T07:07:21+00:00"
+    },
+    {
+      "from": "ISS-176",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-31T07:07:21+00:00"
+    },
+    {
+      "from": "ISS-175",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-31T07:07:21+00:00"
     }
   ]
 }
