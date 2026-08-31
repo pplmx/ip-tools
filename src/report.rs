@@ -67,7 +67,12 @@ pub fn render_dns(style: &Style, host: &str, observations: &[DnsObservation]) ->
                 // multi-address `--reverse` sweep) differs from the section's
                 // target is labelled, so which address's answer it is stays
                 // visible instead of collapsing into ambiguity.
-                let label = if obs.hostname != host && !obs.hostname.is_empty() {
+                // An IPv6-literal section header keeps its brackets (`[::1]`)
+                // while a reverse observation is labelled with the bare IP
+                // (`::1`) — the same address, so the comparison strips
+                // brackets to avoid a spurious `PTR : ::1 :: …` double-name.
+                let same_address = trim_brackets(&obs.hostname) == trim_brackets(host);
+                let label = if !same_address && !obs.hostname.is_empty() {
                     format!("{} :: ", obs.hostname)
                 } else {
                     String::new()
@@ -79,6 +84,13 @@ pub fn render_dns(style: &Style, host: &str, observations: &[DnsObservation]) ->
         }
     }
     out
+}
+
+/// Strip IPv6 literal brackets from a DNS name or section header so two
+/// spellings of the same address (`[::1]` vs `::1`) compare equal. A bare
+/// name is returned unchanged.
+fn trim_brackets(s: &str) -> &str {
+    s.trim_start_matches('[').trim_end_matches(']')
 }
 
 fn render_dns_one(style: Style, obs: &DnsObservation) -> String {
@@ -1051,6 +1063,44 @@ mod tests {
             out.contains("192.0.2.2 :: two.example"),
             "the second reverse row must not be dropped: {out}"
         );
+    }
+
+    #[test]
+    fn render_dns_does_not_double_name_a_bracketed_ipv6_literal() {
+        // `diagnose --reverse [::1]` keeps the brackets in the section header
+        // (`DNS [::1]`) while the reverse observation is relabelled with the
+        // bare IP (`::1`). The same address must not trigger the per-address
+        // label — that would render `PTR : ::1 :: localhost.` and read as a
+        // double name. A genuinely different address still labels.
+        let ptr = |addr: &str, target: &str| DnsObservation {
+            hostname: addr.to_string(),
+            resolver: ResolverKind::System,
+            record_type: DnsRecordType::Ptr,
+            records: vec![DnsRecord::Ptr(target.to_string())],
+            ttl: Some(60),
+            latency_ms: Some(2),
+            error: None,
+        };
+        let out = render_dns(&Style::plain(), "[::1]", &[ptr("::1", "localhost")]);
+        assert!(
+            !out.contains("::1 :: "),
+            "the bracketed header and the bare-IP observation are the same address, no label: {out}"
+        );
+        assert!(out.contains("PTR : localhost"), "the record must render plainly: {out}");
+
+        // The same rule applies the other way round: a bare header vs a
+        // bracketed observation is also the same address.
+        let out = render_dns(&Style::plain(), "::1", &[ptr("[::1]", "localhost")]);
+        assert!(!out.contains("[::1] ::"), "no label either way: {out}");
+
+        // A different address still carries its label.
+        let out = render_dns(&Style::plain(), "[::1]", &[ptr("::1", "localhost")]);
+        let mixed = render_dns(&Style::plain(), "[::1]", &[ptr("192.0.2.9", "other.example")]);
+        assert!(
+            mixed.contains("192.0.2.9 :: other.example"),
+            "a different address must still be labelled: {mixed}"
+        );
+        assert!(!out.contains("::1 :: "), "same-address must stay unlabelled: {out}");
     }
 
     #[test]
