@@ -1699,21 +1699,52 @@ fn probe_family_cli_surfaces_a_lost_output_as_failure() {
     );
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn completions_cli_surfaces_a_lost_output_as_failure() {
+    // `completions zsh` writes "disposable shell script" output, but a lost
+    // script (ENOSPC to a full disk) is a failure, not the panic
+    // `clap_complete::generate` produced on any writer error (exit 101). The
+    // script is buffered in memory and emitted through the same EPIPE-tolerant
+    // writer as the reports, so a full device exits 1 with the reason.
+    use std::process::{Command as StdCommand, Stdio};
+    let full = std::fs::File::create("/dev/full").expect("open /dev/full");
+    let out = StdCommand::new(env!("CARGO_BIN_EXE_ip-tools"))
+        .args(["completions", "zsh"])
+        .stdout(Stdio::from(full))
+        .output()
+        .expect("run completions with stdout redirected to a full device");
+    assert_eq!(out.status.code(), Some(1), "a lost completion script must exit 1");
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        err.contains("failed to write"),
+        "the lost-script reason must be on stderr: {err}"
+    );
+}
+
 #[test]
 fn probe_family_cli_rejects_json_with_csv() {
     // `--json` and `--csv` both name the output format; the render chain used
-    // to silently honor CSV and drop the JSON. The README already calls them
-    // mutually exclusive — and the rejection is a clap `conflicts_with` parse
-    // error (exit 2), on the same channel as the other contradictory-flag
-    // pairs (`--ipv4`+`--ipv6`, `--plain`+`--insecure`), not a runtime exit 1.
+    // to silently honor CSV and drop the JSON. The rejection is exit 2 on the
+    // same channel as the other contradictory-flag pairs, in EITHER flag
+    // position: `--json` is global, so when it precedes the subcommand name
+    // the subcommand-local clap conflict is not evaluated against it — that
+    // position is caught by the handlers' `ensure_json_csv_not_both` with the
+    // identical clap `ArgumentConflict` error (regression pinned after round
+    // 30 found the pre-subcommand position silently dropping the JSON).
     let addr = local_tcp_listener();
     for sub in ["tcp", "tls", "http", "probe", "dns", "route", "diagnose"] {
-        cmd()
-            .args([sub, &addr.to_string(), "--json", "--csv"])
-            .assert()
-            .failure()
-            .code(2)
-            .stderr(contains("cannot be used with"));
+        for position in [
+            &[sub, &addr.to_string(), "--json", "--csv"][..],
+            &["--json", sub, &addr.to_string(), "--csv"][..],
+        ] {
+            cmd()
+                .args(position)
+                .assert()
+                .failure()
+                .code(2)
+                .stderr(contains("cannot be used with"));
+        }
     }
 }
 

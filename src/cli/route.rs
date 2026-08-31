@@ -21,6 +21,11 @@ use std::time::Duration;
 pub(super) async fn run_route(sub_m: &ArgMatches, style: Style) -> ExitCode {
     let json = sub_m.get_flag("json");
     let csv = sub_m.get_flag("csv");
+    // `--json` before the subcommand name escapes the clap conflict.
+    if let Err(e) = super::ensure_json_csv_not_both(sub_m) {
+        let _ = e.print();
+        return ExitCode::from(2);
+    }
     let count = *sub_m.get_one::<usize>("count").expect("count has default");
     let target_str = sub_m.get_one::<String>("target").expect("required target");
     let max_hops = *sub_m.get_one::<u8>("max-hops").expect("max-hops has default");

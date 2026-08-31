@@ -316,9 +316,21 @@ fn handle_completions(sub_m: &ArgMatches) -> ExitCode {
         eprintln!("Error: completions requires a shell (bash, zsh, fish, elvish or powershell)");
         return ExitCode::FAILURE;
     };
+    // `completions zsh | head` must stay success and a *lost* script (ENOSPC
+    // redirecting to a full disk) must be exit 1 — the same broken-pipe-vs-
+    // failure contract the report commands follow. `clap_complete::generate`
+    // panics on ANY writer error (`.expect("failed to write completion
+    // file")`), so the script is generated into an infallible in-memory
+    // buffer first and then emitted through [`print_stdout`], which draws the
+    // EPIPE-vs-genuine-error distinction.
     let mut cmd = build_command();
-    clap_complete::generate(shell, &mut cmd, "ip-tools", &mut PipeTolerant(std::io::stdout()));
-    ExitCode::SUCCESS
+    let mut buf = Vec::new();
+    clap_complete::generate(shell, &mut cmd, "ip-tools", &mut buf);
+    if print_stdout(&String::from_utf8_lossy(&buf)) {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    }
 }
 
 /// Common repeatable `--server` DNS-server argument.
@@ -695,8 +707,30 @@ fn csv_arg() -> Arg {
     Arg::new("csv")
         .long("csv")
         .action(ArgAction::SetTrue)
+        // The post-subcommand position (`dns host --json --csv`) is rejected
+        // here at parse; the global `--json` given *before* the subcommand
+        // name resolves outside the subcommand match, so that position is
+        // caught by [`ensure_json_csv_not_both`] in the handlers instead.
         .conflicts_with("json")
         .help("output the results as CSV rows instead of human text")
+}
+
+/// `--json` (global) may precede the subcommand name (`ip-tools --json dns
+/// host --csv`), where clap evaluates the subcommand-local `--csv` conflict
+/// only against the subcommand match and the render chain would silently
+/// honor CSV and drop the requested JSON (exit 0 — a false green). A
+/// global-side `conflicts_with` cannot be declared (clap's build validation
+/// rejects a name that exists only in subcommands), so the handlers re-check
+/// with clap's own `ArgumentConflict` error: both flag positions then fail
+/// identically to the parse conflict (exit 2, the same message formatting).
+pub fn ensure_json_csv_not_both(sub_m: &ArgMatches) -> Result<(), clap::Error> {
+    if sub_m.get_flag("json") && sub_m.get_flag("csv") {
+        return Err(clap::Error::raw(
+            clap::error::ErrorKind::ArgumentConflict,
+            "the argument '--json' cannot be used with '--csv'",
+        ));
+    }
+    Ok(())
 }
 
 /// `--reverse` argument for `diagnose`: include reverse-DNS (PTR) evidence
@@ -1029,6 +1063,12 @@ where
 
     let json = sub_m.get_flag("json");
     let csv = sub_m.get_flag("csv");
+    // `--json` before the subcommand name escapes the clap conflict (the
+    // global is matched at the top level); reject that position identically.
+    if let Err(e) = ensure_json_csv_not_both(sub_m) {
+        let _ = e.print();
+        return ExitCode::from(2);
+    }
     let strict = sub_m.get_flag("strict");
     let timeout_ms = *sub_m.get_one::<u64>("timeout").expect("timeout has default");
     let concurrency = *sub_m.get_one::<usize>("concurrency").expect("concurrency has default");

@@ -72,6 +72,11 @@ pub(super) async fn run_diagnose(sub_m: &ArgMatches, style: Style) -> ExitCode {
     }
     let json = sub_m.get_flag("json");
     let csv = sub_m.get_flag("csv");
+    // `--json` before the subcommand name escapes the clap conflict.
+    if let Err(e) = super::ensure_json_csv_not_both(sub_m) {
+        let _ = e.print();
+        return ExitCode::from(2);
+    }
     let insecure = sub_m.get_flag("insecure");
     let plain = sub_m.get_flag("plain");
     let reverse = sub_m.get_flag("reverse");

@@ -19,6 +19,11 @@ use std::time::Duration;
 pub(super) async fn run_dns(sub_m: &ArgMatches, style: Style) -> ExitCode {
     let json = sub_m.get_flag("json");
     let csv = sub_m.get_flag("csv");
+    // `--json` before the subcommand name escapes the clap conflict.
+    if let Err(e) = super::ensure_json_csv_not_both(sub_m) {
+        let _ = e.print();
+        return ExitCode::from(2);
+    }
     let strict = sub_m.get_flag("strict");
     let timeout_ms = *sub_m.get_one::<u64>("timeout").expect("timeout has default");
     let timeout = Duration::from_millis(timeout_ms);
