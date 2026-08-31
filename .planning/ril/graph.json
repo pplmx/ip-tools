@@ -1,8 +1,8 @@
 {
   "ril_version": 1,
-  "round": 26,
+  "round": 27,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-31T00:28:48+00:00",
+  "updated_at": "2026-08-31T00:30:45+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -101,7 +101,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 25,
+      "touched_round": 26,
       "desc": "clap arg tree + dispatch; --strict/--json/--timeout/--concurrency/--server/--insecure/--method/--count flags"
     },
     "COMP-model": {
@@ -6299,21 +6299,21 @@
     "ISS-169": {
       "id": "ISS-169",
       "type": "issue",
-      "status": "active",
-      "version": 1,
+      "status": "resolved",
+      "version": 2,
       "created_at": "2026-08-31T00:28:15+00:00",
-      "updated_at": "2026-08-31T00:28:15+00:00",
-      "touched_round": 26,
+      "updated_at": "2026-08-31T00:29:22+00:00",
+      "touched_round": 27,
       "title": "route zero-run guards split across exit-code channels"
     },
     "TASK-122": {
       "id": "TASK-122",
       "type": "task",
-      "status": "active",
-      "version": 1,
+      "status": "abandoned",
+      "version": 2,
       "created_at": "2026-08-31T00:28:22+00:00",
-      "updated_at": "2026-08-31T00:28:22+00:00",
-      "touched_round": 26,
+      "updated_at": "2026-08-31T00:30:18+00:00",
+      "touched_round": 27,
       "category": "correctness",
       "severity": "LOW",
       "title": "unify route zero guards on the nonzero_u8 parse channel"
@@ -6321,14 +6321,25 @@
     "TASK-123": {
       "id": "TASK-123",
       "type": "task",
-      "status": "active",
-      "version": 1,
+      "status": "resolved",
+      "version": 2,
       "created_at": "2026-08-31T00:28:48+00:00",
-      "updated_at": "2026-08-31T00:28:48+00:00",
+      "updated_at": "2026-08-31T00:29:22+00:00",
       "touched_round": 26,
       "category": "correctness",
       "priority_score": 2.2,
       "title": "unify route zero guards on the nonzero_u8 parse channel"
+    },
+    "CHG-113": {
+      "id": "CHG-113",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-31T00:29:11+00:00",
+      "updated_at": "2026-08-31T00:29:11+00:00",
+      "touched_round": 26,
+      "commit": "5c789f5",
+      "title": "route zero-guards: nonzero_u8 parsers, dead guards removed"
     }
   },
   "edges": [
@@ -10867,6 +10878,36 @@
       "to": "ISS-168",
       "type": "resolves",
       "created_at": "2026-08-30T23:29:04+00:00"
+    },
+    {
+      "from": "CHG-113",
+      "to": "TASK-123",
+      "type": "implements",
+      "created_at": "2026-08-31T00:29:22+00:00"
+    },
+    {
+      "from": "CHG-113",
+      "to": "ISS-169",
+      "type": "resolves",
+      "created_at": "2026-08-31T00:29:22+00:00"
+    },
+    {
+      "from": "TASK-123",
+      "to": "ISS-169",
+      "type": "addresses",
+      "created_at": "2026-08-31T00:29:22+00:00"
+    },
+    {
+      "from": "ISS-169",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-31T00:29:22+00:00"
+    },
+    {
+      "from": "TASK-122",
+      "to": "ISS-169",
+      "type": "addresses",
+      "created_at": "2026-08-31T00:30:45+00:00"
     }
   ]
 }
