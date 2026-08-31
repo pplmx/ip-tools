@@ -1593,11 +1593,11 @@ fn tcp_failure_json_contract_serializes_the_failure_object() {
 
 #[test]
 fn diagnose_and_route_cli_reject_zero_run_parameters() {
-    // `diagnose --count 0` and route's `--count 0` / `--max-hops 0` /
-    // `--probes-per-hop 0` fail fast — a zero repeat would render a vacuous
-    // report. `diagnose --count 0` and `route --count 0` are rejected at
-    // argument parse (exit 2, like the probe/dns `--count 0` parser); route's
-    // `--max-hops 0` / `--probes-per-hop 0` are rejected in-handler (exit 1).
+    // `diagnose --count 0` and every route zero-run guard (--count, --max-hops,
+    // --probes-per-hop, --timeout, --concurrency) fail fast at argument parse
+    // (exit 2) on the shared nonzero-parser channel — a zero repeat would
+    // render a vacuous report, and the same mistake class must be one exit code
+    // across the whole subcommand.
     let addr = local_tcp_listener();
     cmd()
         .args(["diagnose", &addr.to_string(), "--count", "0", "--timeout", "800"])
@@ -1605,22 +1605,14 @@ fn diagnose_and_route_cli_reject_zero_run_parameters() {
         .failure()
         .code(2)
         .stderr(contains("must be at least 1"));
-    cmd()
-        .args(["route", "127.0.0.1", "--count", "0", "--timeout", "300"])
-        .assert()
-        .failure()
-        .code(2)
-        .stderr(contains("must be at least 1"));
-    cmd()
-        .args(["route", "127.0.0.1", "--max-hops", "0", "--timeout", "300"])
-        .assert()
-        .failure()
-        .stderr(contains("--max-hops must be at least 1"));
-    cmd()
-        .args(["route", "127.0.0.1", "--probes-per-hop", "0", "--timeout", "300"])
-        .assert()
-        .failure()
-        .stderr(contains("--probes-per-hop must be at least 1"));
+    for zero in ["count", "max-hops", "probes-per-hop", "timeout"] {
+        cmd()
+            .args(["route", "127.0.0.1", &format!("--{zero}"), "0", "--timeout", "300"])
+            .assert()
+            .failure()
+            .code(2)
+            .stderr(contains("must be at least 1"));
+    }
 }
 
 #[test]

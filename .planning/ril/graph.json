@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 26,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-30T23:29:04+00:00",
+  "updated_at": "2026-08-31T00:28:48+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -6295,6 +6295,40 @@
       "source": "round-27 fresh-eyes re-read of f999fa2",
       "summary": "Regression root cause: the round-24 doh_query edit replaced (not joined) the rcode!=0 branch with the saw_cname gate; the whole-suite 110 tests passed with the bug live because no test fed a non-NOERROR message through the caller gate. Cross-verified: temporarily removing the restored branch makes dns_cli_doh_reports_nxdomain_as_a_failure_observation fail, re-applying makes it pass.",
       "confidence": 1.0
+    },
+    "ISS-169": {
+      "id": "ISS-169",
+      "type": "issue",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-31T00:28:15+00:00",
+      "updated_at": "2026-08-31T00:28:15+00:00",
+      "touched_round": 26,
+      "title": "route zero-run guards split across exit-code channels"
+    },
+    "TASK-122": {
+      "id": "TASK-122",
+      "type": "task",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-31T00:28:22+00:00",
+      "updated_at": "2026-08-31T00:28:22+00:00",
+      "touched_round": 26,
+      "category": "correctness",
+      "severity": "LOW",
+      "title": "unify route zero guards on the nonzero_u8 parse channel"
+    },
+    "TASK-123": {
+      "id": "TASK-123",
+      "type": "task",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-31T00:28:48+00:00",
+      "updated_at": "2026-08-31T00:28:48+00:00",
+      "touched_round": 26,
+      "category": "correctness",
+      "priority_score": 2.2,
+      "title": "unify route zero guards on the nonzero_u8 parse channel"
     }
   },
   "edges": [

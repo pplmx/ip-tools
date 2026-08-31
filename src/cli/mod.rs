@@ -196,7 +196,7 @@ fn build_command() -> Command {
                     Arg::new("max-hops")
                         .long("max-hops")
                         .value_name("N")
-                        .value_parser(clap::value_parser!(u8))
+                        .value_parser(nonzero_u8)
                         .default_value("30")
                         .help("maximum number of hops"),
                 )
@@ -204,7 +204,7 @@ fn build_command() -> Command {
                     Arg::new("probes-per-hop")
                         .long("probes-per-hop")
                         .value_name("N")
-                        .value_parser(clap::value_parser!(u8))
+                        .value_parser(nonzero_u8)
                         .default_value("3")
                         .help("probes per hop"),
                 )
@@ -375,6 +375,18 @@ fn nonzero_usize(s: &str) -> Result<usize, String> {
     }
 }
 
+/// [`nonzero_u64`] for the `u8`-typed route options (`--max-hops`,
+/// `--probes-per-hop`). Same "0 is invalid" channel as every sibling so a
+/// zero-run guard is one exit code (2) across the whole subcommand.
+fn nonzero_u8(s: &str) -> Result<u8, String> {
+    let n: u8 = s.parse().map_err(|_| format!("'{s}' is not a valid number"))?;
+    if n == 0 {
+        Err("must be at least 1".to_string())
+    } else {
+        Ok(n)
+    }
+}
+
 fn timeout_arg(default_ms: &'static str) -> Arg {
     Arg::new("timeout")
         .long("timeout")
@@ -486,8 +498,9 @@ fn diagnose_count_arg() -> Arg {
 
 /// `--count` for the `route` subcommand: repeat the traceroute that many
 /// times and aggregate per-hop latency + router addresses (default 1 = the
-/// single current trace, unchanged). Rejecting `0` at parse (like
-/// `--max-hops`/`--probes-per-hop`) keeps every zero-run guard on one channel.
+/// single current trace, unchanged). Rejecting `0` at parse (the shared
+/// nonzero parsers, `--max-hops`/`--probes-per-hop` included) keeps every
+/// zero-run guard on the same exit-2 channel.
 fn route_count_arg() -> Arg {
     Arg::new("count")
         .long("count")
