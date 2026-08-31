@@ -1,8 +1,8 @@
 {
   "ril_version": 1,
-  "round": 30,
+  "round": 31,
   "created_at": "2026-08-21T17:23:39+00:00",
-  "updated_at": "2026-08-31T08:36:32+00:00",
+  "updated_at": "2026-08-31T09:47:50+00:00",
   "nodes": {
     "COMP-dns": {
       "id": "COMP-dns",
@@ -101,7 +101,7 @@
       "version": 1,
       "created_at": "2026-08-21T17:36:46+00:00",
       "updated_at": "2026-08-21T17:36:46+00:00",
-      "touched_round": 28,
+      "touched_round": 30,
       "desc": "clap arg tree + dispatch; --strict/--json/--timeout/--concurrency/--server/--insecure/--method/--count flags"
     },
     "COMP-model": {
@@ -6541,6 +6541,49 @@
       "touched_round": 29,
       "commit": "bd5bd3f",
       "title": "round-31: bracketed-IPv6 --reverse label fix (bd5bd3f)"
+    },
+    "ISS-178": {
+      "id": "ISS-178",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-31T09:39:21+00:00",
+      "updated_at": "2026-08-31T09:40:40+00:00",
+      "touched_round": 30,
+      "title": "round-32 LOW: --output-body pre-flight truncates a prior artifact on a doomed run"
+    },
+    "TASK-132": {
+      "id": "TASK-132",
+      "type": "task",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-08-31T09:39:21+00:00",
+      "updated_at": "2026-08-31T09:40:40+00:00",
+      "touched_round": 30,
+      "category": "correctness",
+      "title": "pre-create the output-body artifact only when a probe will write"
+    },
+    "CHG-117": {
+      "id": "CHG-117",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-31T09:39:22+00:00",
+      "updated_at": "2026-08-31T09:39:22+00:00",
+      "touched_round": 30,
+      "commit": "bff2668",
+      "title": "round-32: output-body doom-run artifact preservation (bff2668)"
+    },
+    "DEC-085": {
+      "id": "DEC-085",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-08-31T09:46:36+00:00",
+      "updated_at": "2026-08-31T09:46:36+00:00",
+      "touched_round": 30,
+      "rationale": "quality convergence reached. Rounds 28-32 delivered: route zero-guard exit-channel unification; deterministic observation ordering (diagnose + dns multi-resolver); EPIPE-safe stdout with genuine-write-error surfacing; wire-decoded DNS control-byte escaping; local-stack denial classification; --json/--csv positional consistency; completions write-failure contract; bracketed-IPv6 --reverse label fix; --output-body doom-run artifact preservation. Stop conditions 10.1-10.5 all verified: zero active tasks; no unresolved high-severity issues (ISS-158 remains a hypothesis-level h3 fixture flake not reproduced since round 22, confidence 0.6, no task until reproduced); last VERIFY green (412 tests + 8 doc, fmt/clippy/api-baseline clean); 2 consecutive quiet rounds (31 and 32, no task >= 3.0); graph consistent (560 nodes).",
+      "alternatives_rejected": "continue round-clock deep-dives: rejected - 10.4 satisfied and no >=3.0 task exists to select; queue the two quiet rounds' LOWs as active tasks: rejected - both (round-31 bracketed-IPv6 label, round-32 output-body doom run) were found, fixed and delivered; enter feature-evolution mode: rejected - no operator-enabled feature-evolution decision exists"
     }
   },
   "edges": [
@@ -11301,6 +11344,30 @@
       "to": "COMP-dns",
       "type": "located_in",
       "created_at": "2026-08-31T08:36:32+00:00"
+    },
+    {
+      "from": "TASK-132",
+      "to": "ISS-178",
+      "type": "addresses",
+      "created_at": "2026-08-31T09:40:39+00:00"
+    },
+    {
+      "from": "CHG-117",
+      "to": "TASK-132",
+      "type": "implements",
+      "created_at": "2026-08-31T09:40:39+00:00"
+    },
+    {
+      "from": "CHG-117",
+      "to": "ISS-178",
+      "type": "resolves",
+      "created_at": "2026-08-31T09:40:40+00:00"
+    },
+    {
+      "from": "ISS-178",
+      "to": "COMP-cli",
+      "type": "located_in",
+      "created_at": "2026-08-31T09:40:40+00:00"
     }
   ]
 }
